@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import si.um.feri.dotaops.backend.opendota.domain.MatchImport;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImportStatus;
+import si.um.feri.dotaops.backend.opendota.domain.OpenDotaErrorCode;
 
 public record MatchImportResponse(
         UUID id,
@@ -12,6 +13,7 @@ public record MatchImportResponse(
         UUID matchGameId,
         String dotaMatchId,
         MatchImportStatus status,
+        OpenDotaErrorCode errorCode,
         String errorMessage,
         OffsetDateTime startedAt,
         OffsetDateTime completedAt,
@@ -26,6 +28,7 @@ public record MatchImportResponse(
                 matchImport.matchGameId(),
                 matchImport.dotaMatchId(),
                 matchImport.status(),
+                matchImport.errorCode(),
                 matchImport.errorMessage(),
                 matchImport.startedAt(),
                 matchImport.completedAt(),

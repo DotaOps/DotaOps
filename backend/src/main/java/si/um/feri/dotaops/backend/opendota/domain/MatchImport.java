@@ -10,6 +10,7 @@ public record MatchImport(
         String dotaMatchId,
         MatchImportStatus status,
         UUID requestedBy,
+        OpenDotaErrorCode errorCode,
         String errorMessage,
         OffsetDateTime startedAt,
         OffsetDateTime completedAt,

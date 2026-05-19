@@ -59,6 +59,11 @@ SUPABASE_DB_USER=postgres.<projectRef>
 SUPABASE_DB_PASSWORD=YOUR_DATABASE_PASSWORD
 SPRING_FLYWAY_ENABLED=true
 OPENDOTA_API_BASE_URL=https://api.opendota.com/api
+OPENDOTA_API_KEY=
+OPENDOTA_CONNECT_TIMEOUT=2s
+OPENDOTA_READ_TIMEOUT=5s
+OPENDOTA_RETRY_MAX_ATTEMPTS=3
+OPENDOTA_RETRY_BACKOFF=250ms
 
 NEXT_PUBLIC_SUPABASE_URL=https://<projectRef>.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
@@ -100,6 +105,21 @@ SUPABASE_DB_URL=jdbc:postgresql://aws-0-eu-west-1.pooler.supabase.com:5432/postg
 ```
 
 Ne uporabljaj direct cloud connection stringa `db.<projectRef>.supabase.co`, razen ce je okolje namenoma na IPv6 ali ima Supabase IPv4 add-on.
+
+## OpenDota Konfiguracija
+
+Backend bere OpenDota nastavitve iz root `.env` oziroma okolja:
+
+```properties
+OPENDOTA_API_BASE_URL=https://api.opendota.com/api
+OPENDOTA_API_KEY=
+OPENDOTA_CONNECT_TIMEOUT=2s
+OPENDOTA_READ_TIMEOUT=5s
+OPENDOTA_RETRY_MAX_ATTEMPTS=3
+OPENDOTA_RETRY_BACKOFF=250ms
+```
+
+`OPENDOTA_API_KEY` je opcijski in mora ostati samo na backend/server strani. Ne dodajaj ga v frontend okolje, response DTO-je ali loge.
 
 ## Zagon Backenda
 

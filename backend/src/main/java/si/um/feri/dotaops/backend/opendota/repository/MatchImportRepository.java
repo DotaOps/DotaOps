@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImport;
 import si.um.feri.dotaops.backend.opendota.domain.MatchPlayerImport;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImportStatus;
+import si.um.feri.dotaops.backend.opendota.domain.OpenDotaErrorCode;
 
 @Repository
 public class MatchImportRepository {
@@ -65,6 +66,7 @@ public class MatchImportRepository {
                           started_at = now(),
                           completed_at = null,
                           locked_at = now(),
+                          error_code = null,
                           error_message = null,
                           updated_at = now()
                         where id = ?
@@ -91,6 +93,7 @@ public class MatchImportRepository {
                           status = 'ready',
                           raw_response = cast(? as jsonb),
                           normalized_payload = cast(? as jsonb),
+                          error_code = null,
                           error_message = null,
                           completed_at = now(),
                           locked_at = null,
@@ -186,11 +189,16 @@ public class MatchImportRepository {
     }
 
     public Optional<MatchImport> markError(UUID importId, String errorMessage) {
+        return markError(importId, null, errorMessage);
+    }
+
+    public Optional<MatchImport> markError(UUID importId, OpenDotaErrorCode errorCode, String errorMessage) {
         return jdbcTemplate.query(
                         """
                         update public.match_imports
                         set
                           status = 'error',
+                          error_code = ?,
                           error_message = ?,
                           completed_at = now(),
                           locked_at = null,
@@ -198,6 +206,7 @@ public class MatchImportRepository {
                         where id = ?
                         """ + returningSql(),
                         this::mapMatchImport,
+                        errorCode == null ? null : errorCode.name(),
                         errorMessage,
                         importId)
                 .stream()
@@ -213,6 +222,7 @@ public class MatchImportRepository {
                   dota_match_id,
                   status::text as status,
                   requested_by,
+                  error_code,
                   error_message,
                   started_at,
                   completed_at,
@@ -231,6 +241,7 @@ public class MatchImportRepository {
                   dota_match_id,
                   status::text as status,
                   requested_by,
+                  error_code,
                   error_message,
                   started_at,
                   completed_at,
@@ -247,10 +258,19 @@ public class MatchImportRepository {
                 resultSet.getString("dota_match_id"),
                 MatchImportStatus.fromDatabaseValue(resultSet.getString("status")),
                 resultSet.getObject("requested_by", UUID.class),
+                errorCode(resultSet.getString("error_code")),
                 resultSet.getString("error_message"),
                 resultSet.getObject("started_at", OffsetDateTime.class),
                 resultSet.getObject("completed_at", OffsetDateTime.class),
                 resultSet.getObject("created_at", OffsetDateTime.class),
                 resultSet.getObject("updated_at", OffsetDateTime.class));
+    }
+
+    private OpenDotaErrorCode errorCode(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        return OpenDotaErrorCode.valueOf(value);
     }
 }

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,9 @@ import si.um.feri.dotaops.backend.common.security.RequestRateLimiter;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImport;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImportStatus;
 import si.um.feri.dotaops.backend.opendota.domain.MatchPlayerImport;
+import si.um.feri.dotaops.backend.opendota.domain.OpenDotaErrorCode;
+import si.um.feri.dotaops.backend.opendota.domain.OpenDotaRawMatchResponse;
+import si.um.feri.dotaops.backend.opendota.domain.OpenDotaRawPlayerResponse;
 import si.um.feri.dotaops.backend.opendota.repository.MatchImportRepository;
 import si.um.feri.dotaops.backend.opendota.web.CreateMatchImportRequest;
 
@@ -59,23 +63,7 @@ class MatchImportServiceTest {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
         when(matchImportRepository.createProcessing(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(processing);
-        when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenReturn(Optional.of(objectMapper.readTree("""
-                {
-                  "match_id": 7894561230,
-                  "duration": 1900,
-                  "radiant_win": true,
-                  "players": [
-                    {
-                      "account_id": 39734273,
-                      "player_slot": 0,
-                      "hero_id": 1,
-                      "kills": 8,
-                      "deaths": 2,
-                      "assists": 12
-                    }
-                  ]
-                }
-                """)));
+        when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenReturn(rawMatch());
         when(matchImportRepository.markReady(eq(IMPORT_ID), anyString(), anyString(), anyList()))
                 .thenReturn(Optional.of(ready));
 
@@ -106,20 +94,78 @@ class MatchImportServiceTest {
     }
 
     @Test
-    void importMatchMarksImportAsErrorWhenOpenDotaCannotFetchMatch() {
+    void importMatchMapsRateLimitToErrorStatus() {
         MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
-        MatchImport error = matchImport(MatchImportStatus.ERROR, "OpenDota match was not found or could not be fetched.");
+        MatchImport error = matchImport(
+                MatchImportStatus.ERROR,
+                OpenDotaErrorCode.RATE_LIMITED,
+                "OpenDota rate limit exceeded.");
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
         when(matchImportRepository.createProcessing(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(processing);
-        when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenReturn(Optional.empty());
-        when(matchImportRepository.markError(IMPORT_ID, "OpenDota match was not found or could not be fetched."))
+        when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenThrow(new OpenDotaClientException(
+                OpenDotaErrorCode.RATE_LIMITED,
+                "OpenDota rate limit exceeded."));
+        when(matchImportRepository.markError(
+                IMPORT_ID,
+                OpenDotaErrorCode.RATE_LIMITED,
+                "OpenDota rate limit exceeded."))
                 .thenReturn(Optional.of(error));
 
         var response = service.importMatch(new CreateMatchImportRequest(DOTA_MATCH_ID), "203.0.113.10");
 
         assertThat(response.status()).isEqualTo(MatchImportStatus.ERROR);
-        assertThat(response.errorMessage()).isEqualTo("OpenDota match was not found or could not be fetched.");
+        assertThat(response.errorCode()).isEqualTo(OpenDotaErrorCode.RATE_LIMITED);
+        assertThat(response.errorMessage()).isEqualTo("OpenDota rate limit exceeded.");
+    }
+
+    @Test
+    void importMatchMapsNotFoundToErrorStatus() {
+        MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
+        MatchImport error = matchImport(
+                MatchImportStatus.ERROR,
+                OpenDotaErrorCode.MATCH_NOT_FOUND,
+                "OpenDota match was not found.");
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
+        when(matchImportRepository.createProcessing(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(processing);
+        when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenThrow(new OpenDotaClientException(
+                OpenDotaErrorCode.MATCH_NOT_FOUND,
+                "OpenDota match was not found."));
+        when(matchImportRepository.markError(
+                IMPORT_ID,
+                OpenDotaErrorCode.MATCH_NOT_FOUND,
+                "OpenDota match was not found."))
+                .thenReturn(Optional.of(error));
+
+        var response = service.importMatch(new CreateMatchImportRequest(DOTA_MATCH_ID), "203.0.113.10");
+
+        assertThat(response.status()).isEqualTo(MatchImportStatus.ERROR);
+        assertThat(response.errorCode()).isEqualTo(OpenDotaErrorCode.MATCH_NOT_FOUND);
+        assertThat(response.errorMessage()).isEqualTo("OpenDota match was not found.");
+    }
+
+    @Test
+    void retryExistingErrorImportDoesNotCreateDuplicateImportAndReplacesPlayersOnce() throws Exception {
+        MatchImport existingError = matchImport(MatchImportStatus.ERROR, OpenDotaErrorCode.RATE_LIMITED, "Rate limited.");
+        MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
+        MatchImport ready = matchImport(MatchImportStatus.READY, null);
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.of(existingError));
+        when(matchImportRepository.markProcessing(IMPORT_ID)).thenReturn(Optional.of(processing));
+        when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenReturn(rawMatch());
+        when(matchImportRepository.markReady(eq(IMPORT_ID), anyString(), anyString(), anyList()))
+                .thenReturn(Optional.of(ready));
+
+        var response = service.importMatch(new CreateMatchImportRequest(DOTA_MATCH_ID), "203.0.113.10");
+
+        assertThat(response.status()).isEqualTo(MatchImportStatus.READY);
+        verify(matchImportRepository, never()).createProcessing(anyString(), any());
+        verify(matchImportRepository).markProcessing(IMPORT_ID);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<MatchPlayerImport>> playersCaptor = ArgumentCaptor.forClass(List.class);
+        verify(matchImportRepository).markReady(eq(IMPORT_ID), anyString(), anyString(), playersCaptor.capture());
+        assertThat(playersCaptor.getValue()).hasSize(1);
     }
 
     @Test
@@ -172,6 +218,14 @@ class MatchImportServiceTest {
     }
 
     private static MatchImport matchImport(MatchImportStatus status, String errorMessage) {
+        return matchImport(status, null, errorMessage);
+    }
+
+    private static MatchImport matchImport(
+            MatchImportStatus status,
+            OpenDotaErrorCode errorCode,
+            String errorMessage
+    ) {
         OffsetDateTime now = OffsetDateTime.parse("2026-05-12T00:00:00Z");
 
         return new MatchImport(
@@ -181,10 +235,56 @@ class MatchImportServiceTest {
                 DOTA_MATCH_ID,
                 status,
                 REQUESTED_BY,
+                errorCode,
                 errorMessage,
                 now,
                 status == MatchImportStatus.PROCESSING ? null : now,
                 now,
                 now);
+    }
+
+    private OpenDotaRawMatchResponse rawMatch() throws Exception {
+        JsonNode rawPayload = objectMapper.readTree("""
+                {
+                  "match_id": 7894561230,
+                  "duration": 1900,
+                  "radiant_win": true,
+                  "players": [
+                    {
+                      "account_id": 39734273,
+                      "player_slot": 0,
+                      "hero_id": 1,
+                      "kills": 8,
+                      "deaths": 2,
+                      "assists": 12
+                    }
+                  ]
+                }
+                """);
+        JsonNode rawPlayer = rawPayload.path("players").get(0);
+
+        return new OpenDotaRawMatchResponse(
+                7894561230L,
+                1900,
+                null,
+                true,
+                List.of(new OpenDotaRawPlayerResponse(
+                        39734273L,
+                        0,
+                        1,
+                        8,
+                        2,
+                        12,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        rawPlayer)),
+                rawPayload);
     }
 }

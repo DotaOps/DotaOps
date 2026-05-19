@@ -29,6 +29,8 @@ class SteamHttpClientConfigTest {
         assertThat(properties.steam().readTimeout()).isEqualTo(Duration.ofSeconds(5));
         assertThat(properties.opendota().connectTimeout()).isEqualTo(Duration.ofSeconds(2));
         assertThat(properties.opendota().readTimeout()).isEqualTo(Duration.ofSeconds(5));
+        assertThat(properties.opendota().retry().maxAttempts()).isEqualTo(3);
+        assertThat(properties.opendota().retry().backoff()).isEqualTo(Duration.ofMillis(250));
     }
 
     private static int privateInt(Object target, String fieldName) throws Exception {
