@@ -23,3 +23,29 @@ export function isOrganizerRole(role?: string | null) {
 export function isPublicShellRoute(pathname: string) {
   return routeAccessForPath(pathname) === "public";
 }
+
+export function safeLocalRedirectPath(value: string | null | undefined, fallback = "/dashboard") {
+  const trimmed = value?.trim();
+
+  if (!trimmed || trimmed.startsWith("//")) {
+    return fallback;
+  }
+
+  try {
+    const url = new URL(trimmed, "http://dotaops.local");
+
+    if (url.origin !== "http://dotaops.local") {
+      return fallback;
+    }
+
+    const target = `${url.pathname}${url.search}${url.hash}`;
+
+    if (target === "/login" || target.startsWith("/login?") || target === "/register") {
+      return fallback;
+    }
+
+    return target.startsWith("/") ? target : fallback;
+  } catch {
+    return fallback;
+  }
+}
