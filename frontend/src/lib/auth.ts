@@ -613,6 +613,12 @@ export async function loginWithEmailPassword(input: LoginInput): Promise<AuthRes
     throw error;
   }
 
+  const { data: sessionData } = await supabase.auth.getSession();
+
+  if (!sessionData.session?.access_token) {
+    throw new Error("Login session was not established. Please try again.");
+  }
+
   const authUserId = data.user?.id;
 
   if (!authUserId) {
