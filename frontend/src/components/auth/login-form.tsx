@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
-import { getCurrentUserProfile, loginWithEmailPassword } from "@/lib/auth";
+import { dashboardPathForRole, getCurrentUserProfile, loginWithEmailPassword } from "@/lib/auth";
 
 async function waitForAuthenticatedProfile(timeoutMs = 1500) {
   const deadline = Date.now() + timeoutMs;
@@ -68,6 +68,11 @@ export function LoginForm() {
     try {
       const result = await loginWithEmailPassword({ email, password });
       await waitForAuthenticatedProfile();
+      try {
+        localStorage.setItem("dotaops:just_signed_in", String(Date.now()));
+      } catch {
+        // ignore if storage is unavailable
+      }
       setNotice(result.message ?? "Dashboard uplink prepared.");
       router.replace(result.dashboardPath);
     } catch (caught) {
@@ -167,3 +172,23 @@ export function LoginForm() {
     </main>
   );
 }
+function getRedirectTarget(defaultPath: string): string {
+  try {
+    if (typeof window === "undefined") {
+      return defaultPath;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get("next");
+
+    // Only accept internal paths to avoid open redirects
+    if (next && typeof next === "string" && next.startsWith("/")) {
+      return next;
+    }
+  } catch {
+    // Ignore and fall back to default
+  }
+
+  return defaultPath;
+}
+
