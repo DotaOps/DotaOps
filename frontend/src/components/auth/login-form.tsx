@@ -3,7 +3,7 @@
 import { Info, KeyRound, LogIn, Mail, RadioTower } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { getCurrentUserProfile, loginWithEmailPassword } from "@/lib/auth";
@@ -36,6 +36,28 @@ export function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    getCurrentUserProfile()
+      .then((profile) => {
+        if (!isMounted || !profile) {
+          return;
+        }
+
+        const target = getRedirectTarget(dashboardPathForRole(profile.role));
+        router.replace(target);
+        router.refresh();
+      })
+      .catch(() => {
+        // Staying on the login form is correct when no valid session exists.
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
