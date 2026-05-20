@@ -613,6 +613,21 @@ export async function loginWithEmailPassword(input: LoginInput): Promise<AuthRes
     throw error;
   }
 
+  let sessionData: typeof data.session | null = data.session;
+
+  if (!sessionData) {
+    const sessionDeadline = Date.now() + 1000;
+
+    while (Date.now() < sessionDeadline && !sessionData) {
+      const { data: refreshedSession } = await supabase.auth.getSession();
+      sessionData = refreshedSession.session;
+
+      if (!sessionData) {
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      }
+    }
+  }
+
   const authUserId = data.user?.id;
 
   if (!authUserId) {
