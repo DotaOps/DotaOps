@@ -104,6 +104,7 @@ class MatchImportServiceTest {
         ArgumentCaptor<List<MatchPlayerImport>> playersCaptor = ArgumentCaptor.forClass(List.class);
         verify(matchImportRepository).markReady(eq(IMPORT_ID), anyString(), anyString(), playersCaptor.capture());
         assertThat(playersCaptor.getValue()).hasSize(1);
+        assertThat(playersCaptor.getValue().getFirst().dotaHeroId()).isOne();
         assertThat(playersCaptor.getValue().getFirst().steamAccountId()).isEqualTo("39734273");
         assertThat(playersCaptor.getValue().getFirst().winner()).isTrue();
     }

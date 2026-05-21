@@ -121,6 +121,32 @@ OPENDOTA_RETRY_BACKOFF=250ms
 
 `OPENDOTA_API_KEY` je opcijski in mora ostati samo na backend/server strani. Ne dodajaj ga v frontend okolje, response DTO-je ali loge.
 
+### Hero reference sync
+
+Dota heroji se ne vnasajo rocno s SQL inserti. Backend jih sinhronizira iz OpenDota endpointa `/heroes` v tabelo `public.heroes`, kjer je stabilni unique kljuc `dota_hero_id`.
+
+Rocni sync sprozi admin uporabnik:
+
+```http
+POST /api/admin/heroes/sync
+```
+
+Primer response:
+
+```json
+{
+  "data": {
+    "syncedCount": 124,
+    "insertedCount": 0,
+    "updatedCount": 124,
+    "startedAt": "2026-05-21T09:00:00Z",
+    "finishedAt": "2026-05-21T09:00:02Z"
+  }
+}
+```
+
+Sync je idempotenten: ponovni zagon ne podvoji herojev, ampak obstojece zapise posodobi po `dota_hero_id`. `image_url` in `icon_url` sta deterministicno izpeljana iz OpenDota `name`, na primer `npc_dota_hero_antimage` uporabi asset `antimage.png`. Priporoceno je sync zagnati po prvem deployu oziroma po migracijah, nato periodicno ali kadar se spremenijo referencni podatki. Match import pri shranjevanju `match_players` uporabi `heroes.dota_hero_id` za nastavitev `match_players.hero_id`; ce hero se ni znan, import ne pade, `dota_hero_id` pa ostane zapisan za diagnostiko.
+
 ### Match import lifecycle
 
 Import OpenDota match podatkov sprozis z avtenticiranim organizer/admin uporabnikom:

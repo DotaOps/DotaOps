@@ -204,6 +204,7 @@ public class MatchImportRepository {
                       match_id,
                       match_game_id,
                       hero_id,
+                      dota_hero_id,
                       steam_account_id,
                       player_slot,
                       is_radiant,
@@ -245,11 +246,13 @@ public class MatchImportRepository {
                       ?,
                       ?,
                       ?,
+                      ?,
                       cast(? as jsonb)
                     from public.match_imports mi
                     left join public.heroes h on h.dota_hero_id = ?
                     where mi.id = ?
                     """,
+                    player.dotaHeroId(),
                     player.steamAccountId(),
                     player.playerSlot(),
                     player.radiant(),

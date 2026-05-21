@@ -30,6 +30,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import si.um.feri.dotaops.backend.config.properties.IntegrationHttpProperties;
 import si.um.feri.dotaops.backend.config.properties.OpenDotaProperties;
+import si.um.feri.dotaops.backend.opendota.domain.OpenDotaHeroResponse;
 import si.um.feri.dotaops.backend.opendota.domain.OpenDotaErrorCode;
 import si.um.feri.dotaops.backend.opendota.domain.OpenDotaMatchSummary;
 import si.um.feri.dotaops.backend.opendota.domain.OpenDotaPlayerProfile;
@@ -131,9 +132,42 @@ public class OpenDotaClient {
         }
     }
 
+    public List<OpenDotaHeroResponse> fetchHeroes() {
+        String body = fetchBodyWithRetry(uri("/heroes"));
+
+        try {
+            JsonNode heroes = objectMapper.readTree(body);
+            if (!heroes.isArray()) {
+                throw invalidResponse("OpenDota heroes response must be a JSON array.");
+            }
+
+            List<OpenDotaHeroResponse> result = new ArrayList<>();
+            for (JsonNode hero : heroes) {
+                OpenDotaHeroResponse response = objectMapper.treeToValue(hero, OpenDotaHeroResponse.class);
+                if (response.id() == null || !StringUtils.hasText(response.name())
+                        || !StringUtils.hasText(response.localizedName())) {
+                    throw invalidResponse("OpenDota heroes response contained an invalid hero.");
+                }
+
+                result.add(response);
+            }
+
+            return result;
+        } catch (Exception exception) {
+            if (exception instanceof OpenDotaClientException clientException) {
+                throw clientException;
+            }
+
+            throw new OpenDotaClientException(
+                    OpenDotaErrorCode.INVALID_PROVIDER_RESPONSE,
+                    "OpenDota heroes response could not be parsed.",
+                    exception);
+        }
+    }
+
     public List<OpenDotaMatchSummary> fetchRecentMatches(long accountId, int limit) {
         try {
-            UriComponentsBuilder builder = uriBuilder("/players/{accountId}/matches", accountId);
+            UriComponentsBuilder builder = uriBuilder("/players/{accountId}/matches");
             if (limit > 0) {
                 builder.queryParam("limit", limit);
             }
@@ -169,12 +203,16 @@ public class OpenDotaClient {
     }
 
     private String fetchMatchBodyWithRetry(long matchId) {
+        return fetchBodyWithRetry(uri("/matches/{matchId}", matchId));
+    }
+
+    private String fetchBodyWithRetry(URI uri) {
         int maxAttempts = retry.maxAttempts();
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 return restClient.get()
-                        .uri(uri("/matches/{matchId}", matchId))
+                        .uri(uri)
                         .retrieve()
                         .body(String.class);
             } catch (RestClientResponseException exception) {
@@ -324,6 +362,11 @@ public class OpenDotaClient {
         return new OpenDotaClientException(OpenDotaErrorCode.INVALID_PROVIDER_RESPONSE, message);
     }
 
+    private OpenDotaClientException invalidResponse(String message) {
+        LOGGER.warn("Invalid OpenDota response.");
+        return new OpenDotaClientException(OpenDotaErrorCode.INVALID_PROVIDER_RESPONSE, message);
+    }
+
     private boolean timeout(Throwable exception) {
         Throwable current = exception;
         while (current != null) {
@@ -348,11 +391,15 @@ public class OpenDotaClient {
     }
 
     private URI uri(String path, long accountId) {
-        return uriBuilder(path, accountId)
+        return uriBuilder(path)
                 .build(accountId);
     }
 
-    private UriComponentsBuilder uriBuilder(String path, long accountId) {
+    private URI uri(String path) {
+        return uriBuilder(path).build().toUri();
+    }
+
+    private UriComponentsBuilder uriBuilder(String path) {
         UriComponentsBuilder builder = UriComponentsBuilder
                 .fromUriString(properties.baseUrl())
                 .path(path);

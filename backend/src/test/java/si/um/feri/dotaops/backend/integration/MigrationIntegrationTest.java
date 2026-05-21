@@ -112,11 +112,13 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('profile_external_accounts_one_primary_idx'),
                       ('profiles_nickname_ci_unique_idx'),
                       ('profiles_opendota_account_id_unique_idx'),
+                      ('heroes_dota_hero_id_idx'),
                       ('match_slots_team_idx'),
                       ('match_slots_source_match_type_idx'),
                       ('match_slots_locked_idx'),
                       ('match_advancement_audit_source_match_idx'),
                       ('match_import_events_error_code_idx'),
+                      ('match_players_dota_hero_id_idx'),
                       ('matches_status_idx'),
                       ('steam_login_states_expires_idx'),
                       ('matches_tournament_stage_idx')

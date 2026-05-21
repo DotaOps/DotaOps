@@ -111,6 +111,49 @@ class MatchImportRepositoryIntegrationTest extends PostgresIntegrationTestSuppor
         assertThat(playerCount).isEqualTo(1);
     }
 
+    @Test
+    void markReadyLinksKnownHeroAndStoresOpenDotaHeroId() {
+        UUID requestedBy = upsertProfile(UUID.randomUUID(), "organizer");
+        String dotaMatchId = numericDotaMatchId();
+        UUID heroId = insertHero(1);
+        var queued = matchImportRepository.createQueued(dotaMatchId, requestedBy);
+
+        matchImportRepository.markReady(queued.id(), "{}", "{}", players(1)).orElseThrow();
+
+        UUID storedHeroId = jdbcTemplate.queryForObject(
+                "select hero_id from public.match_players where match_import_id = ?",
+                UUID.class,
+                queued.id());
+        Integer storedDotaHeroId = jdbcTemplate.queryForObject(
+                "select dota_hero_id from public.match_players where match_import_id = ?",
+                Integer.class,
+                queued.id());
+
+        assertThat(storedHeroId).isEqualTo(heroId);
+        assertThat(storedDotaHeroId).isOne();
+    }
+
+    @Test
+    void markReadyKeepsUnknownOpenDotaHeroIdWithoutFailing() {
+        UUID requestedBy = upsertProfile(UUID.randomUUID(), "organizer");
+        String dotaMatchId = numericDotaMatchId();
+        var queued = matchImportRepository.createQueued(dotaMatchId, requestedBy);
+
+        matchImportRepository.markReady(queued.id(), "{}", "{}", players(999_999)).orElseThrow();
+
+        UUID storedHeroId = jdbcTemplate.queryForObject(
+                "select hero_id from public.match_players where match_import_id = ?",
+                UUID.class,
+                queued.id());
+        Integer storedDotaHeroId = jdbcTemplate.queryForObject(
+                "select dota_hero_id from public.match_players where match_import_id = ?",
+                Integer.class,
+                queued.id());
+
+        assertThat(storedHeroId).isNull();
+        assertThat(storedDotaHeroId).isEqualTo(999_999);
+    }
+
     private UUID insertMatchGame(UUID organizerProfileId, String dotaMatchId) {
         String suffix = uniqueSuffix();
         UUID tournamentId = jdbcTemplate.queryForObject(
@@ -172,9 +215,13 @@ class MatchImportRepositoryIntegrationTest extends PostgresIntegrationTestSuppor
     }
 
     private static List<MatchPlayerImport> players() {
+        return players(null);
+    }
+
+    private static List<MatchPlayerImport> players(Integer dotaHeroId) {
         return List.of(new MatchPlayerImport(
                 "39734273",
-                null,
+                dotaHeroId,
                 0,
                 true,
                 true,
@@ -192,6 +239,32 @@ class MatchImportRepositoryIntegrationTest extends PostgresIntegrationTestSuppor
                 20,
                 1900,
                 "{}"));
+    }
+
+    private UUID insertHero(int dotaHeroId) {
+        return jdbcTemplate.queryForObject(
+                """
+                insert into public.heroes (
+                  dota_hero_id,
+                  name,
+                  localized_name,
+                  slug,
+                  roles,
+                  image_url,
+                  icon_url
+                )
+                values (?, ?, ?, ?, '{}', ?, ?)
+                on conflict (dota_hero_id) do update
+                set localized_name = excluded.localized_name
+                returning id
+                """,
+                UUID.class,
+                dotaHeroId,
+                "npc_dota_hero_antimage",
+                "Anti-Mage",
+                "antimage-" + uniqueSuffix(),
+                "https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/antimage.png",
+                "https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/antimage.png");
     }
 
     private static String numericDotaMatchId() {
