@@ -64,6 +64,9 @@ public class SecurityConfig {
                                 "/api/tournament-groups/*/standings",
                                 "/api/public/tournament-groups/*/standings").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/match-imports").hasAnyRole("ORGANIZER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/match-imports/*/retry")
+                                .hasAnyRole("ORGANIZER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/match-imports/**").authenticated()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/profiles/**",
                                 "/api/tournaments/**",
