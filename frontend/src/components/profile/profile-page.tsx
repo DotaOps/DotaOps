@@ -488,7 +488,7 @@ export function ProfilePage() {
         </form>
 
         <aside className="profile-side-rail">
-          <section className="profile-rail-card ops-panel">
+          <section className="profile-rail-card ops-panel profile-connected-accounts-card">
             <h2>Connected Accounts</h2>
             <article className="profile-connected-card">
               <Gamepad2 size={30} />
