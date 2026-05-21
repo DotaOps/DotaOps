@@ -57,15 +57,29 @@ export function AppShell({ children }: { children: ReactNode }) {
   const access = routeAccessForPath(pathname);
   const [profile, setProfile] = useState<CurrentUserProfile | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(access !== "public");
+  const [checkedAuthPathname, setCheckedAuthPathname] = useState<string | null>(
+    access === "public" ? pathname : null
+  );
   const canUseOrganizer = isOrganizerRole(profile?.role);
   const isPublicContentGuest = access === "public-content" && !profile;
+  const isPrivateAuthCheckPending =
+    access !== "public" &&
+    access !== "public-content" &&
+    (isCheckingAuth || checkedAuthPathname !== pathname);
 
   useEffect(() => {
     let isMounted = true;
 
     if (access === "public") {
+      const timeout = window.setTimeout(() => {
+        if (isMounted) {
+          setCheckedAuthPathname(pathname);
+        }
+      }, 0);
+
       return () => {
         isMounted = false;
+        window.clearTimeout(timeout);
       };
     }
 
@@ -89,6 +103,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         })
         .finally(() => {
           if (isMounted) {
+            setCheckedAuthPathname(pathname);
             setIsCheckingAuth(false);
           }
         });
@@ -101,12 +116,30 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [access, pathname]);
 
   useEffect(() => {
-    if (isCheckingAuth || profile || access === "public" || access === "public-content") {
+    if (isPrivateAuthCheckPending || profile || access === "public" || access === "public-content") {
       return;
     }
 
+    try {
+      const ts = localStorage.getItem("dotaops:just_signed_in");
+
+      if (ts) {
+        const t = Number(ts);
+
+        if (!Number.isNaN(t) && Date.now() - t < 3000) {
+          // Recently signed in; wait a bit for session visibility instead of redirecting.
+          return;
+        }
+
+        // Remove stale flag
+        localStorage.removeItem("dotaops:just_signed_in");
+      }
+    } catch {
+      // localStorage unavailable — fall back to normal redirect
+    }
+
     router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-  }, [access, isCheckingAuth, pathname, profile, router]);
+  }, [access, isPrivateAuthCheckPending, pathname, profile, router]);
 
   const primaryAction = useMemo(() => {
     if (isPublicContentGuest) {
@@ -139,7 +172,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  if (isCheckingAuth && access !== "public-content") {
+  if (isPrivateAuthCheckPending) {
     return (
       <RouteState
         detail="Checking your DotaOps session before opening this private workspace."
@@ -148,7 +181,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!isCheckingAuth && !profile && access !== "public-content") {
+  if (!isPrivateAuthCheckPending && !profile && access !== "public-content") {
     return (
       <RouteState
         action={<Link className="button ops-button-primary" href="/login">Login</Link>}

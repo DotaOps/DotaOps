@@ -2,28 +2,33 @@
 
 import { Info, KeyRound, LogIn, Mail, RadioTower } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { dashboardPathForRole, getCurrentUserProfile, loginWithEmailPassword } from "@/lib/auth";
 import { safeLocalRedirectPath } from "@/lib/route-access";
 
-function getRedirectTarget(fallback: string) {
-  if (typeof window === "undefined") {
-    return fallback;
+async function waitForAuthenticatedProfile(timeoutMs = 1500) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    try {
+      const profile = await getCurrentUserProfile();
+
+      if (profile) {
+        return profile;
+      }
+    } catch {
+      // Retry until the session is visible or the timeout is reached.
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
   }
 
-  const searchParams = new URLSearchParams(window.location.search);
-
-  return safeLocalRedirectPath(
-    searchParams.get("next") ?? searchParams.get("returnTo") ?? searchParams.get("redirectTo"),
-    fallback
-  );
+  return null;
 }
 
 export function LoginForm() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
@@ -41,8 +46,7 @@ export function LoginForm() {
         }
 
         const target = getRedirectTarget(dashboardPathForRole(profile.role));
-        router.replace(target);
-        router.refresh();
+        window.location.replace(target);
       })
       .catch(() => {
         // Staying on the login form is correct when no valid session exists.
@@ -51,7 +55,7 @@ export function LoginForm() {
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,10 +65,14 @@ export function LoginForm() {
 
     try {
       const result = await loginWithEmailPassword({ email, password });
-      const target = getRedirectTarget(result.dashboardPath);
+      await waitForAuthenticatedProfile();
+      try {
+        localStorage.setItem("dotaops:just_signed_in", String(Date.now()));
+      } catch {
+        // ignore if storage is unavailable
+      }
       setNotice(result.message ?? "Dashboard uplink prepared.");
-      router.replace(target);
-      router.refresh();
+      window.location.replace(getRedirectTarget(result.dashboardPath));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Login failed.");
       setIsLoading(false);
@@ -162,3 +170,18 @@ export function LoginForm() {
     </main>
   );
 }
+function getRedirectTarget(defaultPath: string): string {
+  try {
+    if (typeof window === "undefined") {
+      return defaultPath;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    return safeLocalRedirectPath(params.get("next"), defaultPath);
+  } catch {
+    // Ignore and fall back to default
+  }
+
+  return defaultPath;
+}
+
