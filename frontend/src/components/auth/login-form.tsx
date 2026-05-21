@@ -3,10 +3,30 @@
 import { Info, KeyRound, LogIn, Mail, RadioTower } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
-import { loginWithEmailPassword } from "@/lib/auth";
+import { dashboardPathForRole, getCurrentUserProfile, loginWithEmailPassword } from "@/lib/auth";
+
+async function waitForAuthenticatedProfile(timeoutMs = 1500) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    try {
+      const profile = await getCurrentUserProfile();
+
+      if (profile) {
+        return profile;
+      }
+    } catch {
+      // Retry until the session is visible or the timeout is reached.
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+  }
+
+  return null;
+}
 
 export function LoginForm() {
   const router = useRouter();
@@ -17,6 +37,28 @@ export function LoginForm() {
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    getCurrentUserProfile()
+      .then((profile) => {
+        if (!isMounted || !profile) {
+          return;
+        }
+
+        const target = getRedirectTarget(dashboardPathForRole(profile.role));
+        router.replace(target);
+        router.refresh();
+      })
+      .catch(() => {
+        // Staying on the login form is correct when no valid session exists.
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -25,10 +67,14 @@ export function LoginForm() {
 
     try {
       const result = await loginWithEmailPassword({ email, password });
+      await waitForAuthenticatedProfile();
+      try {
+        localStorage.setItem("dotaops:just_signed_in", String(Date.now()));
+      } catch {
+        // ignore if storage is unavailable
+      }
       setNotice(result.message ?? "Dashboard uplink prepared.");
-      window.setTimeout(() => {
-        router.push(result.dashboardPath);
-      }, 450);
+      router.replace(result.dashboardPath);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Login failed.");
       setIsLoading(false);
@@ -126,3 +172,23 @@ export function LoginForm() {
     </main>
   );
 }
+function getRedirectTarget(defaultPath: string): string {
+  try {
+    if (typeof window === "undefined") {
+      return defaultPath;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get("next");
+
+    // Only accept internal paths to avoid open redirects
+    if (next && typeof next === "string" && next.startsWith("/")) {
+      return next;
+    }
+  } catch {
+    // Ignore and fall back to default
+  }
+
+  return defaultPath;
+}
+

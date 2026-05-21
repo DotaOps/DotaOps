@@ -105,6 +105,24 @@ export function AppShell({ children }: { children: ReactNode }) {
       return;
     }
 
+    try {
+      const ts = localStorage.getItem("dotaops:just_signed_in");
+
+      if (ts) {
+        const t = Number(ts);
+
+        if (!Number.isNaN(t) && Date.now() - t < 3000) {
+          // Recently signed in; wait a bit for session visibility instead of redirecting.
+          return;
+        }
+
+        // Remove stale flag
+        localStorage.removeItem("dotaops:just_signed_in");
+      }
+    } catch {
+      // localStorage unavailable — fall back to normal redirect
+    }
+
     router.replace(`/login?next=${encodeURIComponent(pathname)}`);
   }, [access, isCheckingAuth, pathname, profile, router]);
 
