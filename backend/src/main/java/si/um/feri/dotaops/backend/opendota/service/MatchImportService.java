@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
@@ -27,6 +28,7 @@ import si.um.feri.dotaops.backend.opendota.domain.OpenDotaRawMatchResponse;
 import si.um.feri.dotaops.backend.opendota.domain.OpenDotaRawPlayerResponse;
 import si.um.feri.dotaops.backend.opendota.repository.MatchImportRepository;
 import si.um.feri.dotaops.backend.opendota.web.CreateMatchImportRequest;
+import si.um.feri.dotaops.backend.opendota.web.MatchImportEventResponse;
 import si.um.feri.dotaops.backend.opendota.web.MatchImportResponse;
 
 @Service
@@ -63,22 +65,66 @@ public class MatchImportService {
         if (existing.isPresent()
                 && (existing.orElseThrow().status() == MatchImportStatus.READY
                 || existing.orElseThrow().status() == MatchImportStatus.PROCESSING)) {
-            return MatchImportResponse.from(existing.orElseThrow());
+            return responseFrom(existing.orElseThrow());
         }
 
         requestRateLimiter.checkMatchImport(requestedBy, clientIp);
 
-        MatchImport startedImport = existing
-                .map(matchImport -> matchImportRepository.markProcessing(matchImport.id())
-                        .orElseThrow(() -> new ResourceNotFoundException("Match import", "id", matchImport.id())))
-                .orElseGet(() -> createProcessingImport(dotaMatchId, requestedBy));
+        MatchImport queuedImport = existing.orElseGet(() -> createQueuedImport(dotaMatchId, requestedBy));
+        if (queuedImport.status() == MatchImportStatus.READY || queuedImport.status() == MatchImportStatus.PROCESSING) {
+            return responseFrom(queuedImport);
+        }
 
-        return MatchImportResponse.from(fetchAndStoreMatch(startedImport.id(), parsedMatchId));
+        boolean retry = queuedImport.status() == MatchImportStatus.ERROR;
+        MatchImport startedImport = matchImportRepository
+                .markProcessing(
+                        queuedImport.id(),
+                        requestedBy,
+                        retry
+                                ? "Match import retry requested; processing restarted."
+                                : "Match import processing started.")
+                .orElseGet(() -> matchImportRepository.findById(queuedImport.id())
+                        .orElseThrow(() -> new ResourceNotFoundException("Match import", "id", queuedImport.id())));
+        if (startedImport.status() != MatchImportStatus.PROCESSING) {
+            return responseFrom(startedImport);
+        }
+
+        return responseFrom(fetchAndStoreMatch(startedImport.id(), parsedMatchId));
     }
 
-    private MatchImport createProcessingImport(String dotaMatchId, UUID requestedBy) {
+    public MatchImportResponse retryImport(UUID importId, String clientIp) {
+        MatchImport matchImport = matchImportRepository.findById(importId)
+                .orElseThrow(() -> new ResourceNotFoundException("Match import", "id", importId));
+
+        return importMatch(new CreateMatchImportRequest(matchImport.dotaMatchId()), clientIp);
+    }
+
+    @Transactional(readOnly = true)
+    public MatchImportResponse getImport(UUID importId) {
+        return responseFrom(matchImportRepository.findById(importId)
+                .orElseThrow(() -> new ResourceNotFoundException("Match import", "id", importId)));
+    }
+
+    @Transactional(readOnly = true)
+    public MatchImportResponse getImportByDotaMatchId(String dotaMatchId) {
+        String normalized = normalizeDotaMatchId(dotaMatchId);
+
+        return responseFrom(matchImportRepository.findByDotaMatchId(normalized)
+                .orElseThrow(() -> new ResourceNotFoundException("Match import", "dotaMatchId", normalized)));
+    }
+
+    @Transactional(readOnly = true)
+    public List<MatchImportEventResponse> getImportEvents(UUID importId) {
+        if (matchImportRepository.findById(importId).isEmpty()) {
+            throw new ResourceNotFoundException("Match import", "id", importId);
+        }
+
+        return eventResponses(importId);
+    }
+
+    private MatchImport createQueuedImport(String dotaMatchId, UUID requestedBy) {
         try {
-            return matchImportRepository.createProcessing(dotaMatchId, requestedBy);
+            return matchImportRepository.createQueued(dotaMatchId, requestedBy);
         } catch (DataIntegrityViolationException exception) {
             return matchImportRepository.findByDotaMatchId(dotaMatchId)
                     .orElseThrow(() -> new BadRequestException("Match import already exists but could not be loaded."));
@@ -91,6 +137,12 @@ public class MatchImportService {
             rawMatch = openDotaClient.fetchMatch(dotaMatchId);
         } catch (OpenDotaClientException exception) {
             return matchImportRepository.markError(importId, exception.errorCode(), exception.getMessage())
+                    .orElseThrow(() -> new ResourceNotFoundException("Match import", "id", importId));
+        } catch (RuntimeException exception) {
+            return matchImportRepository.markError(
+                            importId,
+                            null,
+                            "Match import failed unexpectedly.")
                     .orElseThrow(() -> new ResourceNotFoundException("Match import", "id", importId));
         }
 
@@ -108,6 +160,17 @@ public class MatchImportService {
                             "OpenDota match payload could not be normalized.")
                     .orElseThrow(() -> new ResourceNotFoundException("Match import", "id", importId));
         }
+    }
+
+    private MatchImportResponse responseFrom(MatchImport matchImport) {
+        return MatchImportResponse.from(matchImport, eventResponses(matchImport.id()));
+    }
+
+    private List<MatchImportEventResponse> eventResponses(UUID importId) {
+        return matchImportRepository.findEvents(importId)
+                .stream()
+                .map(MatchImportEventResponse::from)
+                .toList();
     }
 
     private ObjectNode normalizeMatchPayload(OpenDotaRawMatchResponse rawMatch) {

@@ -8,8 +8,10 @@ import java.util.UUID;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.security.access.AccessDeniedException;
 
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
@@ -19,6 +21,7 @@ import si.um.feri.dotaops.backend.common.error.BadRequestException;
 import si.um.feri.dotaops.backend.common.error.RateLimitExceededException;
 import si.um.feri.dotaops.backend.common.security.RequestRateLimiter;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImport;
+import si.um.feri.dotaops.backend.opendota.domain.MatchImportEvent;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImportStatus;
 import si.um.feri.dotaops.backend.opendota.domain.MatchPlayerImport;
 import si.um.feri.dotaops.backend.opendota.domain.OpenDotaErrorCode;
@@ -34,6 +37,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -56,22 +60,46 @@ class MatchImportServiceTest {
             openDotaClient,
             requestRateLimiter);
 
+    @BeforeEach
+    void setUp() {
+        when(matchImportRepository.findEvents(any())).thenReturn(List.of());
+    }
+
     @Test
     void importMatchCreatesProcessingRecordFetchesOpenDotaAndStoresReadyPayload() throws Exception {
+        MatchImport queued = matchImport(MatchImportStatus.QUEUED, null);
         MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
         MatchImport ready = matchImport(MatchImportStatus.READY, null);
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
-        when(matchImportRepository.createProcessing(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(processing);
+        when(matchImportRepository.createQueued(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(queued);
+        when(matchImportRepository.markProcessing(
+                IMPORT_ID,
+                REQUESTED_BY,
+                "Match import processing started."))
+                .thenReturn(Optional.of(processing));
         when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenReturn(rawMatch());
         when(matchImportRepository.markReady(eq(IMPORT_ID), anyString(), anyString(), anyList()))
                 .thenReturn(Optional.of(ready));
+        when(matchImportRepository.findEvents(IMPORT_ID)).thenReturn(events(
+                MatchImportStatus.QUEUED,
+                MatchImportStatus.PROCESSING,
+                MatchImportStatus.READY));
 
         var response = service.importMatch(new CreateMatchImportRequest(DOTA_MATCH_ID), "203.0.113.10");
 
         assertThat(response.status()).isEqualTo(MatchImportStatus.READY);
+        assertThat(response.events())
+                .extracting(event -> event.eventType())
+                .containsExactly(MatchImportStatus.QUEUED, MatchImportStatus.PROCESSING, MatchImportStatus.READY);
         verify(requestRateLimiter).checkMatchImport(REQUESTED_BY, "203.0.113.10");
-        verify(matchImportRepository).createProcessing(DOTA_MATCH_ID, REQUESTED_BY);
+        InOrder lifecycle = inOrder(matchImportRepository);
+        lifecycle.verify(matchImportRepository).createQueued(DOTA_MATCH_ID, REQUESTED_BY);
+        lifecycle.verify(matchImportRepository).markProcessing(
+                IMPORT_ID,
+                REQUESTED_BY,
+                "Match import processing started.");
+        lifecycle.verify(matchImportRepository).markReady(eq(IMPORT_ID), anyString(), anyString(), anyList());
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<MatchPlayerImport>> playersCaptor = ArgumentCaptor.forClass(List.class);
         verify(matchImportRepository).markReady(eq(IMPORT_ID), anyString(), anyString(), playersCaptor.capture());
@@ -85,16 +113,36 @@ class MatchImportServiceTest {
         MatchImport ready = matchImport(MatchImportStatus.READY, null);
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.of(ready));
+        when(matchImportRepository.findEvents(IMPORT_ID)).thenReturn(events(MatchImportStatus.READY));
 
         var response = service.importMatch(new CreateMatchImportRequest(DOTA_MATCH_ID), "203.0.113.10");
 
         assertThat(response.status()).isEqualTo(MatchImportStatus.READY);
+        assertThat(response.events()).hasSize(1);
         verify(requestRateLimiter, never()).checkMatchImport(eq(REQUESTED_BY), anyString());
         verify(openDotaClient, never()).fetchMatch(Long.parseLong(DOTA_MATCH_ID));
     }
 
     @Test
+    void importMatchReturnsExistingProcessingImportWithoutStartingSecondImport() {
+        MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.of(processing));
+        when(matchImportRepository.findEvents(IMPORT_ID)).thenReturn(events(
+                MatchImportStatus.QUEUED,
+                MatchImportStatus.PROCESSING));
+
+        var response = service.importMatch(new CreateMatchImportRequest(DOTA_MATCH_ID), "203.0.113.10");
+
+        assertThat(response.status()).isEqualTo(MatchImportStatus.PROCESSING);
+        verify(requestRateLimiter, never()).checkMatchImport(eq(REQUESTED_BY), anyString());
+        verify(matchImportRepository, never()).markProcessing(any(), any(), anyString());
+        verify(openDotaClient, never()).fetchMatch(Long.parseLong(DOTA_MATCH_ID));
+    }
+
+    @Test
     void importMatchMapsRateLimitToErrorStatus() {
+        MatchImport queued = matchImport(MatchImportStatus.QUEUED, null);
         MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
         MatchImport error = matchImport(
                 MatchImportStatus.ERROR,
@@ -102,7 +150,12 @@ class MatchImportServiceTest {
                 "OpenDota rate limit exceeded.");
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
-        when(matchImportRepository.createProcessing(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(processing);
+        when(matchImportRepository.createQueued(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(queued);
+        when(matchImportRepository.markProcessing(
+                IMPORT_ID,
+                REQUESTED_BY,
+                "Match import processing started."))
+                .thenReturn(Optional.of(processing));
         when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenThrow(new OpenDotaClientException(
                 OpenDotaErrorCode.RATE_LIMITED,
                 "OpenDota rate limit exceeded."));
@@ -111,16 +164,22 @@ class MatchImportServiceTest {
                 OpenDotaErrorCode.RATE_LIMITED,
                 "OpenDota rate limit exceeded."))
                 .thenReturn(Optional.of(error));
+        when(matchImportRepository.findEvents(IMPORT_ID)).thenReturn(events(
+                MatchImportStatus.QUEUED,
+                MatchImportStatus.PROCESSING,
+                MatchImportStatus.ERROR));
 
         var response = service.importMatch(new CreateMatchImportRequest(DOTA_MATCH_ID), "203.0.113.10");
 
         assertThat(response.status()).isEqualTo(MatchImportStatus.ERROR);
         assertThat(response.errorCode()).isEqualTo(OpenDotaErrorCode.RATE_LIMITED);
         assertThat(response.errorMessage()).isEqualTo("OpenDota rate limit exceeded.");
+        assertThat(response.events().getLast().eventType()).isEqualTo(MatchImportStatus.ERROR);
     }
 
     @Test
     void importMatchMapsNotFoundToErrorStatus() {
+        MatchImport queued = matchImport(MatchImportStatus.QUEUED, null);
         MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
         MatchImport error = matchImport(
                 MatchImportStatus.ERROR,
@@ -128,7 +187,12 @@ class MatchImportServiceTest {
                 "OpenDota match was not found.");
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
-        when(matchImportRepository.createProcessing(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(processing);
+        when(matchImportRepository.createQueued(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(queued);
+        when(matchImportRepository.markProcessing(
+                IMPORT_ID,
+                REQUESTED_BY,
+                "Match import processing started."))
+                .thenReturn(Optional.of(processing));
         when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenThrow(new OpenDotaClientException(
                 OpenDotaErrorCode.MATCH_NOT_FOUND,
                 "OpenDota match was not found."));
@@ -137,6 +201,10 @@ class MatchImportServiceTest {
                 OpenDotaErrorCode.MATCH_NOT_FOUND,
                 "OpenDota match was not found."))
                 .thenReturn(Optional.of(error));
+        when(matchImportRepository.findEvents(IMPORT_ID)).thenReturn(events(
+                MatchImportStatus.QUEUED,
+                MatchImportStatus.PROCESSING,
+                MatchImportStatus.ERROR));
 
         var response = service.importMatch(new CreateMatchImportRequest(DOTA_MATCH_ID), "203.0.113.10");
 
@@ -146,22 +214,63 @@ class MatchImportServiceTest {
     }
 
     @Test
+    void importMatchMapsUnexpectedFailureToSafeErrorMessage() {
+        MatchImport queued = matchImport(MatchImportStatus.QUEUED, null);
+        MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
+        MatchImport error = matchImport(MatchImportStatus.ERROR, null, "Match import failed unexpectedly.");
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
+        when(matchImportRepository.createQueued(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(queued);
+        when(matchImportRepository.markProcessing(
+                IMPORT_ID,
+                REQUESTED_BY,
+                "Match import processing started."))
+                .thenReturn(Optional.of(processing));
+        when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenThrow(new IllegalStateException(
+                "internal details with api_key=secret"));
+        when(matchImportRepository.markError(
+                IMPORT_ID,
+                null,
+                "Match import failed unexpectedly."))
+                .thenReturn(Optional.of(error));
+        when(matchImportRepository.findEvents(IMPORT_ID)).thenReturn(events(MatchImportStatus.ERROR));
+
+        var response = service.importMatch(new CreateMatchImportRequest(DOTA_MATCH_ID), "203.0.113.10");
+
+        assertThat(response.status()).isEqualTo(MatchImportStatus.ERROR);
+        assertThat(response.errorCode()).isNull();
+        assertThat(response.errorMessage()).isEqualTo("Match import failed unexpectedly.");
+    }
+
+    @Test
     void retryExistingErrorImportDoesNotCreateDuplicateImportAndReplacesPlayersOnce() throws Exception {
         MatchImport existingError = matchImport(MatchImportStatus.ERROR, OpenDotaErrorCode.RATE_LIMITED, "Rate limited.");
         MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
         MatchImport ready = matchImport(MatchImportStatus.READY, null);
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.of(existingError));
-        when(matchImportRepository.markProcessing(IMPORT_ID)).thenReturn(Optional.of(processing));
+        when(matchImportRepository.markProcessing(
+                IMPORT_ID,
+                REQUESTED_BY,
+                "Match import retry requested; processing restarted."))
+                .thenReturn(Optional.of(processing));
         when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenReturn(rawMatch());
         when(matchImportRepository.markReady(eq(IMPORT_ID), anyString(), anyString(), anyList()))
                 .thenReturn(Optional.of(ready));
+        when(matchImportRepository.findEvents(IMPORT_ID)).thenReturn(events(
+                MatchImportStatus.ERROR,
+                MatchImportStatus.PROCESSING,
+                MatchImportStatus.READY));
 
         var response = service.importMatch(new CreateMatchImportRequest(DOTA_MATCH_ID), "203.0.113.10");
 
         assertThat(response.status()).isEqualTo(MatchImportStatus.READY);
-        verify(matchImportRepository, never()).createProcessing(anyString(), any());
-        verify(matchImportRepository).markProcessing(IMPORT_ID);
+        assertThat(response.id()).isEqualTo(IMPORT_ID);
+        verify(matchImportRepository, never()).createQueued(anyString(), any());
+        verify(matchImportRepository).markProcessing(
+                IMPORT_ID,
+                REQUESTED_BY,
+                "Match import retry requested; processing restarted.");
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<MatchPlayerImport>> playersCaptor = ArgumentCaptor.forClass(List.class);
         verify(matchImportRepository).markReady(eq(IMPORT_ID), anyString(), anyString(), playersCaptor.capture());
@@ -204,7 +313,7 @@ class MatchImportServiceTest {
                 .isInstanceOf(RateLimitExceededException.class)
                 .hasMessage("Too many match import requests for this user. Try again later.");
 
-        verify(matchImportRepository, never()).createProcessing(anyString(), any());
+        verify(matchImportRepository, never()).createQueued(anyString(), any());
         verify(openDotaClient, never()).fetchMatch(Long.parseLong(DOTA_MATCH_ID));
     }
 
@@ -241,6 +350,21 @@ class MatchImportServiceTest {
                 status == MatchImportStatus.PROCESSING ? null : now,
                 now,
                 now);
+    }
+
+    private static List<MatchImportEvent> events(MatchImportStatus... statuses) {
+        OffsetDateTime now = OffsetDateTime.parse("2026-05-12T00:00:00Z");
+
+        return java.util.stream.IntStream.range(0, statuses.length)
+                .mapToObj(index -> new MatchImportEvent(
+                        UUID.nameUUIDFromBytes(("event-" + index).getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                        IMPORT_ID,
+                        statuses[index],
+                        statuses[index].databaseValue(),
+                        statuses[index] == MatchImportStatus.ERROR ? OpenDotaErrorCode.RATE_LIMITED : null,
+                        REQUESTED_BY,
+                        now.plusSeconds(index)))
+                .toList();
     }
 
     private OpenDotaRawMatchResponse rawMatch() throws Exception {

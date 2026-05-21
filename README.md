@@ -121,6 +121,35 @@ OPENDOTA_RETRY_BACKOFF=250ms
 
 `OPENDOTA_API_KEY` je opcijski in mora ostati samo na backend/server strani. Ne dodajaj ga v frontend okolje, response DTO-je ali loge.
 
+### Match import lifecycle
+
+Import OpenDota match podatkov sprozis z avtenticiranim organizer/admin uporabnikom:
+
+```http
+POST /api/match-imports
+Content-Type: application/json
+
+{
+  "dotaMatchId": "7894561230"
+}
+```
+
+Import je idempotenten po `dotaMatchId`: isti OpenDota match id uporablja isti `match_imports` zapis in ne ustvarja podvojenih importov. Sinhroni backend flow zapise statuse `queued`, `processing`, nato `ready` ali `error`. Ce je import ze `ready` ali `processing`, POST vrne obstojeci zapis brez ponovnega uvoza. Ce je import v `error`, isti POST izvede nadzorovan retry na istem `match_imports.id`; na voljo je tudi:
+
+```http
+POST /api/match-imports/{id}/retry
+```
+
+Frontend lahko spremlja trenutno stanje in zgodovino:
+
+```http
+GET /api/match-imports/{id}
+GET /api/match-imports/by-match/{dotaMatchId}
+GET /api/match-imports/{id}/events
+```
+
+Response vsebuje `id`, `dotaMatchId`, `status`, `errorCode`, `errorMessage`, casovne oznake in `events`. `errorCode` je tehnicna kategorija napake OpenDota providerja, `errorMessage` pa je varen prikaz za frontend brez stack trace-a ali skrivnosti. Status `match_games.import_status` se ob povezani `match_game_id` sinhronizira z `match_imports.status`.
+
 ## Zagon Backenda
 
 Backend se zazene na `http://localhost:8080`.

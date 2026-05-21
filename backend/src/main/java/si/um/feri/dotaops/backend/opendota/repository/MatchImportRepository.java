@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import si.um.feri.dotaops.backend.opendota.domain.MatchImport;
+import si.um.feri.dotaops.backend.opendota.domain.MatchImportEvent;
 import si.um.feri.dotaops.backend.opendota.domain.MatchPlayerImport;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImportStatus;
 import si.um.feri.dotaops.backend.opendota.domain.OpenDotaErrorCode;
@@ -37,44 +38,94 @@ public class MatchImportRepository {
                 .findFirst();
     }
 
-    public MatchImport createProcessing(String dotaMatchId, UUID requestedBy) {
-        return jdbcTemplate.queryForObject(
+    public Optional<MatchImport> findById(UUID importId) {
+        return jdbcTemplate.query(
+                        selectSql() + """
+                        where id = ?
+                        limit 1
+                        """,
+                        this::mapMatchImport,
+                        importId)
+                .stream()
+                .findFirst();
+    }
+
+    public List<MatchImportEvent> findEvents(UUID importId) {
+        return jdbcTemplate.query(
+                """
+                select
+                  id,
+                  match_import_id,
+                  status::text as event_type,
+                  message,
+                  error_code,
+                  created_by,
+                  created_at
+                from public.match_import_events
+                where match_import_id = ?
+                order by created_at asc, id asc
+                """,
+                this::mapMatchImportEvent,
+                importId);
+    }
+
+    @Transactional
+    public MatchImport createQueued(String dotaMatchId, UUID requestedBy) {
+        MatchImport matchImport = jdbcTemplate.queryForObject(
                 """
                 insert into public.match_imports (
                   dota_match_id,
                   status,
                   requested_by,
-                  started_at,
-                  locked_at,
                   requested_at,
                   attempt_count
                 )
-                values (?, 'processing', ?, now(), now(), now(), 1)
+                values (?, 'queued', ?, now(), 0)
                 """ + returningSql(),
                 this::mapMatchImport,
                 dotaMatchId,
                 requestedBy);
+
+        appendEvent(
+                matchImport.id(),
+                MatchImportStatus.QUEUED,
+                "Match import queued.",
+                null,
+                requestedBy);
+
+        return matchImport;
     }
 
-    public Optional<MatchImport> markProcessing(UUID importId) {
-        return jdbcTemplate.query(
-                        """
-                        update public.match_imports
-                        set
-                          status = 'processing',
-                          attempt_count = attempt_count + 1,
-                          started_at = now(),
-                          completed_at = null,
-                          locked_at = now(),
-                          error_code = null,
-                          error_message = null,
-                          updated_at = now()
-                        where id = ?
-                        """ + returningSql(),
-                        this::mapMatchImport,
-                        importId)
-                .stream()
-                .findFirst();
+    @Transactional
+    public Optional<MatchImport> markProcessing(UUID importId, UUID requestedBy, String message) {
+        Optional<MatchImport> matchImport = jdbcTemplate.query(
+                                """
+                                update public.match_imports
+                                set
+                                  status = 'processing',
+                                  attempt_count = attempt_count + 1,
+                                  started_at = now(),
+                                  completed_at = null,
+                                  locked_at = now(),
+                                  error_code = null,
+                                  error_message = null,
+                                  updated_at = now()
+                                where id = ?
+                                  and status in ('queued', 'error')
+                                """ + returningSql(),
+                                this::mapMatchImport,
+                                importId)
+                        .stream()
+                        .findFirst();
+
+        matchImport.ifPresent(ignored -> appendEvent(
+                importId,
+                MatchImportStatus.PROCESSING,
+                message,
+                null,
+                requestedBy));
+
+        return matchImport;
     }
 
     @Transactional
@@ -105,7 +156,41 @@ public class MatchImportRepository {
                         normalizedPayload,
                         importId)
                 .stream()
-                .findFirst();
+                .findFirst()
+                .map(matchImport -> {
+                    appendEvent(
+                            importId,
+                            MatchImportStatus.READY,
+                            "Match import completed.",
+                            null,
+                            matchImport.requestedBy());
+                    return matchImport;
+                });
+    }
+
+    private void appendEvent(
+            UUID importId,
+            MatchImportStatus status,
+            String message,
+            OpenDotaErrorCode errorCode,
+            UUID createdBy
+    ) {
+        jdbcTemplate.update(
+                """
+                insert into public.match_import_events (
+                  match_import_id,
+                  status,
+                  message,
+                  error_code,
+                  created_by
+                )
+                values (?, cast(? as public.dotaops_import_status), ?, ?, ?)
+                """,
+                importId,
+                status.databaseValue(),
+                message,
+                errorCode == null ? null : errorCode.name(),
+                createdBy);
     }
 
     private void replacePlayers(UUID importId, List<MatchPlayerImport> players) {
@@ -210,7 +295,16 @@ public class MatchImportRepository {
                         errorMessage,
                         importId)
                 .stream()
-                .findFirst();
+                .findFirst()
+                .map(matchImport -> {
+                    appendEvent(
+                            importId,
+                            MatchImportStatus.ERROR,
+                            errorMessage,
+                            errorCode,
+                            matchImport.requestedBy());
+                    return matchImport;
+                });
     }
 
     private String selectSql() {
@@ -264,6 +358,17 @@ public class MatchImportRepository {
                 resultSet.getObject("completed_at", OffsetDateTime.class),
                 resultSet.getObject("created_at", OffsetDateTime.class),
                 resultSet.getObject("updated_at", OffsetDateTime.class));
+    }
+
+    private MatchImportEvent mapMatchImportEvent(ResultSet resultSet, int rowNumber) throws SQLException {
+        return new MatchImportEvent(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getObject("match_import_id", UUID.class),
+                MatchImportStatus.fromDatabaseValue(resultSet.getString("event_type")),
+                resultSet.getString("message"),
+                errorCode(resultSet.getString("error_code")),
+                resultSet.getObject("created_by", UUID.class),
+                resultSet.getObject("created_at", OffsetDateTime.class));
     }
 
     private OpenDotaErrorCode errorCode(String value) {

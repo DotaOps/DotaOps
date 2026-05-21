@@ -63,6 +63,7 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('matches'),
                       ('match_advancement_audit_logs'),
                       ('match_games'),
+                      ('match_import_events'),
                       ('match_players')
                 ) as expected(relname)
                 left join pg_class c
@@ -94,6 +95,7 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('matches_cancellation_reason_length'),
                       ('matches_cancelled_at_status'),
                       ('match_advancement_audit_source_type'),
+                      ('match_import_events_error_code_allowed'),
                       ('tournaments_registration_before_start')
                 ) as expected(conname)
                 left join pg_constraint c
@@ -114,6 +116,7 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('match_slots_source_match_type_idx'),
                       ('match_slots_locked_idx'),
                       ('match_advancement_audit_source_match_idx'),
+                      ('match_import_events_error_code_idx'),
                       ('matches_status_idx'),
                       ('steam_login_states_expires_idx'),
                       ('matches_tournament_stage_idx')
