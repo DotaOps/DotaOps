@@ -95,7 +95,9 @@ class MatchImportControllerTest {
                 .andExpect(jsonPath("$.data.id").value(IMPORT_ID.toString()))
                 .andExpect(jsonPath("$.data.dotaMatchId").value(DOTA_MATCH_ID))
                 .andExpect(jsonPath("$.data.status").value("ready"))
-                .andExpect(jsonPath("$.data.events[0].eventType").value("queued"));
+                .andExpect(jsonPath("$.data.events[0].eventType").value("queued"))
+                .andExpect(jsonPath("$.data.rawResponse").doesNotExist())
+                .andExpect(jsonPath("$.data.normalizedPayload").doesNotExist());
     }
 
     @Test

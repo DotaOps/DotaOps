@@ -114,6 +114,10 @@ class OpenDotaClientTest {
                           "duration": 1900,
                           "start_time": 1778544000,
                           "radiant_win": true,
+                          "game_mode": 22,
+                          "lobby_type": 7,
+                          "radiant_score": 42,
+                          "dire_score": 31,
                           "players": [
                             {
                               "account_id": 39734273,
@@ -122,7 +126,20 @@ class OpenDotaClientTest {
                               "kills": 8,
                               "last_hits": 120,
                               "gold_per_min": 500,
-                              "xp_per_min": 600
+                              "xp_per_min": 600,
+                              "hero_damage": 20000,
+                              "tower_damage": 1200,
+                              "hero_healing": 300,
+                              "item_0": 50,
+                              "item_1": 63,
+                              "item_2": 147,
+                              "item_3": 0,
+                              "item_4": 0,
+                              "item_5": 0,
+                              "backpack_0": 36,
+                              "backpack_1": 0,
+                              "backpack_2": 0,
+                              "item_neutral": 674
                             }
                           ],
                           "unknown_field": "ignored"
@@ -134,9 +151,16 @@ class OpenDotaClientTest {
         assertThat(match.matchId()).isEqualTo(MATCH_ID);
         assertThat(match.duration()).isEqualTo(1900);
         assertThat(match.radiantWin()).isTrue();
+        assertThat(match.gameMode()).isEqualTo(22);
+        assertThat(match.lobbyType()).isEqualTo(7);
+        assertThat(match.radiantScore()).isEqualTo(42);
+        assertThat(match.direScore()).isEqualTo(31);
         assertThat(match.players()).hasSize(1);
         assertThat(match.players().getFirst().accountId()).isEqualTo(ACCOUNT_ID);
         assertThat(match.players().getFirst().goldPerMin()).isEqualTo(500);
+        assertThat(match.players().getFirst().item0()).isEqualTo(50);
+        assertThat(match.players().getFirst().backpack0()).isEqualTo(36);
+        assertThat(match.players().getFirst().itemNeutral()).isEqualTo(674);
         assertThat(match.rawPayload().path("match_id").asLong()).isEqualTo(MATCH_ID);
         server.verify();
     }

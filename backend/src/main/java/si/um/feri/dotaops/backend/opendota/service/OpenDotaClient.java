@@ -353,6 +353,10 @@ public class OpenDotaClient {
                 nullableInt(match, "duration"),
                 nullableLong(match, "start_time"),
                 nullableBoolean(match, "radiant_win"),
+                nullableInt(match, "game_mode"),
+                nullableInt(match, "lobby_type"),
+                nullableInt(match, "radiant_score"),
+                nullableInt(match, "dire_score"),
                 players,
                 match);
     }

@@ -176,6 +176,21 @@ GET /api/match-imports/{id}/events
 
 Response vsebuje `id`, `dotaMatchId`, `status`, `errorCode`, `errorMessage`, casovne oznake in `events`. `errorCode` je tehnicna kategorija napake OpenDota providerja, `errorMessage` pa je varen prikaz za frontend brez stack trace-a ali skrivnosti. Status `match_games.import_status` se ob povezani `match_game_id` sinhronizira z `match_imports.status`.
 
+### Match import normalization
+
+OpenDota raw match response se shrani samo za server/admin debug tok. Public/frontend response DTO-ji ne vracajo `raw_response`, `normalized_payload` ali `raw_player`.
+
+Ob uspesnem importu backend normalizira podatke v relacijski tabeli:
+
+- `match_games`: `dota_match_id`, `duration_seconds`, `started_at`, `finished_at`, `radiant_win`, `game_mode`, `lobby_type`, rezultat, `winner_side`, `import_status`, `raw_response` in `normalized_payload`.
+- `match_players`: `match_game_id`, `player_slot`, `team_side`, `hero_id`, `dota_hero_id`, `dota_account_id`, `profile_id`, `steam_account_id`, K/D/A, GPM, XPM, damage, healing, last hits, denies, net worth, level, `duration_seconds` in `items`.
+
+Analitika naj uporablja `match_games` in `match_players`, ne OpenDota raw JSON-a. `normalized_payload` vsebuje interni povzetek normalizacije, na primer `source`, `version`, `normalizedAt`, `playersNormalized`, `radiantPlayers`, `direPlayers` in `durationSeconds`.
+
+Import je idempotenten po `dota_match_id`; playerji so idempotentni po `match_game_id + player_slot`. Ponovni import iste igre posodobi obstojece match/player zapise in ne ustvari podvojenih player slotov. Manjkajoc `account_id` ali manjkajoc lokalni profil igralca importa ne prekine; `dota_account_id`, `profile_id` in `steam_account_id` ostanejo `null`, kjer podatka ni mogoce povezati.
+
+Pred match importom je priporocljivo zagnati hero sync. Ce `heroes.dota_hero_id` obstaja, se `match_players.hero_id` nastavi na interni hero zapis. Ce hero se ni sinhroniziran, import ne pade in `match_players.dota_hero_id` ostane zapisan za poznejso diagnostiko.
+
 ## Zagon Backenda
 
 Backend se zazene na `http://localhost:8080`.

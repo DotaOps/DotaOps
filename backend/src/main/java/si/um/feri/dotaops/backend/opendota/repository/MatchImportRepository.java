@@ -13,8 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import si.um.feri.dotaops.backend.opendota.domain.MatchImport;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImportEvent;
+import si.um.feri.dotaops.backend.opendota.domain.MatchGameImport;
 import si.um.feri.dotaops.backend.opendota.domain.MatchPlayerImport;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImportStatus;
+import si.um.feri.dotaops.backend.opendota.domain.NormalizedMatchImport;
 import si.um.feri.dotaops.backend.opendota.domain.OpenDotaErrorCode;
 
 @Repository
@@ -85,19 +87,23 @@ public class MatchImportRepository {
                 this::mapMatchImport,
                 dotaMatchId,
                 requestedBy);
+        ensureMatchGameForImport(matchImport.id(), MatchImportStatus.QUEUED);
+        MatchImport linkedImport = findById(matchImport.id()).orElse(matchImport);
 
         appendEvent(
-                matchImport.id(),
+                linkedImport.id(),
                 MatchImportStatus.QUEUED,
                 "Match import queued.",
                 null,
                 requestedBy);
 
-        return matchImport;
+        return linkedImport;
     }
 
     @Transactional
     public Optional<MatchImport> markProcessing(UUID importId, UUID requestedBy, String message) {
+        ensureMatchGameForImport(importId, MatchImportStatus.PROCESSING);
+
         Optional<MatchImport> matchImport = jdbcTemplate.query(
                                 """
                                 update public.match_imports
@@ -135,7 +141,30 @@ public class MatchImportRepository {
             String normalizedPayload,
             List<MatchPlayerImport> players
     ) {
-        replacePlayers(importId, players);
+        return markReady(
+                importId,
+                new NormalizedMatchImport(
+                        new MatchGameImport(
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                rawResponse,
+                                normalizedPayload),
+                        players));
+    }
+
+    @Transactional
+    public Optional<MatchImport> markReady(UUID importId, NormalizedMatchImport normalizedMatch) {
+        UUID matchGameId = ensureMatchGameForImport(importId, MatchImportStatus.PROCESSING);
+        updateMatchGame(matchGameId, normalizedMatch.matchGame());
+        upsertPlayers(importId, normalizedMatch.players());
 
         return jdbcTemplate.query(
                         """
@@ -152,8 +181,8 @@ public class MatchImportRepository {
                         where id = ?
                         """ + returningSql(),
                         this::mapMatchImport,
-                        rawResponse,
-                        normalizedPayload,
+                        normalizedMatch.matchGame().rawResponse(),
+                        normalizedMatch.matchGame().normalizedPayload(),
                         importId)
                 .stream()
                 .findFirst()
@@ -193,9 +222,7 @@ public class MatchImportRepository {
                 createdBy);
     }
 
-    private void replacePlayers(UUID importId, List<MatchPlayerImport> players) {
-        jdbcTemplate.update("delete from public.match_players where match_import_id = ?", importId);
-
+    private void upsertPlayers(UUID importId, List<MatchPlayerImport> players) {
         for (MatchPlayerImport player : players) {
             jdbcTemplate.update(
                     """
@@ -203,10 +230,14 @@ public class MatchImportRepository {
                       match_import_id,
                       match_id,
                       match_game_id,
+                      team_id,
+                      profile_id,
                       hero_id,
                       dota_hero_id,
+                      dota_account_id,
                       steam_account_id,
                       player_slot,
+                      team_side,
                       is_radiant,
                       is_winner,
                       kills,
@@ -222,15 +253,25 @@ public class MatchImportRepository {
                       hero_healing,
                       level,
                       duration_seconds,
+                      items,
                       raw_player
                     )
                     select
                       mi.id,
                       mi.match_id,
                       mi.match_game_id,
+                      case cast(? as text)
+                        when 'RADIANT' then mg.radiant_team_id
+                        when 'DIRE' then mg.dire_team_id
+                        else null
+                      end,
+                      p.id,
                       h.id,
                       ?,
                       ?,
+                      coalesce(?, p.steam_id),
+                      ?,
+                      cast(? as text),
                       ?,
                       ?,
                       ?,
@@ -246,15 +287,50 @@ public class MatchImportRepository {
                       ?,
                       ?,
                       ?,
-                      ?,
+                      cast(? as jsonb),
                       cast(? as jsonb)
                     from public.match_imports mi
+                    left join public.match_games mg on mg.id = mi.match_game_id
                     left join public.heroes h on h.dota_hero_id = ?
+                    left join public.profiles p on p.opendota_account_id = ?
                     where mi.id = ?
+                    on conflict (match_game_id, player_slot)
+                      where match_game_id is not null
+                    do update set
+                      match_import_id = excluded.match_import_id,
+                      match_id = excluded.match_id,
+                      team_id = excluded.team_id,
+                      profile_id = excluded.profile_id,
+                      hero_id = excluded.hero_id,
+                      dota_hero_id = excluded.dota_hero_id,
+                      dota_account_id = excluded.dota_account_id,
+                      steam_account_id = excluded.steam_account_id,
+                      team_side = excluded.team_side,
+                      is_radiant = excluded.is_radiant,
+                      is_winner = excluded.is_winner,
+                      kills = excluded.kills,
+                      deaths = excluded.deaths,
+                      assists = excluded.assists,
+                      last_hits = excluded.last_hits,
+                      denies = excluded.denies,
+                      gold_per_min = excluded.gold_per_min,
+                      xp_per_min = excluded.xp_per_min,
+                      net_worth = excluded.net_worth,
+                      hero_damage = excluded.hero_damage,
+                      tower_damage = excluded.tower_damage,
+                      hero_healing = excluded.hero_healing,
+                      level = excluded.level,
+                      duration_seconds = excluded.duration_seconds,
+                      items = excluded.items,
+                      raw_player = excluded.raw_player,
+                      updated_at = now()
                     """,
+                    player.teamSide(),
                     player.dotaHeroId(),
+                    player.dotaAccountId(),
                     player.steamAccountId(),
                     player.playerSlot(),
+                    player.teamSide(),
                     player.radiant(),
                     player.winner(),
                     player.kills(),
@@ -270,8 +346,10 @@ public class MatchImportRepository {
                     player.heroHealing(),
                     player.level(),
                     player.durationSeconds(),
+                    player.items(),
                     player.rawPlayer(),
                     player.dotaHeroId(),
+                    player.dotaAccountId(),
                     importId);
         }
     }
@@ -281,6 +359,8 @@ public class MatchImportRepository {
     }
 
     public Optional<MatchImport> markError(UUID importId, OpenDotaErrorCode errorCode, String errorMessage) {
+        ensureMatchGameForImport(importId, MatchImportStatus.ERROR);
+
         return jdbcTemplate.query(
                         """
                         update public.match_imports
@@ -308,6 +388,118 @@ public class MatchImportRepository {
                             matchImport.requestedBy());
                     return matchImport;
                 });
+    }
+
+    private UUID ensureMatchGameForImport(UUID importId, MatchImportStatus status) {
+        MatchImportLink link = jdbcTemplate.queryForObject(
+                """
+                select id, match_id, match_game_id, dota_match_id
+                from public.match_imports
+                where id = ?
+                """,
+                this::mapMatchImportLink,
+                importId);
+
+        UUID matchGameId = link.matchGameId();
+        if (matchGameId == null) {
+            matchGameId = findMatchGameIdByDotaMatchId(link.dotaMatchId())
+                    .orElseGet(() -> createStandaloneMatchGame(link.matchId(), link.dotaMatchId(), status));
+            jdbcTemplate.update(
+                    """
+                    update public.match_imports
+                    set match_game_id = ?,
+                        updated_at = now()
+                    where id = ?
+                    """,
+                    matchGameId,
+                    importId);
+        }
+
+        jdbcTemplate.update(
+                """
+                update public.match_games
+                set import_status = cast(? as public.dotaops_import_status),
+                    updated_at = now()
+                where id = ?
+                """,
+                status.databaseValue(),
+                matchGameId);
+
+        return matchGameId;
+    }
+
+    private Optional<UUID> findMatchGameIdByDotaMatchId(String dotaMatchId) {
+        return jdbcTemplate.query(
+                        """
+                        select id
+                        from public.match_games
+                        where dota_match_id = ?
+                        limit 1
+                        """,
+                        (resultSet, rowNumber) -> resultSet.getObject("id", UUID.class),
+                        dotaMatchId)
+                .stream()
+                .findFirst();
+    }
+
+    private UUID createStandaloneMatchGame(UUID matchId, String dotaMatchId, MatchImportStatus status) {
+        return jdbcTemplate.queryForObject(
+                """
+                insert into public.match_games (
+                  match_id,
+                  game_number,
+                  status,
+                  import_status,
+                  dota_match_id
+                )
+                values (?, 1, 'scheduled', cast(? as public.dotaops_import_status), ?)
+                on conflict (dota_match_id)
+                do update set
+                  import_status = excluded.import_status,
+                  updated_at = now()
+                returning id
+                """,
+                UUID.class,
+                matchId,
+                status.databaseValue(),
+                dotaMatchId);
+    }
+
+    private void updateMatchGame(UUID matchGameId, MatchGameImport matchGame) {
+        jdbcTemplate.update(
+                """
+                update public.match_games
+                set
+                  dota_match_id = coalesce(dota_match_id, ?),
+                  duration_seconds = ?,
+                  started_at = ?,
+                  finished_at = ?,
+                  radiant_win = ?,
+                  game_mode = ?,
+                  lobby_type = ?,
+                  radiant_score = ?,
+                  dire_score = ?,
+                  winner_side = cast(? as text),
+                  raw_response = cast(? as jsonb),
+                  normalized_payload = cast(? as jsonb),
+                  raw_summary = cast(? as jsonb),
+                  updated_at = now()
+                where id = ?
+                """,
+                matchGame.dotaMatchId(),
+                matchGame.durationSeconds(),
+                matchGame.startedAt(),
+                matchGame.finishedAt(),
+                matchGame.radiantWin(),
+                matchGame.gameMode(),
+                matchGame.lobbyType(),
+                matchGame.radiantScore(),
+                matchGame.direScore(),
+                matchGame.winnerSide(),
+                matchGame.rawResponse(),
+                matchGame.normalizedPayload(),
+                matchGame.normalizedPayload(),
+                matchGameId);
     }
 
     private String selectSql() {
@@ -363,6 +555,14 @@ public class MatchImportRepository {
                 resultSet.getObject("updated_at", OffsetDateTime.class));
     }
 
+    private MatchImportLink mapMatchImportLink(ResultSet resultSet, int rowNumber) throws SQLException {
+        return new MatchImportLink(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getObject("match_id", UUID.class),
+                resultSet.getObject("match_game_id", UUID.class),
+                resultSet.getString("dota_match_id"));
+    }
+
     private MatchImportEvent mapMatchImportEvent(ResultSet resultSet, int rowNumber) throws SQLException {
         return new MatchImportEvent(
                 resultSet.getObject("id", UUID.class),
@@ -380,5 +580,13 @@ public class MatchImportRepository {
         }
 
         return OpenDotaErrorCode.valueOf(value);
+    }
+
+    private record MatchImportLink(
+            UUID id,
+            UUID matchId,
+            UUID matchGameId,
+            String dotaMatchId
+    ) {
     }
 }

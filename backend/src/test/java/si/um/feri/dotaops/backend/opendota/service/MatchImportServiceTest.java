@@ -23,7 +23,7 @@ import si.um.feri.dotaops.backend.common.security.RequestRateLimiter;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImport;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImportEvent;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImportStatus;
-import si.um.feri.dotaops.backend.opendota.domain.MatchPlayerImport;
+import si.um.feri.dotaops.backend.opendota.domain.NormalizedMatchImport;
 import si.um.feri.dotaops.backend.opendota.domain.OpenDotaErrorCode;
 import si.um.feri.dotaops.backend.opendota.domain.OpenDotaRawMatchResponse;
 import si.um.feri.dotaops.backend.opendota.domain.OpenDotaRawPlayerResponse;
@@ -54,11 +54,14 @@ class MatchImportServiceTest {
     private final OpenDotaClient openDotaClient = mock(OpenDotaClient.class);
     private final RequestRateLimiter requestRateLimiter = mock(RequestRateLimiter.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final OpenDotaMatchNormalizationService normalizationService = new OpenDotaMatchNormalizationService(
+            objectMapper);
     private final MatchImportService service = new MatchImportService(
             matchImportRepository,
             currentUserProvider,
             openDotaClient,
-            requestRateLimiter);
+            requestRateLimiter,
+            normalizationService);
 
     @BeforeEach
     void setUp() {
@@ -79,7 +82,7 @@ class MatchImportServiceTest {
                 "Match import processing started."))
                 .thenReturn(Optional.of(processing));
         when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenReturn(rawMatch());
-        when(matchImportRepository.markReady(eq(IMPORT_ID), anyString(), anyString(), anyList()))
+        when(matchImportRepository.markReady(eq(IMPORT_ID), any(NormalizedMatchImport.class)))
                 .thenReturn(Optional.of(ready));
         when(matchImportRepository.findEvents(IMPORT_ID)).thenReturn(events(
                 MatchImportStatus.QUEUED,
@@ -99,14 +102,15 @@ class MatchImportServiceTest {
                 IMPORT_ID,
                 REQUESTED_BY,
                 "Match import processing started.");
-        lifecycle.verify(matchImportRepository).markReady(eq(IMPORT_ID), anyString(), anyString(), anyList());
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<MatchPlayerImport>> playersCaptor = ArgumentCaptor.forClass(List.class);
-        verify(matchImportRepository).markReady(eq(IMPORT_ID), anyString(), anyString(), playersCaptor.capture());
-        assertThat(playersCaptor.getValue()).hasSize(1);
-        assertThat(playersCaptor.getValue().getFirst().dotaHeroId()).isOne();
-        assertThat(playersCaptor.getValue().getFirst().steamAccountId()).isEqualTo("39734273");
-        assertThat(playersCaptor.getValue().getFirst().winner()).isTrue();
+        lifecycle.verify(matchImportRepository).markReady(eq(IMPORT_ID), any(NormalizedMatchImport.class));
+        ArgumentCaptor<NormalizedMatchImport> normalizationCaptor = ArgumentCaptor.forClass(NormalizedMatchImport.class);
+        verify(matchImportRepository).markReady(eq(IMPORT_ID), normalizationCaptor.capture());
+        assertThat(normalizationCaptor.getValue().players()).hasSize(1);
+        assertThat(normalizationCaptor.getValue().players().getFirst().dotaHeroId()).isOne();
+        assertThat(normalizationCaptor.getValue().players().getFirst().dotaAccountId()).isEqualTo(39734273L);
+        assertThat(normalizationCaptor.getValue().players().getFirst().winner()).isTrue();
+        assertThat(normalizationCaptor.getValue().matchGame().rawResponse()).contains("\"match_id\":7894561230");
+        assertThat(normalizationCaptor.getValue().matchGame().normalizedPayload()).contains("\"playersNormalized\":1");
     }
 
     @Test
@@ -256,7 +260,7 @@ class MatchImportServiceTest {
                 "Match import retry requested; processing restarted."))
                 .thenReturn(Optional.of(processing));
         when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenReturn(rawMatch());
-        when(matchImportRepository.markReady(eq(IMPORT_ID), anyString(), anyString(), anyList()))
+        when(matchImportRepository.markReady(eq(IMPORT_ID), any(NormalizedMatchImport.class)))
                 .thenReturn(Optional.of(ready));
         when(matchImportRepository.findEvents(IMPORT_ID)).thenReturn(events(
                 MatchImportStatus.ERROR,
@@ -272,10 +276,9 @@ class MatchImportServiceTest {
                 IMPORT_ID,
                 REQUESTED_BY,
                 "Match import retry requested; processing restarted.");
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<MatchPlayerImport>> playersCaptor = ArgumentCaptor.forClass(List.class);
-        verify(matchImportRepository).markReady(eq(IMPORT_ID), anyString(), anyString(), playersCaptor.capture());
-        assertThat(playersCaptor.getValue()).hasSize(1);
+        ArgumentCaptor<NormalizedMatchImport> normalizationCaptor = ArgumentCaptor.forClass(NormalizedMatchImport.class);
+        verify(matchImportRepository).markReady(eq(IMPORT_ID), normalizationCaptor.capture());
+        assertThat(normalizationCaptor.getValue().players()).hasSize(1);
     }
 
     @Test
@@ -393,6 +396,10 @@ class MatchImportServiceTest {
                 1900,
                 null,
                 true,
+                null,
+                null,
+                null,
+                null,
                 List.of(new OpenDotaRawPlayerResponse(
                         39734273L,
                         0,
@@ -400,6 +407,16 @@ class MatchImportServiceTest {
                         8,
                         2,
                         12,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
                         null,
                         null,
                         null,
