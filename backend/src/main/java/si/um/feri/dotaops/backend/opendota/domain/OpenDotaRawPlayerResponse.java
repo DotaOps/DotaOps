@@ -32,6 +32,26 @@ public record OpenDotaRawPlayerResponse(
         @JsonProperty("hero_healing")
         Integer heroHealing,
         Integer level,
+        @JsonProperty("item_0")
+        Integer item0,
+        @JsonProperty("item_1")
+        Integer item1,
+        @JsonProperty("item_2")
+        Integer item2,
+        @JsonProperty("item_3")
+        Integer item3,
+        @JsonProperty("item_4")
+        Integer item4,
+        @JsonProperty("item_5")
+        Integer item5,
+        @JsonProperty("backpack_0")
+        Integer backpack0,
+        @JsonProperty("backpack_1")
+        Integer backpack1,
+        @JsonProperty("backpack_2")
+        Integer backpack2,
+        @JsonProperty("item_neutral")
+        Integer itemNeutral,
         @JsonIgnore
         JsonNode rawPayload
 ) {
@@ -53,6 +73,16 @@ public record OpenDotaRawPlayerResponse(
                 towerDamage,
                 heroHealing,
                 level,
+                item0,
+                item1,
+                item2,
+                item3,
+                item4,
+                item5,
+                backpack0,
+                backpack1,
+                backpack2,
+                itemNeutral,
                 rawPayload);
     }
 }

@@ -96,6 +96,9 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('matches_cancelled_at_status'),
                       ('match_advancement_audit_source_type'),
                       ('match_import_events_error_code_allowed'),
+                      ('match_games_winner_side_allowed'),
+                      ('match_players_team_side_allowed'),
+                      ('match_players_dota_account_id_range'),
                       ('tournaments_registration_before_start')
                 ) as expected(conname)
                 left join pg_constraint c
@@ -112,11 +115,21 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('profile_external_accounts_one_primary_idx'),
                       ('profiles_nickname_ci_unique_idx'),
                       ('profiles_opendota_account_id_unique_idx'),
+                      ('heroes_dota_hero_id_idx'),
                       ('match_slots_team_idx'),
                       ('match_slots_source_match_type_idx'),
                       ('match_slots_locked_idx'),
                       ('match_advancement_audit_source_match_idx'),
                       ('match_import_events_error_code_idx'),
+                      ('match_games_dota_match_id_idx'),
+                      ('match_games_import_status_idx'),
+                      ('match_players_profile_id_idx'),
+                      ('match_players_team_id_idx'),
+                      ('match_players_hero_id_idx'),
+                      ('match_players_dota_hero_id_idx'),
+                      ('match_players_dota_account_id_idx'),
+                      ('match_players_team_side_idx'),
+                      ('match_players_match_game_id_idx'),
                       ('matches_status_idx'),
                       ('steam_login_states_expires_idx'),
                       ('matches_tournament_stage_idx')
@@ -154,10 +167,38 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                   and not t.tgisinternal
                 """,
                 Integer.class);
+        Integer privateAnalyticsRefresh = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from pg_proc p
+                join pg_namespace n on n.oid = p.pronamespace
+                where n.nspname = 'private'
+                  and p.proname = 'refresh_dotaops_analytics'
+                """,
+                Integer.class);
+        List<String> missingAnalyticsViews = jdbcTemplate.queryForList(
+                """
+                select expected.viewname
+                from (
+                    values
+                      ('v_player_metrics'),
+                      ('v_team_metrics'),
+                      ('v_hero_metrics'),
+                      ('v_tournament_metrics')
+                ) as expected(viewname)
+                left join pg_views v
+                  on v.schemaname = 'public'
+                 and v.viewname = expected.viewname
+                where v.viewname is null
+                order by expected.viewname
+                """,
+                String.class);
 
         assertThat(missingConstraints).isEmpty();
         assertThat(missingIndexes).isEmpty();
         assertThat(privateSteamHelpers).isEqualTo(4);
+        assertThat(privateAnalyticsRefresh).isOne();
+        assertThat(missingAnalyticsViews).isEmpty();
         assertThat(profileCreationTrigger).isOne();
     }
 
