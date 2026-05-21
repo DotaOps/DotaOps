@@ -14,6 +14,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.security.access.AccessDeniedException;
 
+import si.um.feri.dotaops.backend.analytics.service.AnalyticsRefreshService;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
@@ -53,6 +54,7 @@ class MatchImportServiceTest {
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
     private final OpenDotaClient openDotaClient = mock(OpenDotaClient.class);
     private final RequestRateLimiter requestRateLimiter = mock(RequestRateLimiter.class);
+    private final AnalyticsRefreshService analyticsRefreshService = mock(AnalyticsRefreshService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final OpenDotaMatchNormalizationService normalizationService = new OpenDotaMatchNormalizationService(
             objectMapper);
@@ -61,7 +63,8 @@ class MatchImportServiceTest {
             currentUserProvider,
             openDotaClient,
             requestRateLimiter,
-            normalizationService);
+            normalizationService,
+            analyticsRefreshService);
 
     @BeforeEach
     void setUp() {
@@ -111,6 +114,7 @@ class MatchImportServiceTest {
         assertThat(normalizationCaptor.getValue().players().getFirst().winner()).isTrue();
         assertThat(normalizationCaptor.getValue().matchGame().rawResponse()).contains("\"match_id\":7894561230");
         assertThat(normalizationCaptor.getValue().matchGame().normalizedPayload()).contains("\"playersNormalized\":1");
+        verify(analyticsRefreshService).requestRefreshAfterSuccessfulImport(DOTA_MATCH_ID);
     }
 
     @Test
@@ -126,6 +130,7 @@ class MatchImportServiceTest {
         assertThat(response.events()).hasSize(1);
         verify(requestRateLimiter, never()).checkMatchImport(eq(REQUESTED_BY), anyString());
         verify(openDotaClient, never()).fetchMatch(Long.parseLong(DOTA_MATCH_ID));
+        verify(analyticsRefreshService, never()).requestRefreshAfterSuccessfulImport(anyString());
     }
 
     @Test
@@ -143,6 +148,7 @@ class MatchImportServiceTest {
         verify(requestRateLimiter, never()).checkMatchImport(eq(REQUESTED_BY), anyString());
         verify(matchImportRepository, never()).markProcessing(any(), any(), anyString());
         verify(openDotaClient, never()).fetchMatch(Long.parseLong(DOTA_MATCH_ID));
+        verify(analyticsRefreshService, never()).requestRefreshAfterSuccessfulImport(anyString());
     }
 
     @Test
@@ -279,6 +285,37 @@ class MatchImportServiceTest {
         ArgumentCaptor<NormalizedMatchImport> normalizationCaptor = ArgumentCaptor.forClass(NormalizedMatchImport.class);
         verify(matchImportRepository).markReady(eq(IMPORT_ID), normalizationCaptor.capture());
         assertThat(normalizationCaptor.getValue().players()).hasSize(1);
+        verify(analyticsRefreshService).requestRefreshAfterSuccessfulImport(DOTA_MATCH_ID);
+    }
+
+    @Test
+    void importMatchStaysReadyWhenAnalyticsRefreshSchedulingFails() throws Exception {
+        MatchImport queued = matchImport(MatchImportStatus.QUEUED, null);
+        MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
+        MatchImport ready = matchImport(MatchImportStatus.READY, null);
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
+        when(matchImportRepository.createQueued(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(queued);
+        when(matchImportRepository.markProcessing(
+                IMPORT_ID,
+                REQUESTED_BY,
+                "Match import processing started."))
+                .thenReturn(Optional.of(processing));
+        when(openDotaClient.fetchMatch(Long.parseLong(DOTA_MATCH_ID))).thenReturn(rawMatch());
+        when(matchImportRepository.markReady(eq(IMPORT_ID), any(NormalizedMatchImport.class)))
+                .thenReturn(Optional.of(ready));
+        when(matchImportRepository.findEvents(IMPORT_ID)).thenReturn(events(
+                MatchImportStatus.QUEUED,
+                MatchImportStatus.PROCESSING,
+                MatchImportStatus.READY));
+        doThrow(new IllegalStateException("executor rejected"))
+                .when(analyticsRefreshService)
+                .requestRefreshAfterSuccessfulImport(DOTA_MATCH_ID);
+
+        var response = service.importMatch(new CreateMatchImportRequest(DOTA_MATCH_ID), "203.0.113.10");
+
+        assertThat(response.status()).isEqualTo(MatchImportStatus.READY);
+        verify(analyticsRefreshService).requestRefreshAfterSuccessfulImport(DOTA_MATCH_ID);
     }
 
     @Test

@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -15,6 +17,7 @@ import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
 import si.um.feri.dotaops.backend.common.error.ResourceNotFoundException;
 import si.um.feri.dotaops.backend.common.security.RequestRateLimiter;
+import si.um.feri.dotaops.backend.analytics.service.AnalyticsRefreshService;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImport;
 import si.um.feri.dotaops.backend.opendota.domain.MatchImportStatus;
 import si.um.feri.dotaops.backend.opendota.domain.NormalizedMatchImport;
@@ -28,24 +31,29 @@ import si.um.feri.dotaops.backend.opendota.web.MatchImportResponse;
 @Service
 public class MatchImportService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(MatchImportService.class);
+
     private final MatchImportRepository matchImportRepository;
     private final CurrentUserProvider currentUserProvider;
     private final OpenDotaClient openDotaClient;
     private final RequestRateLimiter requestRateLimiter;
     private final OpenDotaMatchNormalizationService normalizationService;
+    private final AnalyticsRefreshService analyticsRefreshService;
 
     public MatchImportService(
             MatchImportRepository matchImportRepository,
             CurrentUserProvider currentUserProvider,
             OpenDotaClient openDotaClient,
             RequestRateLimiter requestRateLimiter,
-            OpenDotaMatchNormalizationService normalizationService
+            OpenDotaMatchNormalizationService normalizationService,
+            AnalyticsRefreshService analyticsRefreshService
     ) {
         this.matchImportRepository = matchImportRepository;
         this.currentUserProvider = currentUserProvider;
         this.openDotaClient = openDotaClient;
         this.requestRateLimiter = requestRateLimiter;
         this.normalizationService = normalizationService;
+        this.analyticsRefreshService = analyticsRefreshService;
     }
 
     public MatchImportResponse importMatch(CreateMatchImportRequest request, String clientIp) {
@@ -144,16 +152,26 @@ public class MatchImportService {
 
         try {
             NormalizedMatchImport normalizedMatch = normalizationService.normalize(Long.toString(dotaMatchId), rawMatch);
-            return matchImportRepository.markReady(
+            MatchImport readyImport = matchImportRepository.markReady(
                             importId,
                             normalizedMatch)
                     .orElseThrow(() -> new ResourceNotFoundException("Match import", "id", importId));
+            requestAnalyticsRefresh(Long.toString(dotaMatchId));
+            return readyImport;
         } catch (Exception exception) {
             return matchImportRepository.markError(
                             importId,
                             OpenDotaErrorCode.INVALID_PROVIDER_RESPONSE,
                             "OpenDota match payload could not be normalized.")
                     .orElseThrow(() -> new ResourceNotFoundException("Match import", "id", importId));
+        }
+    }
+
+    private void requestAnalyticsRefresh(String dotaMatchId) {
+        try {
+            analyticsRefreshService.requestRefreshAfterSuccessfulImport(dotaMatchId);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Analytics refresh could not be scheduled after match import {}.", dotaMatchId, exception);
         }
     }
 

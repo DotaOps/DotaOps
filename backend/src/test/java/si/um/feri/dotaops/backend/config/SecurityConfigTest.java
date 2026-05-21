@@ -113,6 +113,13 @@ class SecurityConfigTest {
     }
 
     @Test
+    void publicAnalyticsEndpointWorksWithoutJwt() throws Exception {
+        mockMvc.perform(get("/api/public/analytics/security-test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result").value("public analytics"));
+    }
+
+    @Test
     void protectedEndpointRequiresJwt() throws Exception {
         mockMvc.perform(get("/api/me/security-test"))
                 .andExpect(status().isUnauthorized())
@@ -264,6 +271,11 @@ class SecurityConfigTest {
         @GetMapping("/api/public/tournaments/security-test")
         Map<String, String> publicTournaments() {
             return Map.of("result", "public");
+        }
+
+        @GetMapping("/api/public/analytics/security-test")
+        Map<String, String> publicAnalytics() {
+            return Map.of("result", "public analytics");
         }
     }
 

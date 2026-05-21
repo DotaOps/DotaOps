@@ -191,6 +191,40 @@ Import je idempotenten po `dota_match_id`; playerji so idempotentni po `match_ga
 
 Pred match importom je priporocljivo zagnati hero sync. Ce `heroes.dota_hero_id` obstaja, se `match_players.hero_id` nastavi na interni hero zapis. Ce hero se ni sinhroniziran, import ne pade in `match_players.dota_hero_id` ostane zapisan za poznejso diagnostiko.
 
+### Analytics
+
+Analitika uporablja normalizirane tabele `match_games`, `match_players`, `heroes`, `teams`, `profiles`, `matches` in `tournaments`. OpenDota `raw_response`, `normalized_payload` in `raw_player` niso del javnega analytics API-ja.
+
+Admin uporabnik lahko rocno sprozi refresh:
+
+```http
+POST /api/admin/analytics/refresh
+```
+
+Backend pri tem poklice DB funkcijo `private.refresh_dotaops_analytics()`. Response vsebuje `status`, `reason`, `requestedAt`, `completedAt`, `durationMs` in `message`. Po uspesnem match importu backend sprozi asinhroni refresh request z razlogom `match import ready: <dotaMatchId>`; ce ta refresh pade, import ostane `ready`, napaka pa se zabelezi v backend log.
+
+Javni analytics endpointi so:
+
+```http
+GET /api/public/analytics/players
+GET /api/public/analytics/teams
+GET /api/public/analytics/heroes
+GET /api/public/analytics/tournaments
+GET /api/public/analytics/tournaments/{tournamentId}
+```
+
+Collection endpointi podpirajo filtre `tournamentId`, `teamId`, `profileId`, `heroId` in `limit`; podprta je tudi snake_case oblika `tournament_id`, `team_id`, `profile_id`, `hero_id`. Primeri:
+
+```http
+GET /api/public/analytics/players?tournamentId=<uuid>&profileId=<uuid>
+GET /api/public/analytics/teams?tournament_id=<uuid>&team_id=<uuid>
+GET /api/public/analytics/heroes?heroId=<uuid>
+```
+
+API vraca osnovne agregate, kot so `gamesPlayed`, `wins`, `losses`, `winRate`, KDA, skupni in povprecni kills/deaths/assists, GPM, XPM in hero damage, kjer so metrike smiselne. Tournament metrics vrne tudi `teamsCount`, `playersCount`, `heroesPickedCount`, `avgDurationSeconds`, `avgKillsPerGame`, `avgKda` in osnovni `mostPickedHeroes`.
+
+Vsi javni analytics queryji filtrirajo samo turnirje z `tournaments.is_public = true`. Ce filter kaze na privaten ali neobjavljen turnir, public endpoint ne vrne njegovih podatkov.
+
 ## Zagon Backenda
 
 Backend se zazene na `http://localhost:8080`.
