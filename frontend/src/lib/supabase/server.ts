@@ -8,14 +8,16 @@ function getSupabaseConfig() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing Supabase frontend environment variables.");
+    return null;
   }
 
   return { supabaseUrl, supabaseKey };
 }
 
-export async function createClient() {
-  const { supabaseUrl, supabaseKey } = getSupabaseConfig();
+async function createServerSupabaseClient({
+  supabaseKey,
+  supabaseUrl
+}: NonNullable<ReturnType<typeof getSupabaseConfig>>) {
   const cookieStore = await cookies();
 
   return createServerClient(supabaseUrl, supabaseKey, {
@@ -34,4 +36,20 @@ export async function createClient() {
       }
     }
   });
+}
+
+export async function createClient() {
+  const config = getSupabaseConfig();
+
+  if (!config) {
+    throw new Error("Missing Supabase frontend environment variables.");
+  }
+
+  return createServerSupabaseClient(config);
+}
+
+export async function getSupabaseServerClient() {
+  const config = getSupabaseConfig();
+
+  return config ? createServerSupabaseClient(config) : null;
 }

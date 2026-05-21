@@ -5032,6 +5032,28 @@ textarea:focus {
   color: #ffb3ac;
 }
 
+.public-home-header .public-dashboard-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.public-home-header .public-profile-link {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 179, 172, 0.34);
+  border-radius: 4px;
+  background: rgba(18, 18, 18, 0.62);
+  color: #f9dcd9;
+}
+
+.public-home-header .public-profile-link:hover {
+  border-color: rgba(255, 179, 172, 0.72);
+  background: rgba(255, 179, 172, 0.08);
+}
+
 .public-hero {
   position: relative;
   display: grid;
@@ -6840,12 +6862,14 @@ textarea:focus {
 
 .profile-content-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  align-items: start;
-  gap: 28px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 24px;
 }
 
 .profile-details-card {
+  grid-column: 1 / span 3;
+  grid-row: 1 / span 2;
   padding: 36px;
   background: rgba(18, 14, 14, 0.92);
 }
@@ -6931,8 +6955,17 @@ textarea:focus {
 }
 
 .profile-side-rail {
-  display: grid;
-  gap: 26px;
+  display: contents;
+}
+
+.profile-connected-accounts-card {
+  grid-column: 4;
+  grid-row: 1;
+}
+
+.profile-actions-card {
+  grid-column: 4;
+  grid-row: 2;
 }
 
 .profile-rail-card,
@@ -7020,12 +7053,19 @@ textarea:focus {
 }
 
 .profile-logout-button {
-  color: #ffb3ac !important;
-  border-color: transparent !important;
-  border-top: 1px solid rgba(171, 137, 133, 0.35) !important;
+  color: #fff2f0 !important;
+  background: rgba(211, 47, 47, 0.18) !important;
+  border-color: rgba(211, 47, 47, 0.7) !important;
+}
+
+.profile-logout-button:hover {
+  background: rgba(211, 47, 47, 0.3) !important;
+  border-color: rgba(255, 179, 172, 0.8) !important;
 }
 
 .profile-security-card {
+  grid-column: 4;
+  grid-row: 3;
   display: flex;
   gap: 18px;
   color: #ffdad6;
@@ -7102,9 +7142,19 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
+  .profile-details-card,
+  .profile-connected-accounts-card,
+  .profile-actions-card,
+  .profile-security-card {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
   .profile-side-rail {
+    display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: start;
+    gap: 26px;
   }
 
   .profile-connected-card {
