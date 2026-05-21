@@ -4,9 +4,11 @@ import {
   BarChart3,
   CalendarDays,
   DatabaseZap,
+  LayoutDashboard,
   RadioTower,
   Shield,
   Trophy,
+  UserRound,
   UsersRound
 } from "lucide-react";
 import Link from "next/link";
@@ -31,7 +33,7 @@ const platformStats = [
   { icon: DatabaseZap, label: "Data Points/sec", value: "1,240,492" }
 ];
 
-export function PublicHomepage() {
+export function PublicHomepage({ isAuthenticated = false }: { isAuthenticated?: boolean }) {
   return (
     <div className="public-home">
       <AnimatedHomepageBackground />
@@ -41,8 +43,27 @@ export function PublicHomepage() {
         </Link>
         <nav aria-label="Public navigation">
           <Link href="/turnirji">Tournaments</Link>
-          <Link href="/login">Login</Link>
-          <Link href="/register">Register</Link>
+          {isAuthenticated ? (
+            <>
+              <Link className="public-dashboard-link" href="/dashboard">
+                <LayoutDashboard size={16} />
+                <span>Dashboard</span>
+              </Link>
+              <Link
+                aria-label="Profile"
+                className="public-profile-link"
+                href="/profile"
+                title="Profile"
+              >
+                <UserRound size={18} />
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link href="/login">Login</Link>
+              <Link href="/register">Register</Link>
+            </>
+          )}
         </nav>
       </header>
 
@@ -63,11 +84,17 @@ export function PublicHomepage() {
               management.
             </p>
             <div className="public-hero-actions">
-              <Link className="public-button public-button-primary" href="/login">
-                Login
+              <Link
+                className="public-button public-button-primary"
+                href={isAuthenticated ? "/dashboard" : "/login"}
+              >
+                {isAuthenticated ? "Dashboard" : "Login"}
               </Link>
-              <Link className="public-button public-button-secondary" href="/register">
-                Register
+              <Link
+                className="public-button public-button-secondary"
+                href={isAuthenticated ? "/profile" : "/register"}
+              >
+                {isAuthenticated ? "Profile" : "Register"}
               </Link>
             </div>
           </div>
@@ -244,8 +271,11 @@ export function PublicHomepage() {
             or a data-driven fan, DotaOps has the intel you need.
           </p>
           <div>
-            <Link className="public-button public-button-primary" href="/register">
-              Get Started Free
+            <Link
+              className="public-button public-button-primary"
+              href={isAuthenticated ? "/dashboard" : "/register"}
+            >
+              {isAuthenticated ? "Open Dashboard" : "Get Started Free"}
             </Link>
             <Link className="public-button public-button-secondary" href="/turnirji">
               Public Tournaments
@@ -261,8 +291,17 @@ export function PublicHomepage() {
         </div>
         <nav aria-label="Footer links">
           <Link href="/turnirji">Public Tournaments</Link>
-          <Link href="/login">Login</Link>
-          <Link href="/register">Register</Link>
+          {isAuthenticated ? (
+            <>
+              <Link href="/dashboard">Dashboard</Link>
+              <Link href="/profile">Profile</Link>
+            </>
+          ) : (
+            <>
+              <Link href="/login">Login</Link>
+              <Link href="/register">Register</Link>
+            </>
+          )}
           <span>
             <Shield size={16} /> System Status
           </span>

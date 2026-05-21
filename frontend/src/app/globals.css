@@ -5032,6 +5032,28 @@ textarea:focus {
   color: #ffb3ac;
 }
 
+.public-home-header .public-dashboard-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.public-home-header .public-profile-link {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 179, 172, 0.34);
+  border-radius: 4px;
+  background: rgba(18, 18, 18, 0.62);
+  color: #f9dcd9;
+}
+
+.public-home-header .public-profile-link:hover {
+  border-color: rgba(255, 179, 172, 0.72);
+  background: rgba(255, 179, 172, 0.08);
+}
+
 .public-hero {
   position: relative;
   display: grid;
