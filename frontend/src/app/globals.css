@@ -493,16 +493,28 @@ p {
     var(--ops-surface-low);
 }
 
+.route-skeleton-item::before,
 .route-skeleton-item::after {
   position: absolute;
   inset: 0;
+  pointer-events: none;
+  content: "";
+}
+
+.route-skeleton-item::before {
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, transparent, rgba(255, 84, 78, 0.045), transparent);
+  opacity: 0.24;
+}
+
+.route-skeleton-item::after {
   background: linear-gradient(
     90deg,
     transparent,
     rgba(255, 255, 255, 0.14),
     transparent
   );
-  content: "";
   transform: translateX(-100%);
   animation: opsSkeletonSweep 1.55s ease-in-out infinite;
 }
@@ -2387,6 +2399,128 @@ textarea:focus {
 .tournament-command .tournament-card.ops-card .text-link {
   margin-top: auto;
   color: var(--ops-secondary);
+}
+
+.tournament-loading-skeleton {
+  min-height: calc(100vh - 130px);
+}
+
+.tournament-skeleton-command-copy,
+.tournament-skeleton-card-heading,
+.tournament-skeleton-card-description {
+  display: grid;
+  gap: var(--ops-space-2);
+}
+
+.tournament-skeleton-kicker {
+  width: min(168px, 46%);
+  height: 11px;
+}
+
+.tournament-skeleton-title {
+  width: min(760px, 100%);
+  height: clamp(104px, 14.7vw, 188px);
+  margin-top: var(--ops-space-2);
+}
+
+.tournament-skeleton-description {
+  display: grid;
+  gap: var(--ops-space-2);
+  width: min(760px, 100%);
+  margin-top: var(--ops-space-4);
+}
+
+.tournament-skeleton-header-description {
+  align-content: space-between;
+  min-height: 53px;
+}
+
+.tournament-skeleton-copy-line {
+  width: 100%;
+  height: 13px;
+}
+
+.tournament-skeleton-copy-short {
+  width: min(520px, 72%);
+}
+
+.tournament-skeleton-header-action {
+  width: 188px;
+  height: 44px;
+}
+
+.tournament-skeleton-meta-card {
+  align-content: start;
+  min-height: 125px;
+}
+
+.tournament-skeleton-meta-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.tournament-skeleton-meta-label {
+  width: min(104px, 72%);
+  height: 10px;
+}
+
+.tournament-skeleton-meta-value {
+  width: min(176px, 88%);
+  height: 26px;
+}
+
+.tournament-skeleton-meta-detail {
+  width: min(132px, 76%);
+  height: 10px;
+}
+
+.tournament-skeleton-section-header {
+  margin-bottom: var(--ops-space-4);
+}
+
+.tournament-skeleton-section-header > div {
+  width: min(780px, 100%);
+}
+
+.tournament-skeleton-section-title {
+  width: min(360px, 80%);
+  height: 30px;
+  margin-top: var(--ops-space-2);
+}
+
+.tournament-skeleton-card-title {
+  width: min(206px, 100%);
+  height: 20px;
+}
+
+.tournament-skeleton-card-format {
+  width: min(138px, 74%);
+  height: 12px;
+}
+
+.tournament-skeleton-status {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 25px;
+}
+
+.tournament-skeleton-card-meta {
+  width: min(210px, 100%);
+  height: 15px;
+}
+
+.tournament-skeleton-card-meta-short {
+  width: min(150px, 82%);
+}
+
+.tournament-skeleton-link {
+  width: 154px;
+  height: 16px;
+  margin-top: auto;
+}
+
+.tournament-loading-skeleton .tournament-card.ops-card.tournament-skeleton-card {
+  min-height: 329px;
 }
 
 .tournament-control-grid {
@@ -5378,6 +5512,98 @@ textarea:focus {
   overflow: hidden;
 }
 
+.page-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  min-height: 100svh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 84, 78, 0.19), transparent 360px),
+    linear-gradient(180deg, rgba(20, 12, 12, 0.98), rgba(6, 6, 6, 0.99));
+}
+
+.page-loading-overlay::before,
+.page-loading-overlay::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+}
+
+.page-loading-overlay::before {
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 7px),
+    linear-gradient(90deg, rgba(255, 179, 172, 0.035) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(255, 179, 172, 0.026) 1px, transparent 1px);
+  background-size: auto, 88px 88px, 88px 88px;
+  opacity: 0.2;
+}
+
+.page-loading-overlay::after {
+  background: radial-gradient(circle at center, transparent 0 18%, rgba(0, 0, 0, 0.24) 58%, rgba(0, 0, 0, 0.72));
+}
+
+.page-loading-radar {
+  position: relative;
+  z-index: 1;
+  width: clamp(180px, 26vw, 330px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 179, 172, 0.22);
+  border-radius: 999px;
+  background:
+    conic-gradient(from 18deg, transparent 0 54%, rgba(255, 84, 78, 0.3) 64%, rgba(0, 221, 221, 0.12) 69%, transparent 77%),
+    radial-gradient(circle, transparent 0 27%, rgba(255, 84, 78, 0.13) 27.5% 28%, transparent 28.5% 51%, rgba(255, 179, 172, 0.12) 51.5% 52%, transparent 52.5% 74%, rgba(255, 84, 78, 0.11) 74.5% 75%, transparent 75.5%);
+  box-shadow:
+    0 0 80px rgba(255, 84, 78, 0.22),
+    inset 0 0 54px rgba(255, 84, 78, 0.12);
+  transform: translate3d(0, 0, 0) rotate(0deg);
+  animation: pageLoadingRadarSweep 3.2s linear infinite;
+}
+
+.page-loading-radar::before,
+.page-loading-radar::after {
+  position: absolute;
+  border-radius: inherit;
+  content: "";
+}
+
+.page-loading-radar::before {
+  inset: 15%;
+  border: 1px solid rgba(255, 179, 172, 0.16);
+}
+
+.page-loading-radar::after {
+  inset: 35%;
+  border: 1px solid rgba(0, 221, 221, 0.12);
+  background: radial-gradient(circle, rgba(0, 221, 221, 0.28) 0 4px, rgba(255, 84, 78, 0.12) 4px, transparent 58%);
+}
+
+.page-loading-radar span {
+  position: absolute;
+  border: 1px solid rgba(255, 179, 172, 0.16);
+  border-radius: inherit;
+  animation: pageLoadingRadarPulse 2.6s ease-in-out infinite;
+}
+
+.page-loading-radar span:nth-child(1) {
+  inset: 6%;
+  border-color: rgba(255, 84, 78, 0.16);
+}
+
+.page-loading-radar span:nth-child(2) {
+  inset: 25%;
+  animation-delay: 420ms;
+}
+
+.page-loading-radar span:nth-child(3) {
+  inset: 45%;
+  border-color: rgba(0, 221, 221, 0.14);
+  animation-delay: 840ms;
+}
+
 .public-home > main,
 .public-footer {
   position: relative;
@@ -6934,11 +7160,36 @@ textarea:focus {
   }
 }
 
+@keyframes pageLoadingRadarSweep {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+
+  to {
+    transform: translate3d(0, 0, 0) rotate(360deg);
+  }
+}
+
+@keyframes pageLoadingRadarPulse {
+  0%,
+  100% {
+    opacity: 0.42;
+    transform: scale(0.985);
+  }
+
+  50% {
+    opacity: 0.9;
+    transform: scale(1.015);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .route-skeleton-item::after {
     animation: none;
   }
 
+  .page-loading-radar,
+  .page-loading-radar span,
   .public-hero-backdrop,
   .public-hero::before,
   .public-hero-backdrop::before,
