@@ -24,6 +24,12 @@ import type { ReactNode } from "react";
 import { getCurrentUserProfile, type CurrentUserProfile } from "@/lib/auth";
 import { isOrganizerRole, routeAccessForPath } from "@/lib/route-access";
 import { classNames } from "@/lib/utils";
+import {
+  DashboardLoadingSkeleton,
+  type DashboardLoadingRole
+} from "@/components/dashboard/dashboard-loading-skeleton";
+import { RouteLoadingSkeleton } from "@/components/route-loading-skeleton";
+import { WorkspaceLoadingSkeleton } from "@/components/workspace-loading-skeleton";
 
 const navItems: Array<{
   href: string;
@@ -48,6 +54,14 @@ const publicContentNavItems: Array<{
   { href: "/login", label: "Login", icon: LogIn },
   { href: "/register", label: "Register", icon: UserPlus }
 ];
+
+function dashboardLoadingRole(role?: string | null): DashboardLoadingRole {
+  if (isOrganizerRole(role)) {
+    return "organizer";
+  }
+
+  return role === "captain" ? "captain" : "player";
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -167,18 +181,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   const profileHref = isPublicContentGuest ? "/login" : "/profile";
   const profileLabel = isPublicContentGuest ? "PUBLIC OPS" : profile?.nickname ?? "SOLO_TACTICIAN";
   const profileRoleLabel = isPublicContentGuest ? "Visitor" : profile?.role ?? "Profile";
+  const shouldShowPageSkeleton = isPrivateAuthCheckPending && Boolean(profile);
+  const pageDashboardLoadingRole = dashboardLoadingRole(profile?.role);
 
   if (access === "public") {
     return <>{children}</>;
   }
 
-  if (isPrivateAuthCheckPending) {
-    return (
-      <RouteState
-        detail="Checking your DotaOps session before opening this private workspace."
-        title="Loading session"
-      />
-    );
+  if (isPrivateAuthCheckPending && !profile) {
+    return <WorkspaceLoadingSkeleton dashboard={isRoleDashboard} />;
   }
 
   if (!isPrivateAuthCheckPending && !profile && access !== "public-content") {
@@ -295,7 +306,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
 
         <main className={classNames("page", isRoleDashboard && "dashboard-page")}>
-          {children}
+          {shouldShowPageSkeleton ? (
+            isRoleDashboard ? (
+              <DashboardLoadingSkeleton role={pageDashboardLoadingRole} />
+            ) : (
+              <RouteLoadingSkeleton />
+            )
+          ) : children}
         </main>
       </div>
     </div>

@@ -1,6 +1,10 @@
 "use client";
 
 import { CaptainDashboardView } from "@/components/dashboard/captain-dashboard-view";
+import {
+  DashboardLoadingSkeleton,
+  type DashboardLoadingRole
+} from "@/components/dashboard/dashboard-loading-skeleton";
 import { OrganizerDashboardView } from "@/components/dashboard/organizer-dashboard-view";
 import { PlayerDashboardView } from "@/components/dashboard/player-dashboard-view";
 import { PublicDashboardGate } from "@/components/dashboard/public-dashboard-gate";
@@ -19,6 +23,10 @@ function roleFromProfile(role?: string | null): DashboardRole {
   }
 
   return "player";
+}
+
+function loadingRole(role?: DashboardRole): DashboardLoadingRole {
+  return role === "captain" || role === "organizer" ? role : "player";
 }
 
 export function RoleDashboard({ role }: { role?: DashboardRole }) {
@@ -45,7 +53,7 @@ export function RoleDashboard({ role }: { role?: DashboardRole }) {
   }, []);
 
   if (!actualRole) {
-    return <section className="role-dashboard role-dashboard-state">Loading dashboard...</section>;
+    return <DashboardLoadingSkeleton role={loadingRole(role)} />;
   }
 
   const resolvedRole = role === "organizer" && actualRole !== "organizer"

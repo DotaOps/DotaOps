@@ -28,6 +28,7 @@ import type { FormEvent } from "react";
 import type { RefObject } from "react";
 import type { LucideIcon } from "lucide-react";
 
+import { RouteLoadingSkeleton } from "@/components/route-loading-skeleton";
 import {
   createTeam,
   acceptTeamInvitation,
@@ -599,7 +600,7 @@ export function TeamManagementPage() {
   }
 
   if (isLoading) {
-    return <div className="team-mgmt-state ops-panel">Loading team command uplink...</div>;
+    return <RouteLoadingSkeleton />;
   }
 
   if (!viewModel && !error) {
