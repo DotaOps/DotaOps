@@ -1,9 +1,11 @@
 package si.um.feri.dotaops.backend.opendota.domain;
 
 public record MatchPlayerImport(
+        Long dotaAccountId,
         String steamAccountId,
         Integer dotaHeroId,
         int playerSlot,
+        String teamSide,
         Boolean radiant,
         Boolean winner,
         int kills,
@@ -19,6 +21,7 @@ public record MatchPlayerImport(
         Integer heroHealing,
         Integer level,
         Integer durationSeconds,
+        String items,
         String rawPlayer
 ) {
 }

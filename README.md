@@ -121,6 +121,34 @@ OPENDOTA_RETRY_BACKOFF=250ms
 
 `OPENDOTA_API_KEY` je opcijski in mora ostati samo na backend/server strani. Ne dodajaj ga v frontend okolje, response DTO-je ali loge.
 
+### Hero reference sync
+
+Dota heroji se ne vnasajo rocno s SQL inserti. Backend jih sinhronizira iz OpenDota endpointa `/heroes` v tabelo `public.heroes`, kjer je stabilni unique kljuc `dota_hero_id`.
+
+Rocni sync sprozi admin uporabnik:
+
+```http
+POST /api/admin/heroes/sync
+```
+
+Endpoint je pod `/api/admin/**` in zahteva backend admin vlogo. V deploy okolju naj ostane za admin/server tok, ne za javni frontend tok.
+
+Primer response:
+
+```json
+{
+  "data": {
+    "syncedCount": 124,
+    "insertedCount": 0,
+    "updatedCount": 124,
+    "startedAt": "2026-05-21T09:00:00Z",
+    "finishedAt": "2026-05-21T09:00:02Z"
+  }
+}
+```
+
+Sync je idempotenten: ponovni zagon ne podvoji herojev, ampak obstojece zapise posodobi po `dota_hero_id`. `image_url` in `icon_url` sta deterministicno izpeljana iz OpenDota `name`, na primer `npc_dota_hero_antimage` uporabi asset `antimage.png`. Priporoceno je sync zagnati po prvem deployu oziroma po migracijah, nato periodicno ali kadar se spremenijo referencni podatki. Match import pri shranjevanju `match_players` uporabi `heroes.dota_hero_id` za nastavitev `match_players.hero_id`; ce hero se ni znan, import ne pade, `dota_hero_id` pa ostane zapisan za diagnostiko.
+
 ### Match import lifecycle
 
 Import OpenDota match podatkov sprozis z avtenticiranim organizer/admin uporabnikom:
@@ -149,6 +177,57 @@ GET /api/match-imports/{id}/events
 ```
 
 Response vsebuje `id`, `dotaMatchId`, `status`, `errorCode`, `errorMessage`, casovne oznake in `events`. `errorCode` je tehnicna kategorija napake OpenDota providerja, `errorMessage` pa je varen prikaz za frontend brez stack trace-a ali skrivnosti. Status `match_games.import_status` se ob povezani `match_game_id` sinhronizira z `match_imports.status`.
+
+### Match import normalization
+
+OpenDota raw match response se shrani samo za server/admin debug tok. Public/frontend response DTO-ji ne vracajo `raw_response`, `normalized_payload` ali `raw_player`.
+
+Ob uspesnem importu backend normalizira podatke v relacijski tabeli:
+
+- `match_games`: `dota_match_id`, `duration_seconds`, `started_at`, `finished_at`, `radiant_win`, `game_mode`, `lobby_type`, rezultat, `winner_side`, `import_status`, `raw_response` in `normalized_payload`.
+- `match_players`: `match_game_id`, `player_slot`, `team_side`, `hero_id`, `dota_hero_id`, `dota_account_id`, `profile_id`, `steam_account_id`, K/D/A, GPM, XPM, damage, healing, last hits, denies, net worth, level, `duration_seconds` in `items`.
+
+Analitika naj uporablja `match_games` in `match_players`, ne OpenDota raw JSON-a. `normalized_payload` vsebuje interni povzetek normalizacije, na primer `source`, `version`, `normalizedAt`, `playersNormalized`, `radiantPlayers`, `direPlayers` in `durationSeconds`.
+
+Import je idempotenten po `dota_match_id`; playerji so idempotentni po `match_game_id + player_slot`. Ponovni import iste igre posodobi obstojece match/player zapise in ne ustvari podvojenih player slotov. Manjkajoc `account_id` ali manjkajoc lokalni profil igralca importa ne prekine; `dota_account_id`, `profile_id` in `steam_account_id` ostanejo `null`, kjer podatka ni mogoce povezati.
+
+Pred match importom je priporocljivo zagnati hero sync. Ce `heroes.dota_hero_id` obstaja, se `match_players.hero_id` nastavi na interni hero zapis. Ce hero se ni sinhroniziran, import ne pade in `match_players.dota_hero_id` ostane zapisan za poznejso diagnostiko.
+
+### Analytics
+
+Analitika uporablja normalizirane tabele `match_games`, `match_players`, `heroes`, `teams`, `profiles`, `matches` in `tournaments`. OpenDota `raw_response`, `normalized_payload` in `raw_player` niso del javnega analytics API-ja.
+
+Admin uporabnik lahko rocno sprozi refresh:
+
+```http
+POST /api/admin/analytics/refresh
+```
+
+Endpoint je pod `/api/admin/**` in zahteva backend admin vlogo. V realnem okolju mora biti dostopen samo zaupanja vrednim admin uporabnikom oziroma server operacijam.
+
+Backend pri tem poklice DB funkcijo `private.refresh_dotaops_analytics()`. Response vsebuje `status`, `reason`, `requestedAt`, `completedAt`, `durationMs` in `message`. Po uspesnem match importu backend sprozi asinhroni refresh request z razlogom `match import ready: <dotaMatchId>`; ce ta refresh pade, import ostane `ready`, napaka pa se zabelezi v backend log.
+
+Javni analytics endpointi so:
+
+```http
+GET /api/public/analytics/players
+GET /api/public/analytics/teams
+GET /api/public/analytics/heroes
+GET /api/public/analytics/tournaments
+GET /api/public/analytics/tournaments/{tournamentId}
+```
+
+Collection endpointi podpirajo filtre `tournamentId`, `teamId`, `profileId`, `heroId` in `limit`; podprta je tudi snake_case oblika `tournament_id`, `team_id`, `profile_id`, `hero_id`. Primeri:
+
+```http
+GET /api/public/analytics/players?tournamentId=<uuid>&profileId=<uuid>
+GET /api/public/analytics/teams?tournament_id=<uuid>&team_id=<uuid>
+GET /api/public/analytics/heroes?heroId=<uuid>
+```
+
+API vraca osnovne agregate, kot so `gamesPlayed`, `wins`, `losses`, `winRate`, KDA, skupni in povprecni kills/deaths/assists, GPM, XPM in hero damage, kjer so metrike smiselne. Tournament metrics vrne tudi `teamsCount`, `playersCount`, `heroesPickedCount`, `avgDurationSeconds`, `avgKillsPerGame`, `avgKda` in osnovni `mostPickedHeroes`.
+
+Vsi javni analytics queryji filtrirajo samo turnirje z `tournaments.is_public = true`. Ce filter kaze na privaten ali neobjavljen turnir, public endpoint ne vrne njegovih podatkov.
 
 ## Zagon Backenda
 

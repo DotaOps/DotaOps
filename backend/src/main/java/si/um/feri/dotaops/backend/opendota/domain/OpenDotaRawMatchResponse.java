@@ -16,6 +16,14 @@ public record OpenDotaRawMatchResponse(
         Long startTime,
         @JsonProperty("radiant_win")
         Boolean radiantWin,
+        @JsonProperty("game_mode")
+        Integer gameMode,
+        @JsonProperty("lobby_type")
+        Integer lobbyType,
+        @JsonProperty("radiant_score")
+        Integer radiantScore,
+        @JsonProperty("dire_score")
+        Integer direScore,
         List<OpenDotaRawPlayerResponse> players,
         @JsonIgnore
         JsonNode rawPayload
@@ -26,6 +34,16 @@ public record OpenDotaRawMatchResponse(
     }
 
     public OpenDotaRawMatchResponse withRawPayload(JsonNode rawPayload) {
-        return new OpenDotaRawMatchResponse(matchId, duration, startTime, radiantWin, players, rawPayload);
+        return new OpenDotaRawMatchResponse(
+                matchId,
+                duration,
+                startTime,
+                radiantWin,
+                gameMode,
+                lobbyType,
+                radiantScore,
+                direScore,
+                players,
+                rawPayload);
     }
 }
