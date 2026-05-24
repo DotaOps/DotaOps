@@ -4,24 +4,21 @@ import {
   BarChart3,
   CalendarDays,
   DatabaseZap,
-  GitBranch,
   Trophy,
   UsersRound
 } from "lucide-react";
 
 import { AnalyticsOverview } from "@/components/analytics-overview";
 import { GroupsStandingsPanel } from "@/components/groups-standings-panel";
-import { MatchSchedule } from "@/components/match-schedule";
 import { PublicTournamentManageLink } from "@/components/public-tournament-manage-link";
 import { SectionHeader } from "@/components/section-header";
 import { TournamentBracketPanel } from "@/components/tournament-bracket-panel";
 import { TournamentCommandHeader } from "@/components/tournament-command-header";
 import { TournamentMetaGrid } from "@/components/tournament-meta-grid";
 import { TournamentRegistrationPanel } from "@/components/tournament-registration-panel";
-import { TournamentStatusPanel } from "@/components/tournament-status-panel";
+import { TournamentScheduleResultsPanel } from "@/components/tournament-schedule-results-panel";
 import {
   getAnalytics,
-  getMatches,
   getTournamentBySlug,
   getTournaments
 } from "@/lib/data";
@@ -33,6 +30,10 @@ import {
   getPublicTournamentBracket,
   type TournamentBracket
 } from "@/lib/tournament-bracket-data";
+import {
+  getPublicTournamentMatches,
+  type TournamentMatch
+} from "@/lib/tournament-match-data";
 import { formatDateTime } from "@/lib/utils";
 
 interface TournamentDetailPageProps {
@@ -53,9 +54,8 @@ export default async function TournamentDetailPage({
   params
 }: TournamentDetailPageProps) {
   const { slug } = await params;
-  const [analytics, matches, tournament] = await Promise.all([
+  const [analytics, tournament] = await Promise.all([
     getAnalytics(),
-    getMatches(),
     getTournamentBySlug(slug)
   ]);
 
@@ -70,6 +70,8 @@ export default async function TournamentDetailPage({
   let groupsStandingsError: string | null = null;
   let bracket: TournamentBracket | null = null;
   let bracketError: string | null = null;
+  let publicMatches: TournamentMatch[] = [];
+  let publicMatchesError: string | null = null;
 
   try {
     groupsStandings = await getPublicGroupsStandingsData(tournament.id);
@@ -87,8 +89,13 @@ export default async function TournamentDetailPage({
       : "Bracket is unavailable.";
   }
 
-  const tournamentMatches = matches.filter((match) => match.tournamentSlug === slug);
-  const importedMatches = tournamentMatches.filter((match) => match.dotaMatchId).length;
+  try {
+    publicMatches = await getPublicTournamentMatches(tournament.id);
+  } catch (error) {
+    publicMatchesError = error instanceof Error
+      ? error.message
+      : "Schedule is unavailable.";
+  }
 
   return (
     <div className="tournament-control-room">
@@ -134,11 +141,11 @@ export default async function TournamentDetailPage({
               value: `${tournament.registrationsCount}/${tournament.teamsCount}`
             },
             {
-              detail: "OpenDota linked",
+              detail: "official records",
               icon: DatabaseZap,
-              label: "Match_id",
+              label: "Matches",
               tone: "green",
-              value: String(importedMatches)
+              value: String(publicMatches.length)
             }
           ]}
         />
@@ -166,26 +173,10 @@ export default async function TournamentDetailPage({
         error={bracketError}
       />
 
-      <section className="tournament-control-grid">
-        <div className="tournament-control-main">
-          <section className="tournament-command-panel ops-panel">
-            <SectionHeader
-              eyebrow="Match operations"
-              title="Schedule, Results, and match_id"
-              description="Foundation for the public viewer experience and links to internal tournament records."
-              action={
-                <span className="ops-badge">
-                  <GitBranch size={14} />
-                  {tournamentMatches.length} matches
-                </span>
-              }
-            />
-            <MatchSchedule matches={tournamentMatches} />
-          </section>
-        </div>
-
-        <TournamentStatusPanel tournament={tournament} matches={tournamentMatches} />
-      </section>
+      <TournamentScheduleResultsPanel
+        error={publicMatchesError}
+        matches={publicMatches}
+      />
 
       <section className="tournament-command-panel tournament-analytics-panel ops-panel">
         <SectionHeader

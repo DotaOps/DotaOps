@@ -33,6 +33,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { OrganizerBracketManagementPanel } from "@/components/organizer-bracket-management-panel";
 import { OrganizerGroupManagementPanel } from "@/components/organizer-group-management-panel";
+import { OrganizerMatchResultsPanel } from "@/components/organizer-match-results-panel";
 import { RouteLoadingSkeleton } from "@/components/route-loading-skeleton";
 import { ApiRequestError, type ApiFieldError } from "@/lib/api";
 import { getCurrentUserProfile, type CurrentUserProfile, type ProfileRole } from "@/lib/auth";
@@ -325,6 +326,10 @@ function sectionIdForInitialView(view?: string) {
 
   if (view === "bracket") {
     return "bracket-control";
+  }
+
+  if (view === "matches") {
+    return "match-results";
   }
 
   return null;
@@ -1083,6 +1088,7 @@ function TournamentDetail({
         <button onClick={() => scrollToSection("registration-review")} type="button">Registrations</button>
         <button onClick={() => scrollToSection("group-management")} type="button">Groups</button>
         <button onClick={() => scrollToSection("bracket-control")} type="button">Bracket</button>
+        <button onClick={() => scrollToSection("match-results")} type="button">Matches</button>
         <button onClick={() => scrollToSection("staff-officials")} type="button">Staff</button>
         <button onClick={() => scrollToSection("match-operations-flow")} type="button">Match Controls</button>
       </nav>
@@ -1174,6 +1180,11 @@ function TournamentDetail({
           />
 
           <OrganizerBracketManagementPanel
+            onRefresh={onRefresh}
+            tournament={tournament}
+          />
+
+          <OrganizerMatchResultsPanel
             onRefresh={onRefresh}
             tournament={tournament}
           />

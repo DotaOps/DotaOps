@@ -9,10 +9,10 @@ import type { OrganizerTournament } from "@/lib/organizer-tournament-data";
 import {
   generateOrganizerTournamentBracket,
   getOrganizerTournamentBracket,
-  submitOrganizerMatchResult,
   type BracketMatch,
   type TournamentBracket
 } from "@/lib/tournament-bracket-data";
+import { submitOrganizerMatchResult } from "@/lib/tournament-match-data";
 
 interface OrganizerBracketManagementPanelProps {
   onRefresh: () => void;
