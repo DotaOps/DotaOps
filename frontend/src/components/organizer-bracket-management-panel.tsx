@@ -3,7 +3,9 @@
 import { AlertTriangle, DatabaseZap, GitBranch, Lock, RefreshCw, ShieldCheck, Trophy } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
+import { LiveSyncIndicator } from "@/components/live-sync-indicator";
 import { TournamentBracketPanel } from "@/components/tournament-bracket-panel";
+import { useTournamentLiveRefresh } from "@/hooks/use-tournament-live-refresh";
 import { ApiRequestError, type ApiFieldError } from "@/lib/api";
 import type { OrganizerTournament } from "@/lib/organizer-tournament-data";
 import {
@@ -125,8 +127,10 @@ export function OrganizerBracketManagementPanel({
     syncResultForm(match);
   }
 
-  const loadBracket = useCallback(async (preferredMatchId?: string | null) => {
-    setIsLoading(true);
+  const loadBracket = useCallback(async (preferredMatchId?: string | null, options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setIsLoading(true);
+    }
     setError(null);
     setFieldErrors([]);
 
@@ -141,12 +145,17 @@ export function OrganizerBracketManagementPanel({
       setSelectedMatchId(nextSelectedMatch?.matchId ?? null);
       syncResultForm(nextSelectedMatch);
     } catch (loadError) {
-      setBracket(null);
-      setSelectedMatchId(null);
-      syncResultForm(null);
+      if (!options?.silent) {
+        setBracket(null);
+        setSelectedMatchId(null);
+        syncResultForm(null);
+      }
       setError(panelError(loadError, "Organizer bracket API is unavailable."));
+      throw loadError;
     } finally {
-      setIsLoading(false);
+      if (!options?.silent) {
+        setIsLoading(false);
+      }
     }
   }, [tournament.id]);
 
@@ -155,6 +164,14 @@ export function OrganizerBracketManagementPanel({
 
     return () => window.clearTimeout(timeout);
   }, [loadBracket]);
+
+  const liveSync = useTournamentLiveRefresh({
+    enabled: true,
+    hiddenIntervalMs: 60_000,
+    intervalMs: 15_000,
+    label: "organizer bracket",
+    onRefresh: () => loadBracket(selectedMatchId, { silent: true })
+  });
 
   async function generateBracket() {
     setIsMutating(true);
@@ -249,6 +266,14 @@ export function OrganizerBracketManagementPanel({
         <SummaryCard label="Finished Matches" value={String(finishedMatches(bracket))} />
         <SummaryCard label="Advancement Mode" value="Backend" />
       </div>
+
+      <LiveSyncIndicator
+        errorCount={liveSync.errorCount}
+        lastError={liveSync.lastError}
+        lastUpdated={liveSync.lastUpdated}
+        onRefresh={liveSync.refreshNow}
+        status={liveSync.status}
+      />
 
       {notice ? <p className="org-bracket-notice">{notice}</p> : null}
       {error ? <PanelError error={error} /> : null}

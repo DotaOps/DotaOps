@@ -12140,3 +12140,98 @@ button.schedule-results-match:hover,
     flex-direction: column;
   }
 }
+.live-sync-indicator {
+  align-items: center;
+  border: 1px solid var(--ops-line-soft);
+  border-radius: var(--ops-radius);
+  color: var(--ops-muted-strong);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ops-space-2);
+  margin: var(--ops-space-3) 0;
+  max-width: max-content;
+  padding: 7px 10px;
+  background:
+    linear-gradient(135deg, rgba(255, 84, 78, 0.08), transparent 56%),
+    rgba(12, 12, 12, 0.72);
+  font-family: var(--font-geist-mono), "SFMono-Regular", Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.live-sync-indicator svg {
+  color: var(--ops-cyan);
+}
+
+.live-sync-indicator span {
+  color: var(--ops-text);
+  font-weight: 800;
+}
+
+.live-sync-indicator small {
+  color: var(--ops-muted);
+  font-size: 0.68rem;
+}
+
+.live-sync-indicator em {
+  color: var(--ops-error);
+  font-style: normal;
+  max-width: min(460px, 100%);
+  text-transform: none;
+}
+
+.live-sync-indicator button {
+  align-items: center;
+  border: 1px solid var(--ops-line);
+  border-radius: var(--ops-radius-sm);
+  color: var(--ops-muted-strong);
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.live-sync-indicator button:hover {
+  border-color: var(--ops-cyan);
+  color: var(--ops-cyan);
+}
+
+.live-sync-indicator.is-live {
+  border-color: rgba(110, 231, 168, 0.38);
+}
+
+.live-sync-indicator.is-live svg {
+  color: var(--ops-green);
+}
+
+.live-sync-indicator.is-paused svg {
+  color: var(--ops-secondary);
+}
+
+.live-sync-indicator.is-reconnecting,
+.live-sync-indicator.is-error {
+  border-color: rgba(255, 84, 78, 0.45);
+}
+
+.live-sync-indicator.is-reconnecting svg,
+.live-sync-indicator.is-error svg {
+  color: var(--ops-primary);
+}
+
+.public-tournament-live-panels {
+  display: grid;
+  gap: var(--ops-space-5);
+}
+
+.public-tournament-live-panels > .live-sync-indicator {
+  margin-bottom: calc(var(--ops-space-5) * -0.4);
+}
+
+@media (max-width: 720px) {
+  .live-sync-indicator {
+    max-width: 100%;
+  }
+}

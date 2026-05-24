@@ -9,14 +9,12 @@ import {
 } from "lucide-react";
 
 import { AnalyticsOverview } from "@/components/analytics-overview";
-import { GroupsStandingsPanel } from "@/components/groups-standings-panel";
 import { PublicTournamentManageLink } from "@/components/public-tournament-manage-link";
+import { PublicTournamentLivePanels } from "@/components/public-tournament-live-panels";
 import { SectionHeader } from "@/components/section-header";
-import { TournamentBracketPanel } from "@/components/tournament-bracket-panel";
 import { TournamentCommandHeader } from "@/components/tournament-command-header";
 import { TournamentMetaGrid } from "@/components/tournament-meta-grid";
 import { TournamentRegistrationPanel } from "@/components/tournament-registration-panel";
-import { TournamentScheduleResultsPanel } from "@/components/tournament-schedule-results-panel";
 import {
   getAnalytics,
   getTournamentBySlug,
@@ -153,29 +151,15 @@ export default async function TournamentDetailPage({
 
       <TournamentRegistrationPanel tournament={tournament} />
 
-      <GroupsStandingsPanel
-        error={groupsStandingsError}
-        groups={groupsStandings.groups}
-        managementAction={
-          <PublicTournamentManageLink
-            className="button ops-button-secondary"
-            label="Manage Groups"
-            note
-            slug={tournament.slug}
-            tournamentId={tournament.id}
-          />
-        }
-        standings={groupsStandings.standings}
-      />
-
-      <TournamentBracketPanel
-        bracket={bracket}
-        error={bracketError}
-      />
-
-      <TournamentScheduleResultsPanel
-        error={publicMatchesError}
-        matches={publicMatches}
+      <PublicTournamentLivePanels
+        initialBracket={bracket}
+        initialBracketError={bracketError}
+        initialGroupsStandings={groupsStandings}
+        initialGroupsStandingsError={groupsStandingsError}
+        initialMatches={publicMatches}
+        initialMatchesError={publicMatchesError}
+        slug={tournament.slug}
+        tournamentId={tournament.id}
       />
 
       <section className="tournament-command-panel tournament-analytics-panel ops-panel">
