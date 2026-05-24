@@ -10,11 +10,11 @@ import {
 } from "lucide-react";
 
 import { AnalyticsOverview } from "@/components/analytics-overview";
-import { BracketCommandPanel } from "@/components/bracket-command-panel";
 import { GroupsStandingsPanel } from "@/components/groups-standings-panel";
 import { MatchSchedule } from "@/components/match-schedule";
 import { PublicTournamentManageLink } from "@/components/public-tournament-manage-link";
 import { SectionHeader } from "@/components/section-header";
+import { TournamentBracketPanel } from "@/components/tournament-bracket-panel";
 import { TournamentCommandHeader } from "@/components/tournament-command-header";
 import { TournamentMetaGrid } from "@/components/tournament-meta-grid";
 import { TournamentRegistrationPanel } from "@/components/tournament-registration-panel";
@@ -29,6 +29,10 @@ import {
   getPublicGroupsStandingsData,
   type PublicGroupsStandingsData
 } from "@/lib/tournament-group-data";
+import {
+  getPublicTournamentBracket,
+  type TournamentBracket
+} from "@/lib/tournament-bracket-data";
 import { formatDateTime } from "@/lib/utils";
 
 interface TournamentDetailPageProps {
@@ -64,6 +68,8 @@ export default async function TournamentDetailPage({
     standings: []
   };
   let groupsStandingsError: string | null = null;
+  let bracket: TournamentBracket | null = null;
+  let bracketError: string | null = null;
 
   try {
     groupsStandings = await getPublicGroupsStandingsData(tournament.id);
@@ -71,6 +77,14 @@ export default async function TournamentDetailPage({
     groupsStandingsError = error instanceof Error
       ? error.message
       : "Group standings are unavailable.";
+  }
+
+  try {
+    bracket = await getPublicTournamentBracket(tournament.id);
+  } catch (error) {
+    bracketError = error instanceof Error
+      ? error.message
+      : "Bracket is unavailable.";
   }
 
   const tournamentMatches = matches.filter((match) => match.tournamentSlug === slug);
@@ -147,6 +161,11 @@ export default async function TournamentDetailPage({
         standings={groupsStandings.standings}
       />
 
+      <TournamentBracketPanel
+        bracket={bracket}
+        error={bracketError}
+      />
+
       <section className="tournament-control-grid">
         <div className="tournament-control-main">
           <section className="tournament-command-panel ops-panel">
@@ -163,8 +182,6 @@ export default async function TournamentDetailPage({
             />
             <MatchSchedule matches={tournamentMatches} />
           </section>
-
-          <BracketCommandPanel matches={tournamentMatches} />
         </div>
 
         <TournamentStatusPanel tournament={tournament} matches={tournamentMatches} />

@@ -31,6 +31,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
+import { OrganizerBracketManagementPanel } from "@/components/organizer-bracket-management-panel";
 import { OrganizerGroupManagementPanel } from "@/components/organizer-group-management-panel";
 import { RouteLoadingSkeleton } from "@/components/route-loading-skeleton";
 import { ApiRequestError, type ApiFieldError } from "@/lib/api";
@@ -320,6 +321,10 @@ function sectionIdForInitialView(view?: string) {
 
   if (view === "groups") {
     return "group-management";
+  }
+
+  if (view === "bracket") {
+    return "bracket-control";
   }
 
   return null;
@@ -1077,6 +1082,7 @@ function TournamentDetail({
       <nav className="org-tournament-section-shortcuts ops-panel" aria-label="Tournament detail sections">
         <button onClick={() => scrollToSection("registration-review")} type="button">Registrations</button>
         <button onClick={() => scrollToSection("group-management")} type="button">Groups</button>
+        <button onClick={() => scrollToSection("bracket-control")} type="button">Bracket</button>
         <button onClick={() => scrollToSection("staff-officials")} type="button">Staff</button>
         <button onClick={() => scrollToSection("match-operations-flow")} type="button">Match Controls</button>
       </nav>
@@ -1164,6 +1170,11 @@ function TournamentDetail({
           <OrganizerGroupManagementPanel
             matches={matches}
             registrations={registrations}
+            tournament={tournament}
+          />
+
+          <OrganizerBracketManagementPanel
+            onRefresh={onRefresh}
             tournament={tournament}
           />
 
