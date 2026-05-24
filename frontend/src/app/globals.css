@@ -398,6 +398,14 @@ p {
   min-width: 0;
 }
 
+.topbar-actions-public {
+  gap: 12px;
+}
+
+.topbar-actions-public .topbar-status-segment {
+  min-width: 112px;
+}
+
 .topbar-status-segment,
 .topbar-profile,
 .topbar-icon-button {
@@ -782,6 +790,15 @@ p {
   white-space: nowrap;
 }
 
+.button:focus-visible,
+.nav-link:focus-visible,
+.topbar-status-segment:focus-visible,
+.topbar-profile:focus-visible,
+.topbar-icon-button:focus-visible {
+  outline: 2px solid var(--ops-cyan);
+  outline-offset: 3px;
+}
+
 .button-primary {
   background: var(--red);
   color: #ffffff;
@@ -884,6 +901,12 @@ p {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
+}
+
+.section-header .section-action,
+.section-header > .button,
+.section-header > a {
+  margin-top: 2px;
 }
 
 .section-header h2 {
@@ -1031,11 +1054,14 @@ p {
   justify-content: center;
   min-height: 28px;
   padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   background: var(--surface-strong);
   color: var(--muted);
   font-size: 0.74rem;
   font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 

@@ -178,9 +178,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     return navItems.filter((item) => !item.organizerOnly || canUseOrganizer);
   }, [canUseOrganizer, isPublicContentGuest]);
-  const profileHref = isPublicContentGuest ? "/login" : "/profile";
-  const profileLabel = isPublicContentGuest ? "PUBLIC OPS" : profile?.nickname ?? "SOLO_TACTICIAN";
-  const profileRoleLabel = isPublicContentGuest ? "Visitor" : profile?.role ?? "Profile";
+  const hasAuthenticatedProfile = Boolean(profile);
+  const profileLabel = profile?.nickname ?? "SOLO_TACTICIAN";
+  const profileRoleLabel = profile?.role ?? "Profile";
   const shouldShowPageSkeleton = isPrivateAuthCheckPending && Boolean(profile);
   const pageDashboardLoadingRole = dashboardLoadingRole(profile?.role);
 
@@ -263,39 +263,46 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="main-area">
         {isRoleDashboard ? null : (
           <header className="topbar ops-panel">
-            <div className="topbar-actions" aria-label="Application status and actions">
+            <div
+              className={classNames("topbar-actions", !hasAuthenticatedProfile && "topbar-actions-public")}
+              aria-label="Application status and actions"
+            >
               <div className="topbar-status-segment">
                 <RadioTower size={16} />
                 <span>OPS STATUS</span>
                 <strong>ONLINE</strong>
               </div>
 
-              <div className="topbar-status-segment topbar-rank-segment">
-                <Shield size={16} />
-                <span>RANK</span>
-                <strong>IMMORTAL</strong>
-              </div>
+              {hasAuthenticatedProfile ? (
+                <>
+                  <div className="topbar-status-segment topbar-rank-segment">
+                    <Shield size={16} />
+                    <span>RANK</span>
+                    <strong>IMMORTAL</strong>
+                  </div>
 
-              <button className="topbar-icon-button" type="button" aria-label="Notifications">
-                <Bell size={17} />
-              </button>
+                  <button className="topbar-icon-button" type="button" aria-label="Notifications">
+                    <Bell size={17} />
+                  </button>
 
-              <Link className="topbar-profile" href={profileHref} aria-label="User profile">
-                <span className="topbar-avatar" aria-hidden="true">
-                  {!isPublicContentGuest && profile?.avatarUrl ? (
-                    <span
-                      className="topbar-avatar-image"
-                      style={{ backgroundImage: `url(${profile.avatarUrl})` }}
-                    />
-                  ) : (
-                    <UserRound size={16} />
-                  )}
-                </span>
-                <span>
-                  <strong>{profileLabel}</strong>
-                  <small>{profileRoleLabel}</small>
-                </span>
-              </Link>
+                  <Link className="topbar-profile" href="/profile" aria-label="User profile">
+                    <span className="topbar-avatar" aria-hidden="true">
+                      {profile?.avatarUrl ? (
+                        <span
+                          className="topbar-avatar-image"
+                          style={{ backgroundImage: `url(${profile.avatarUrl})` }}
+                        />
+                      ) : (
+                        <UserRound size={16} />
+                      )}
+                    </span>
+                    <span>
+                      <strong>{profileLabel}</strong>
+                      <small>{profileRoleLabel}</small>
+                    </span>
+                  </Link>
+                </>
+              ) : null}
 
               <Link className="button button-primary ops-button-primary topbar-primary-action" href={primaryAction.href}>
                 <PrimaryActionIcon size={18} />
