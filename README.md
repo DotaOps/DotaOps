@@ -131,6 +131,8 @@ Rocni sync sprozi admin uporabnik:
 POST /api/admin/heroes/sync
 ```
 
+Endpoint je pod `/api/admin/**` in zahteva backend admin vlogo. V deploy okolju naj ostane za admin/server tok, ne za javni frontend tok.
+
 Primer response:
 
 ```json
@@ -200,6 +202,8 @@ Admin uporabnik lahko rocno sprozi refresh:
 ```http
 POST /api/admin/analytics/refresh
 ```
+
+Endpoint je pod `/api/admin/**` in zahteva backend admin vlogo. V realnem okolju mora biti dostopen samo zaupanja vrednim admin uporabnikom oziroma server operacijam.
 
 Backend pri tem poklice DB funkcijo `private.refresh_dotaops_analytics()`. Response vsebuje `status`, `reason`, `requestedAt`, `completedAt`, `durationMs` in `message`. Po uspesnem match importu backend sprozi asinhroni refresh request z razlogom `match import ready: <dotaMatchId>`; ce ta refresh pade, import ostane `ready`, napaka pa se zabelezi v backend log.
 

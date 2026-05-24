@@ -32,6 +32,7 @@ import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
 import { OrganizerGroupManagementPanel } from "@/components/organizer-group-management-panel";
+import { RouteLoadingSkeleton } from "@/components/route-loading-skeleton";
 import { ApiRequestError, type ApiFieldError } from "@/lib/api";
 import { getCurrentUserProfile, type CurrentUserProfile, type ProfileRole } from "@/lib/auth";
 import {
@@ -639,7 +640,7 @@ export function OrganizerCommandPage({
   }
 
   if (loadState === "loading") {
-    return <section className="org-tournament-state ops-panel">Loading organizer tournament uplink...</section>;
+    return <RouteLoadingSkeleton />;
   }
 
   if (loadState === "login" || loadState === "permission" || loadState === "error") {

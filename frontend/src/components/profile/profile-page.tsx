@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import { RouteLoadingSkeleton } from "@/components/route-loading-skeleton";
 import {
   getCurrentUserProfile,
   signOutCurrentUser,
@@ -321,7 +322,7 @@ export function ProfilePage() {
   }
 
   if (isLoading) {
-    return <div className="profile-state-card ops-panel">Loading profile uplink...</div>;
+    return <RouteLoadingSkeleton />;
   }
 
   if (!profile) {
