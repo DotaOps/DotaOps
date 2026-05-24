@@ -1,6 +1,9 @@
 import { fetchApi } from "@/lib/api";
 import {
-  heroMetrics,
+  getPublicHeroMetrics,
+  getPublicTeamMetrics
+} from "@/lib/analytics-data";
+import {
   matches,
   roadmap,
   teams
@@ -110,12 +113,30 @@ export async function getMatches() {
 }
 
 export async function getAnalytics() {
-  const result = await fetchApi<AnalyticsData>("/analytics", {
-    heroMetrics,
-    teams
-  });
+  const [heroMetrics, teamMetrics] = await Promise.all([
+    getPublicHeroMetrics({ limit: 50 }),
+    getPublicTeamMetrics({ limit: 50 })
+  ]);
 
-  return result.data;
+  return {
+    heroMetrics: heroMetrics.map((hero) => ({
+      avgKda: hero.kda,
+      hero: hero.localizedName,
+      pickRate: hero.gamesPlayed,
+      winRate: hero.winRate
+    })),
+    teams: teamMetrics.map((team) => ({
+      captain: "Unavailable",
+      favoriteHeroes: [],
+      id: team.teamId,
+      kda: team.avgKda,
+      lastFive: [],
+      name: team.teamName,
+      region: team.tournamentName ?? "Public analytics",
+      roster: [],
+      winRate: team.winRate
+    }))
+  } satisfies AnalyticsData;
 }
 
 export async function getRoadmap() {
