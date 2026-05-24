@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
+import { PageLoadingOverlay } from "@/components/page-loading-overlay";
 import { dashboardPathForRole, getCurrentUserProfile, loginWithEmailPassword } from "@/lib/auth";
 import { safeLocalRedirectPath } from "@/lib/route-access";
 
@@ -166,7 +167,7 @@ export function LoginForm() {
         </span>
       </div>
 
-      {isLoading ? <div className="auth-loading-overlay">Preparing tactical dashboard...</div> : null}
+      {isLoading ? <PageLoadingOverlay label="Logging in" /> : null}
     </main>
   );
 }

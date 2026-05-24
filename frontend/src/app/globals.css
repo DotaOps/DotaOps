@@ -6817,19 +6817,6 @@ textarea:focus {
   background: #7bd1f8;
 }
 
-.auth-loading-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  display: grid;
-  place-items: center;
-  background: rgba(10, 10, 10, 0.72);
-  color: #7bd1f8;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
 .auth-register-main {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(520px, 0.9fr);
