@@ -32,6 +32,7 @@ import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
 import { LiveSyncIndicator } from "@/components/live-sync-indicator";
+import { MatchImportPanel } from "@/components/match-import-panel";
 import { OrganizerBracketManagementPanel } from "@/components/organizer-bracket-management-panel";
 import { OrganizerGroupManagementPanel } from "@/components/organizer-group-management-panel";
 import { OrganizerMatchResultsPanel } from "@/components/organizer-match-results-panel";
@@ -1122,6 +1123,7 @@ function TournamentDetail({
         <button onClick={() => scrollToSection("group-management")} type="button">Groups</button>
         <button onClick={() => scrollToSection("bracket-control")} type="button">Bracket</button>
         <button onClick={() => scrollToSection("match-results")} type="button">Matches</button>
+        <button onClick={() => scrollToSection("match-import")} type="button">Import</button>
         <button onClick={() => scrollToSection("staff-officials")} type="button">Staff</button>
         <button onClick={() => scrollToSection("match-operations-flow")} type="button">Match Controls</button>
       </nav>
@@ -1221,6 +1223,10 @@ function TournamentDetail({
             onRefresh={onRefresh}
             tournament={tournament}
           />
+
+          <div className="org-tournament-panel organizer-import-shell ops-panel" id="match-import">
+            <MatchImportPanel />
+          </div>
 
           <StaffOfficialsPanel
             currentProfile={currentProfile}
