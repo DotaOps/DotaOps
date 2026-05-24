@@ -32,6 +32,7 @@ import si.um.feri.dotaops.backend.storage.service.SupabaseImageStorageService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -135,6 +136,29 @@ class ProfileServiceTest {
 
         assertThat(result.created()).isFalse();
         assertThat(result.profile().role()).isEqualTo("organizer");
+    }
+
+    @Test
+    void createCurrentProfileDoesNotDowngradeExistingOrganizerOnPlayerOnboarding() {
+        when(currentUserProvider.requireAuthUserId()).thenReturn(AUTH_USER_ID);
+        when(profileRepository.findByAuthUserId(AUTH_USER_ID))
+                .thenReturn(Optional.of(profile("OrganizerOne", "SI", ProfileRole.ORGANIZER)));
+        when(profileRepository.updateById(
+                org.mockito.ArgumentMatchers.eq(PROFILE_ID),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(Optional.of(profile("OrganizerOne", "SI", ProfileRole.ORGANIZER)));
+
+        var result = profileService.createCurrentProfile(new CreateProfileRequest(
+                "OrganizerOne",
+                "Organizer One",
+                null,
+                null,
+                "si",
+                "player"));
+
+        assertThat(result.created()).isFalse();
+        assertThat(result.profile().role()).isEqualTo("organizer");
+        verify(profileRepository, never()).updateRoleById(PROFILE_ID, ProfileRole.PLAYER);
     }
 
     @Test

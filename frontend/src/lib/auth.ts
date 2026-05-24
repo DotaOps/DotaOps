@@ -242,6 +242,16 @@ function isRegistrationRateLimitError(value: unknown) {
   );
 }
 
+function isAlreadyRegisteredErrorMessage(message?: string | null) {
+  const normalized = message?.toLowerCase() ?? "";
+
+  return (
+    normalized.includes("already") ||
+    normalized.includes("registered") ||
+    normalized.includes("exists")
+  );
+}
+
 export async function getCurrentProfileRole(authUserId: string) {
   const supabase = requireSupabaseClient();
   const { data, error } = await supabase
@@ -645,6 +655,65 @@ export async function loginWithEmailPassword(input: LoginInput): Promise<AuthRes
   };
 }
 
+async function enableOrganizerAccessForExistingAccount(
+  input: RegisterInput,
+  email: string
+): Promise<AuthResult> {
+  const supabase = requireSupabaseClient();
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password: input.password
+  });
+
+  if (error) {
+    if (isRegistrationRateLimitError(error)) {
+      throw new RegistrationRateLimitError();
+    }
+
+    throw new Error(
+      "This email already has a DotaOps account. Use the existing password or log in first to enable organizer access."
+    );
+  }
+
+  if (!data.user?.id || !data.session?.access_token) {
+    throw new Error("Existing account login completed, but no active session was returned.");
+  }
+
+  try {
+    const profile = profileFromBackend(
+      await postApiAuthenticated<BackendProfileResponse>(
+        "/me/profile",
+        {
+          ...createProfilePayload(input),
+          desired_role: "organizer"
+        },
+        data.session.access_token
+      ),
+      email
+    );
+
+    if (!profile || (profile.role !== "organizer" && profile.role !== "admin")) {
+      throw new Error("Backend profile setup did not grant organizer access.");
+    }
+
+    return {
+      dashboardPath: "/dashboard?role=organizer",
+      message: "Organizer access enabled for your existing DotaOps account."
+    };
+  } catch (caught) {
+    await supabase.auth.signOut();
+
+    throw new Error(
+      [
+        "Existing account login succeeded, but organizer access could not be enabled.",
+        caught instanceof Error ? caught.message : null
+      ]
+        .filter(Boolean)
+        .join(" ")
+    );
+  }
+}
+
 export async function registerWithEmailPassword(input: RegisterInput): Promise<AuthResult> {
   const supabase = requireSupabaseClient();
   const email = normalizeEmail(input.email);
@@ -671,6 +740,10 @@ export async function registerWithEmailPassword(input: RegisterInput): Promise<A
   if (error) {
     if (isRegistrationRateLimitError(error)) {
       throw new RegistrationRateLimitError();
+    }
+
+    if (input.requestedRole === "organizer" && isAlreadyRegisteredErrorMessage(error.message)) {
+      return enableOrganizerAccessForExistingAccount(input, email);
     }
 
     throw new Error(registrationErrorMessage(error.message, email));
@@ -753,7 +826,7 @@ function registrationErrorMessage(message: string, email: string) {
     return `Supabase rejected "${email}" as an invalid email address. Check for hidden spaces or use a normal inbox address.`;
   }
 
-  if (normalized.includes("already") || normalized.includes("registered")) {
+  if (isAlreadyRegisteredErrorMessage(normalized)) {
     return "An account with this email may already exist. Try logging in instead.";
   }
 

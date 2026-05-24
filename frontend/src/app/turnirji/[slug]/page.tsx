@@ -4,24 +4,19 @@ import {
   BarChart3,
   CalendarDays,
   DatabaseZap,
-  GitBranch,
   Trophy,
   UsersRound
 } from "lucide-react";
 
 import { AnalyticsOverview } from "@/components/analytics-overview";
-import { BracketCommandPanel } from "@/components/bracket-command-panel";
-import { GroupsStandingsPanel } from "@/components/groups-standings-panel";
-import { MatchSchedule } from "@/components/match-schedule";
 import { PublicTournamentManageLink } from "@/components/public-tournament-manage-link";
+import { PublicTournamentLivePanels } from "@/components/public-tournament-live-panels";
 import { SectionHeader } from "@/components/section-header";
 import { TournamentCommandHeader } from "@/components/tournament-command-header";
 import { TournamentMetaGrid } from "@/components/tournament-meta-grid";
 import { TournamentRegistrationPanel } from "@/components/tournament-registration-panel";
-import { TournamentStatusPanel } from "@/components/tournament-status-panel";
 import {
   getAnalytics,
-  getMatches,
   getTournamentBySlug,
   getTournaments
 } from "@/lib/data";
@@ -29,6 +24,14 @@ import {
   getPublicGroupsStandingsData,
   type PublicGroupsStandingsData
 } from "@/lib/tournament-group-data";
+import {
+  getPublicTournamentBracket,
+  type TournamentBracket
+} from "@/lib/tournament-bracket-data";
+import {
+  getPublicTournamentMatches,
+  type TournamentMatch
+} from "@/lib/tournament-match-data";
 import { formatDateTime } from "@/lib/utils";
 
 interface TournamentDetailPageProps {
@@ -49,9 +52,8 @@ export default async function TournamentDetailPage({
   params
 }: TournamentDetailPageProps) {
   const { slug } = await params;
-  const [analytics, matches, tournament] = await Promise.all([
+  const [analytics, tournament] = await Promise.all([
     getAnalytics(),
-    getMatches(),
     getTournamentBySlug(slug)
   ]);
 
@@ -64,6 +66,10 @@ export default async function TournamentDetailPage({
     standings: []
   };
   let groupsStandingsError: string | null = null;
+  let bracket: TournamentBracket | null = null;
+  let bracketError: string | null = null;
+  let publicMatches: TournamentMatch[] = [];
+  let publicMatchesError: string | null = null;
 
   try {
     groupsStandings = await getPublicGroupsStandingsData(tournament.id);
@@ -73,8 +79,21 @@ export default async function TournamentDetailPage({
       : "Group standings are unavailable.";
   }
 
-  const tournamentMatches = matches.filter((match) => match.tournamentSlug === slug);
-  const importedMatches = tournamentMatches.filter((match) => match.dotaMatchId).length;
+  try {
+    bracket = await getPublicTournamentBracket(tournament.id);
+  } catch (error) {
+    bracketError = error instanceof Error
+      ? error.message
+      : "Bracket is unavailable.";
+  }
+
+  try {
+    publicMatches = await getPublicTournamentMatches(tournament.id);
+  } catch (error) {
+    publicMatchesError = error instanceof Error
+      ? error.message
+      : "Schedule is unavailable.";
+  }
 
   return (
     <div className="tournament-control-room">
@@ -120,11 +139,11 @@ export default async function TournamentDetailPage({
               value: `${tournament.registrationsCount}/${tournament.teamsCount}`
             },
             {
-              detail: "OpenDota linked",
+              detail: "official records",
               icon: DatabaseZap,
-              label: "Match_id",
+              label: "Matches",
               tone: "green",
-              value: String(importedMatches)
+              value: String(publicMatches.length)
             }
           ]}
         />
@@ -132,43 +151,16 @@ export default async function TournamentDetailPage({
 
       <TournamentRegistrationPanel tournament={tournament} />
 
-      <GroupsStandingsPanel
-        error={groupsStandingsError}
-        groups={groupsStandings.groups}
-        managementAction={
-          <PublicTournamentManageLink
-            className="button ops-button-secondary"
-            label="Manage Groups"
-            note
-            slug={tournament.slug}
-            tournamentId={tournament.id}
-          />
-        }
-        standings={groupsStandings.standings}
+      <PublicTournamentLivePanels
+        initialBracket={bracket}
+        initialBracketError={bracketError}
+        initialGroupsStandings={groupsStandings}
+        initialGroupsStandingsError={groupsStandingsError}
+        initialMatches={publicMatches}
+        initialMatchesError={publicMatchesError}
+        slug={tournament.slug}
+        tournamentId={tournament.id}
       />
-
-      <section className="tournament-control-grid">
-        <div className="tournament-control-main">
-          <section className="tournament-command-panel ops-panel">
-            <SectionHeader
-              eyebrow="Match operations"
-              title="Schedule, Results, and match_id"
-              description="Foundation for the public viewer experience and links to internal tournament records."
-              action={
-                <span className="ops-badge">
-                  <GitBranch size={14} />
-                  {tournamentMatches.length} matches
-                </span>
-              }
-            />
-            <MatchSchedule matches={tournamentMatches} />
-          </section>
-
-          <BracketCommandPanel matches={tournamentMatches} />
-        </div>
-
-        <TournamentStatusPanel tournament={tournament} matches={tournamentMatches} />
-      </section>
 
       <section className="tournament-command-panel tournament-analytics-panel ops-panel">
         <SectionHeader

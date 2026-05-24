@@ -346,8 +346,8 @@ export function RegisterForm() {
               })}
             </div>
             <p>
-              Note: requested role is saved for backend/admin approval when direct client role
-              promotion is blocked by database policies.
+              Note: team captain access follows team ownership. Organizer access can be enabled on
+              the same login when the email already belongs to your DotaOps account.
             </p>
           </div>
 
