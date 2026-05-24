@@ -15,7 +15,9 @@ import {
 import Link from "next/link";
 import { FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
+import { LiveSyncIndicator } from "@/components/live-sync-indicator";
 import { ApiRequestError } from "@/lib/api";
+import { useTournamentLiveRefresh } from "@/hooks/use-tournament-live-refresh";
 import { listOrganizerTournaments } from "@/lib/organizer-tournament-data";
 import { isOrganizerRole } from "@/lib/route-access";
 import { loadTeamManagementData, type TeamManagementViewModel } from "@/lib/team-data";
@@ -88,11 +90,14 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
   const [registration, setRegistration] = useState<TournamentRegistration | null>(null);
   const [state, setState] = useState<LoadState>("loading");
 
-  const load = useCallback(async () => {
-    setState("loading");
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setState("loading");
+      setManageableTournamentId(null);
+      setNotice(null);
+    }
+
     setError(null);
-    setManageableTournamentId(null);
-    setNotice(null);
 
     try {
       const nextData = await loadTeamManagementData();
@@ -129,8 +134,11 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
 
       setState("ready");
     } catch (caught) {
-      setState("error");
+      if (!options?.silent) {
+        setState("error");
+      }
       setError(requestErrorMessage(caught));
+      throw caught;
     }
   }, [tournament]);
 
@@ -139,6 +147,14 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
 
     return () => window.clearTimeout(timeout);
   }, [load]);
+
+  const liveSync = useTournamentLiveRefresh({
+    enabled: state === "ready" && Boolean(data),
+    hiddenIntervalMs: 60_000,
+    intervalMs: 30_000,
+    label: "registration status",
+    onRefresh: () => load({ silent: true })
+  });
 
   const activeMembers = useMemo(
     () => data?.members.filter((member) => member.active) ?? [],
@@ -278,7 +294,7 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
           <h2>Registration state unavailable</h2>
           <p>{error}</p>
         </div>
-        <button className="ops-button-secondary button" onClick={load} type="button">
+        <button className="ops-button-secondary button" onClick={() => void load()} type="button">
           <RefreshCw size={17} />
           Retry
         </button>
@@ -288,6 +304,16 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
 
   return (
     <section className="tournament-registration-workspace">
+      {state === "ready" && data ? (
+        <LiveSyncIndicator
+          errorCount={liveSync.errorCount}
+          lastError={liveSync.lastError}
+          lastUpdated={liveSync.lastUpdated}
+          onRefresh={liveSync.refreshNow}
+          status={liveSync.status}
+        />
+      ) : null}
+
       {notice ? <p className="tournament-registration-message is-success">{notice}</p> : null}
       {error ? <p className="tournament-registration-message is-error">{error}</p> : null}
 

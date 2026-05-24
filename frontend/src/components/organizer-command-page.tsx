@@ -31,8 +31,12 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
+import { LiveSyncIndicator } from "@/components/live-sync-indicator";
+import { OrganizerBracketManagementPanel } from "@/components/organizer-bracket-management-panel";
 import { OrganizerGroupManagementPanel } from "@/components/organizer-group-management-panel";
+import { OrganizerMatchResultsPanel } from "@/components/organizer-match-results-panel";
 import { RouteLoadingSkeleton } from "@/components/route-loading-skeleton";
+import { useTournamentLiveRefresh } from "@/hooks/use-tournament-live-refresh";
 import { ApiRequestError, type ApiFieldError } from "@/lib/api";
 import { getCurrentUserProfile, type CurrentUserProfile, type ProfileRole } from "@/lib/auth";
 import {
@@ -322,6 +326,14 @@ function sectionIdForInitialView(view?: string) {
     return "group-management";
   }
 
+  if (view === "bracket") {
+    return "bracket-control";
+  }
+
+  if (view === "matches") {
+    return "match-results";
+  }
+
   return null;
 }
 
@@ -463,11 +475,13 @@ export function OrganizerCommandPage({
     }
   }, [initialSlug, initialTournamentId, initialView, loadOrganizerMatchFlow]);
 
-  async function loadDetail(tournamentId: string) {
-    setIsMutating(true);
-    setActionError(null);
-    setFieldErrors([]);
-    setMatchFlowError(null);
+  const loadDetail = useCallback(async (tournamentId: string, options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setIsMutating(true);
+      setActionError(null);
+      setFieldErrors([]);
+      setMatchFlowError(null);
+    }
 
     try {
       const [tournament, registrationList] = await Promise.all([
@@ -480,11 +494,24 @@ export function OrganizerCommandPage({
       await loadOrganizerMatchFlow(tournamentId);
       setView("detail");
     } catch (error) {
-      setActionError(errorMessage(error));
+      if (!options?.silent) {
+        setActionError(errorMessage(error));
+      }
+      throw error;
     } finally {
-      setIsMutating(false);
+      if (!options?.silent) {
+        setIsMutating(false);
+      }
     }
-  }
+  }, [loadOrganizerMatchFlow]);
+
+  const refreshSelectedDetail = useCallback(async () => {
+    if (!selectedTournament) {
+      return;
+    }
+
+    await loadDetail(selectedTournament.id, { silent: true });
+  }, [loadDetail, selectedTournament]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void loadOrganizerAccess(), 0);
@@ -510,6 +537,13 @@ export function OrganizerCommandPage({
   }, [initialView, selectedTournament, view]);
 
   const counts = useMemo(() => dashboardCounts(tournaments), [tournaments]);
+  const detailLiveSync = useTournamentLiveRefresh({
+    enabled: view === "detail" && Boolean(selectedTournament),
+    hiddenIntervalMs: 60_000,
+    intervalMs: 15_000,
+    label: "organizer tournament detail",
+    onRefresh: refreshSelectedDetail
+  });
 
   function clearMessages() {
     setActionError(null);
@@ -709,23 +743,32 @@ export function OrganizerCommandPage({
       ) : null}
 
       {view === "detail" && selectedTournament ? (
-        <TournamentDetail
-          currentProfile={currentProfile}
-          isMutating={isMutating}
-          matchFlowError={matchFlowError}
-          matches={organizerMatches}
-          onArchive={() => mutateTournament(selectedTournament, "archive")}
-          onBack={() => {
-            clearMessages();
-            setView("dashboard");
-          }}
-          onEdit={() => openEdit(selectedTournament)}
-          onPublish={() => mutateTournament(selectedTournament, "publish")}
-          onRefresh={() => loadDetail(selectedTournament.id)}
-          onReviewRegistration={reviewRegistration}
-          registrations={registrations}
-          tournament={selectedTournament}
-        />
+        <>
+          <LiveSyncIndicator
+            errorCount={detailLiveSync.errorCount}
+            lastError={detailLiveSync.lastError}
+            lastUpdated={detailLiveSync.lastUpdated}
+            onRefresh={detailLiveSync.refreshNow}
+            status={detailLiveSync.status}
+          />
+          <TournamentDetail
+            currentProfile={currentProfile}
+            isMutating={isMutating}
+            matchFlowError={matchFlowError}
+            matches={organizerMatches}
+            onArchive={() => mutateTournament(selectedTournament, "archive")}
+            onBack={() => {
+              clearMessages();
+              setView("dashboard");
+            }}
+            onEdit={() => openEdit(selectedTournament)}
+            onPublish={() => mutateTournament(selectedTournament, "publish")}
+            onRefresh={() => loadDetail(selectedTournament.id)}
+            onReviewRegistration={reviewRegistration}
+            registrations={registrations}
+            tournament={selectedTournament}
+          />
+        </>
       ) : null}
     </div>
   );
@@ -1077,6 +1120,8 @@ function TournamentDetail({
       <nav className="org-tournament-section-shortcuts ops-panel" aria-label="Tournament detail sections">
         <button onClick={() => scrollToSection("registration-review")} type="button">Registrations</button>
         <button onClick={() => scrollToSection("group-management")} type="button">Groups</button>
+        <button onClick={() => scrollToSection("bracket-control")} type="button">Bracket</button>
+        <button onClick={() => scrollToSection("match-results")} type="button">Matches</button>
         <button onClick={() => scrollToSection("staff-officials")} type="button">Staff</button>
         <button onClick={() => scrollToSection("match-operations-flow")} type="button">Match Controls</button>
       </nav>
@@ -1164,6 +1209,16 @@ function TournamentDetail({
           <OrganizerGroupManagementPanel
             matches={matches}
             registrations={registrations}
+            tournament={tournament}
+          />
+
+          <OrganizerBracketManagementPanel
+            onRefresh={onRefresh}
+            tournament={tournament}
+          />
+
+          <OrganizerMatchResultsPanel
+            onRefresh={onRefresh}
             tournament={tournament}
           />
 
