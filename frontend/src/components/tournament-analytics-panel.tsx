@@ -27,17 +27,23 @@ export function TournamentAnalyticsPanel({
 
   return (
     <section className="tournament-command-panel tournament-analytics-panel tournament-real-analytics-panel ops-panel">
-      <SectionHeader
-        eyebrow="Tournament Analytics"
-        title="Backend Calculated Metrics"
-        description="Read-only public analytics from imported OpenDota match data."
-        action={
-          <span className="ops-badge">
-            <ShieldCheck size={14} />
-            Backend calculated
-          </span>
-        }
-      />
+      <div className="tournament-analytics-header">
+        <SectionHeader
+          eyebrow="Tournament Analytics"
+          title="Backend Calculated Metrics"
+          description="Read-only public analytics from imported OpenDota match data."
+          action={
+            <span className="ops-badge">
+              <ShieldCheck size={14} />
+              Backend calculated
+            </span>
+          }
+        />
+        <div className="tournament-analytics-source">
+          <span className="ops-label">Data stream</span>
+          <strong>{hasData ? "Stable" : "Awaiting import"}</strong>
+        </div>
+      </div>
 
       {error ? (
         <div className="tournament-analytics-state">
@@ -48,6 +54,7 @@ export function TournamentAnalyticsPanel({
 
       {!error && !hasData ? (
         <div className="tournament-analytics-state">
+          <span className="ops-label">Analytics pipeline idle</span>
           <strong>No imported match analytics yet.</strong>
           <p>Import OpenDota matches first. Analytics will appear after backend processing.</p>
         </div>

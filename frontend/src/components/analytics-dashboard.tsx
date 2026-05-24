@@ -5,6 +5,7 @@ import {
   BarChart3,
   Clock3,
   DatabaseZap,
+  FileWarning,
   RefreshCw,
   ShieldCheck,
   Swords,
@@ -48,6 +49,10 @@ function secondsToDuration(value: number | null) {
 
 function numberOrNoData(value: number, digits = 1) {
   return value > 0 ? value.toFixed(digits) : "No data";
+}
+
+function integerOrNoData(value: number) {
+  return value > 0 ? value.toLocaleString("en-US") : "No data";
 }
 
 function average(values: number[]) {
@@ -192,7 +197,7 @@ export function AnalyticsDashboard() {
     <div className="analytics-terminal real-analytics-dashboard">
       <section className="analytics-terminal-header ops-panel ops-command-grid">
         <div className="analytics-terminal-copy">
-          <p className="ops-label">DotaOps Analytics Terminal</p>
+          <p className="ops-label">DOTAOPS ANALYTICS ENGINE</p>
           <h1>Analytics Terminal</h1>
           <p className="ops-mono">
             Backend-calculated public analytics from imported OpenDota match data.
@@ -213,7 +218,7 @@ export function AnalyticsDashboard() {
           <div>
             <Activity size={18} />
             <span className="ops-label">Metrics</span>
-            <strong className="ops-data">{summary.analyzedMatches || "No data"}</strong>
+            <strong className="ops-data">{integerOrNoData(summary.analyzedMatches)}</strong>
           </div>
         </div>
 
@@ -244,9 +249,18 @@ export function AnalyticsDashboard() {
       ) : null}
 
       {allEmpty(snapshot) ? (
-        <section className="analytics-state-panel ops-panel">
-          <strong>No imported match analytics yet.</strong>
-          <p>Import OpenDota matches first. Analytics will appear after backend processing.</p>
+        <section className="analytics-state-panel analytics-empty-state ops-panel">
+          <div>
+            <FileWarning size={22} />
+            <span className="ops-label">Analytics pipeline idle</span>
+            <strong>No imported match analytics yet.</strong>
+            <p>Import OpenDota matches first. Analytics will appear after backend processing.</p>
+          </div>
+          <div className="analytics-empty-steps">
+            <span>OpenDota import required</span>
+            <span>Backend processing required</span>
+            <span>Public metrics unlock after data is ready</span>
+          </div>
         </section>
       ) : null}
 
@@ -254,7 +268,7 @@ export function AnalyticsDashboard() {
         <TelemetryCard
           icon={DatabaseZap}
           label="Analyzed matches"
-          value={summary.analyzedMatches ? String(summary.analyzedMatches) : "No data"}
+          value={integerOrNoData(summary.analyzedMatches)}
           delta="backend aggregate"
           tone="cyan"
         />
@@ -306,7 +320,7 @@ export function AnalyticsDashboard() {
         </section>
       ) : null}
 
-      <section className="analytics-terminal-panel ops-panel">
+      <section className="analytics-terminal-panel analytics-data-panel ops-panel">
         <SectionHeader
           eyebrow="Hero performance"
           title="Hero Performance Matrix"
@@ -316,7 +330,7 @@ export function AnalyticsDashboard() {
       </section>
 
       <section className="analytics-terminal-grid analytics-terminal-grid-secondary">
-        <div className="analytics-terminal-panel ops-panel">
+        <div className="analytics-terminal-panel analytics-data-panel ops-panel">
           <SectionHeader
             eyebrow="Team comparison"
             title="Team Power Index"
@@ -325,7 +339,7 @@ export function AnalyticsDashboard() {
           <TeamMatrix teams={snapshot.teams} />
         </div>
 
-        <div className="analytics-terminal-panel ops-panel">
+        <div className="analytics-terminal-panel analytics-data-panel ops-panel">
           <SectionHeader
             eyebrow="Player telemetry"
             title="Player Performance"
@@ -335,7 +349,7 @@ export function AnalyticsDashboard() {
         </div>
       </section>
 
-      <section className="analytics-terminal-panel ops-panel">
+      <section className="analytics-terminal-panel analytics-data-panel ops-panel">
         <SectionHeader
           eyebrow="Tournament aggregates"
           title="Tournament Analytics"
@@ -349,7 +363,7 @@ export function AnalyticsDashboard() {
 
 function HeroMatrix({ heroes }: { heroes: HeroAnalyticsMetric[] }) {
   if (heroes.length === 0) {
-    return <p className="analytics-empty-copy">No hero metrics available.</p>;
+    return <AnalyticsEmptyBlock title="No hero metrics available." detail="Hero performance rows will appear after imported matches include hero data." />;
   }
 
   return (
@@ -387,7 +401,7 @@ function HeroMatrix({ heroes }: { heroes: HeroAnalyticsMetric[] }) {
 
 function TeamMatrix({ teams }: { teams: TeamAnalyticsMetric[] }) {
   if (teams.length === 0) {
-    return <p className="analytics-empty-copy">No team metrics available.</p>;
+    return <AnalyticsEmptyBlock title="No team metrics available." detail="Team comparison stays empty until backend analytics receives imported team match data." />;
   }
 
   return (
@@ -414,7 +428,7 @@ function TeamMatrix({ teams }: { teams: TeamAnalyticsMetric[] }) {
 
 function PlayerMatrix({ players }: { players: PlayerAnalyticsMetric[] }) {
   if (players.length === 0) {
-    return <p className="analytics-empty-copy">No player metrics available.</p>;
+    return <AnalyticsEmptyBlock title="No player metrics available." detail="Player telemetry will populate from imported OpenDota player records." />;
   }
 
   return (
@@ -438,7 +452,7 @@ function PlayerMatrix({ players }: { players: PlayerAnalyticsMetric[] }) {
 
 function TournamentMatrix({ tournaments }: { tournaments: TournamentAnalyticsMetric[] }) {
   if (tournaments.length === 0) {
-    return <p className="analytics-empty-copy">No tournament metrics available.</p>;
+    return <AnalyticsEmptyBlock title="No tournament metrics available." detail="Tournament aggregates require processed match analytics from the backend." />;
   }
 
   return (
@@ -477,6 +491,22 @@ function TournamentMatrix({ tournaments }: { tournaments: TournamentAnalyticsMet
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function AnalyticsEmptyBlock({
+  detail,
+  title
+}: {
+  detail: string;
+  title: string;
+}) {
+  return (
+    <div className="analytics-empty-block">
+      <span className="ops-label">Awaiting backend data</span>
+      <strong>{title}</strong>
+      <p>{detail}</p>
     </div>
   );
 }
