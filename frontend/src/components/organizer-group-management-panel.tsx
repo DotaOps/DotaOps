@@ -5,7 +5,9 @@ import type { LucideIcon } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { GroupsStandingsPanel } from "@/components/groups-standings-panel";
+import { LiveSyncIndicator } from "@/components/live-sync-indicator";
 import { ApiRequestError, type ApiFieldError } from "@/lib/api";
+import { useTournamentLiveRefresh } from "@/hooks/use-tournament-live-refresh";
 import type { OrganizerMatch } from "@/lib/organizer-match-data";
 import type { OrganizerTournament } from "@/lib/organizer-tournament-data";
 import {
@@ -87,8 +89,10 @@ export function OrganizerGroupManagementPanel({
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [seedNumber, setSeedNumber] = useState("");
 
-  const loadGroups = useCallback(async () => {
-    setIsLoading(true);
+  const loadGroups = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setIsLoading(true);
+    }
     setError(null);
     setFieldErrors([]);
 
@@ -98,10 +102,15 @@ export function OrganizerGroupManagementPanel({
 
       setSelectedGroupId((currentGroupId) => currentGroupId || nextData.groups[0]?.id || "");
     } catch (loadError) {
-      setData(null);
+      if (!options?.silent) {
+        setData(null);
+      }
       setError(panelError(loadError, "Group management API is unavailable."));
+      throw loadError;
     } finally {
-      setIsLoading(false);
+      if (!options?.silent) {
+        setIsLoading(false);
+      }
     }
   }, [tournament.id]);
 
@@ -110,6 +119,14 @@ export function OrganizerGroupManagementPanel({
 
     return () => window.clearTimeout(timeout);
   }, [loadGroups]);
+
+  const liveSync = useTournamentLiveRefresh({
+    enabled: true,
+    hiddenIntervalMs: 60_000,
+    intervalMs: 15_000,
+    label: "organizer groups",
+    onRefresh: () => loadGroups({ silent: true })
+  });
 
   const assignedTeamIds = useMemo(() => {
     const ids = new Set<string>();
@@ -221,11 +238,19 @@ export function OrganizerGroupManagementPanel({
           <h2>Group Management</h2>
           <span>Assign approved teams to groups and monitor backend-calculated standings.</span>
         </div>
-        <button className="org-tournament-secondary" disabled={isLoading || isMutating} onClick={loadGroups} type="button">
+        <button className="org-tournament-secondary" disabled={isLoading || isMutating} onClick={() => void loadGroups()} type="button">
           <RefreshCw size={15} />
           Refresh Groups
         </button>
       </div>
+
+      <LiveSyncIndicator
+        errorCount={liveSync.errorCount}
+        lastError={liveSync.lastError}
+        lastUpdated={liveSync.lastUpdated}
+        onRefresh={liveSync.refreshNow}
+        status={liveSync.status}
+      />
 
       <div className="org-groups-summary">
         <SummaryCard icon={GitBranch} label="Groups" value={String(data?.groups.length ?? 0)} tone="red" />

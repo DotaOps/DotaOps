@@ -1,18 +1,11 @@
 import {
   getApi,
   getApiAuthenticated,
-  patchApiAuthenticated,
   postApiAuthenticated
 } from "@/lib/api";
 
 export type BracketSlotSourceType = "manual" | "seed" | "bye" | "winner" | "loser" | "tbd" | "unknown";
 export type BracketMatchStatus = string;
-
-export interface BracketResultPayload {
-  scoreA: number;
-  scoreB: number;
-  winnerTeamId: string;
-}
 
 export interface BracketSlot {
   isBye: boolean;
@@ -327,9 +320,3 @@ export async function generateOrganizerTournamentBracket(
   );
 }
 
-export async function submitOrganizerMatchResult(
-  matchId: string,
-  payload: BracketResultPayload
-) {
-  await patchApiAuthenticated<unknown>(`/organizer/matches/${matchId}/result`, payload);
-}
