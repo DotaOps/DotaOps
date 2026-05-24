@@ -315,8 +315,9 @@ public class ProfileService {
                 return updatedProfile;
             }
 
-            if (requestedRole != updatedProfile.role()) {
-                return profileRepository.updateRoleById(updatedProfile.id(), requestedRole)
+            ProfileRole targetRole = organizerCapabilityRole(existingProfile.role(), requestedRole);
+            if (targetRole != updatedProfile.role()) {
+                return profileRepository.updateRoleById(updatedProfile.id(), targetRole)
                         .orElseThrow(() -> new ResourceNotFoundException("Profile", "id", updatedProfile.id()));
             }
 
@@ -355,6 +356,14 @@ public class ProfileService {
                 .replace('-', '_');
 
         return "organizer".equals(normalized) ? ProfileRole.ORGANIZER : ProfileRole.PLAYER;
+    }
+
+    private ProfileRole organizerCapabilityRole(ProfileRole existingRole, ProfileRole requestedRole) {
+        if (existingRole == ProfileRole.ORGANIZER || requestedRole == ProfileRole.ORGANIZER) {
+            return ProfileRole.ORGANIZER;
+        }
+
+        return requestedRole;
     }
 
     private String desiredRoleFromClaims(SupabasePrincipal principal) {
