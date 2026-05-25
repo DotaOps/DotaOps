@@ -20,6 +20,7 @@ import { RouteLoadingSkeleton } from "@/components/route-loading-skeleton";
 import {
   getCurrentUserProfile,
   signOutCurrentUser,
+  startSteamProfileLink,
   updateCurrentUserProfile,
   uploadCurrentUserAvatar,
   type CurrentUserProfile,
@@ -126,6 +127,7 @@ export function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isLinkingSteam, setIsLinkingSteam] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
   const [avatarStatus, setAvatarStatus] = useState<string | null>(null);
@@ -146,6 +148,10 @@ export function ProfilePage() {
           const nextForm = formStateFromProfile(loadedProfile);
           setForm(nextForm);
           setInitialForm(nextForm);
+
+          if (new URLSearchParams(window.location.search).get("steamLogin") === "success") {
+            setNotice("Steam account connected successfully.");
+          }
         }
       })
       .catch((caught) => {
@@ -180,7 +186,6 @@ export function ProfilePage() {
     : profile?.opendotaAccountId
       ? "Pending"
       : "Pending";
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   const displayedAvatarUrl = avatarPreviewUrl ?? profile?.avatarUrl ?? null;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -231,13 +236,17 @@ export function ProfilePage() {
     }
   }
 
-  function reconnectSteam() {
-    if (!apiUrl) {
-      setNotice("Steam reconnect is ready, but NEXT_PUBLIC_API_URL is not configured.");
-      return;
-    }
+  async function reconnectSteam() {
+    setError(null);
+    setNotice(null);
+    setIsLinkingSteam(true);
 
-    window.location.href = `${apiUrl}/auth/steam/login`;
+    try {
+      window.location.assign(await startSteamProfileLink());
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Steam connection could not be started.");
+      setIsLinkingSteam(false);
+    }
   }
 
   function openAvatarPicker() {
@@ -497,8 +506,8 @@ export function ProfilePage() {
                 <strong>Steam Profile: {steamConnected ? "Connected" : "Not Connected"}</strong>
                 <span>{steamConnected ? profile.steamId : "No SteamID64 linked"}</span>
               </div>
-              <button onClick={reconnectSteam} type="button">
-                Reconnect Steam
+              <button disabled={isLinkingSteam} onClick={reconnectSteam} type="button">
+                {isLinkingSteam ? "Connecting..." : steamConnected ? "Reconnect Steam" : "Connect Steam"}
               </button>
             </article>
             <article className="profile-connected-card">

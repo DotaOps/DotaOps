@@ -10,11 +10,16 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
+import si.um.feri.dotaops.backend.auth.domain.AuthenticatedProfile;
+import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.auth.service.SupabasePrincipal;
 import si.um.feri.dotaops.backend.auth.steam.domain.SteamLoginStateContext;
@@ -22,6 +27,7 @@ import si.um.feri.dotaops.backend.auth.steam.domain.SteamPlayerSummary;
 import si.um.feri.dotaops.backend.auth.steam.domain.SteamProfileUpsertResult;
 import si.um.feri.dotaops.backend.auth.steam.repository.SteamLoginStateRepository;
 import si.um.feri.dotaops.backend.auth.steam.repository.SteamProfileRepository;
+import si.um.feri.dotaops.backend.common.error.ConflictException;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
 import si.um.feri.dotaops.backend.common.error.RateLimitExceededException;
 import si.um.feri.dotaops.backend.common.security.ClientIpAddressResolver;
@@ -113,7 +119,48 @@ class SteamAuthServiceTest {
     }
 
     @Test
-    void completeCallbackVerifiesSteamAssertionAndUpsertsSteamProfile() {
+    void beginProfileLinkStoresAuthenticatedProfileContext() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile());
+        when(currentUserProvider.currentUser()).thenReturn(Optional.of(principal()));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("127.0.0.1");
+        request.addHeader("User-Agent", "JUnit");
+
+        steamAuthService.beginProfileLink(request);
+
+        verify(currentUserProvider).requireProfile();
+        verify(loginStateRepository).create(
+                anyString(),
+                eq("http://localhost:3000/auth/steam/callback"),
+                eq(PROFILE_ID),
+                eq(AUTH_USER_ID),
+                eq("127.0.0.1"),
+                eq("JUnit"),
+                eq(java.time.OffsetDateTime.parse("2026-05-12T00:10:00Z")));
+    }
+
+    @Test
+    void beginProfileLinkRequiresProfileBeforeCreatingState() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        when(currentUserProvider.requireProfile()).thenThrow(new AccessDeniedException("DotaOps profile is required."));
+
+        assertThatThrownBy(() -> steamAuthService.beginProfileLink(request))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("DotaOps profile is required.");
+
+        verify(loginStateRepository, never()).create(anyString(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void completeCallbackIsTransactionalSoFailedCallbacksDoNotBurnState() throws Exception {
+        assertThat(SteamAuthService.class
+                .getMethod("completeCallback", MultiValueMap.class)
+                .isAnnotationPresent(Transactional.class))
+                .isTrue();
+    }
+
+    @Test
+    void completeCallbackVerifiesSteamAssertionAndLinksExistingProfile() {
         String state = "state-token";
         MultiValueMap<String, String> params = validCallbackParams(state);
         when(loginStateRepository.consume(anyString())).thenReturn(Optional.of(stateContext()));
@@ -123,24 +170,21 @@ class SteamAuthServiceTest {
                 "Dota Player",
                 "https://cdn.example.test/avatar.png",
                 "https://steamcommunity.com/profiles/" + STEAM_ID + "/")));
-        when(profileRepository.upsertSteamProfile(
+        when(profileRepository.linkSteamAccountToProfile(
+                eq(PROFILE_ID),
                 eq(STEAM_ID),
-                eq(AUTH_USER_ID),
-                eq("Dota Player"),
                 eq("Dota Player"),
                 eq("https://cdn.example.test/avatar.png"),
                 eq("https://steamcommunity.com/profiles/" + STEAM_ID + "/"),
-                eq(CLAIMED_ID))).thenReturn(new SteamProfileUpsertResult(
-                PROFILE_ID,
-                EXTERNAL_ACCOUNT_ID,
-                true,
-                true));
+                eq(CLAIMED_ID))).thenReturn(EXTERNAL_ACCOUNT_ID);
 
         var result = steamAuthService.completeCallback(params);
 
         assertThat(result.steamId()).isEqualTo(STEAM_ID);
         assertThat(result.profileId()).isEqualTo(PROFILE_ID);
         assertThat(result.externalAccountId()).isEqualTo(EXTERNAL_ACCOUNT_ID);
+        assertThat(result.newProfile()).isFalse();
+        assertThat(result.newExternalAccount()).isFalse();
         assertThat(result.redirectUri().toString())
                 .startsWith("http://localhost:3000/auth/steam/callback?steamLogin=success")
                 .contains("steamId=" + STEAM_ID)
@@ -167,18 +211,13 @@ class SteamAuthServiceTest {
         when(loginStateRepository.consume(anyString())).thenReturn(Optional.of(stateContext()));
         when(openIdClient.verifyAuthentication(params)).thenReturn(true);
         when(openIdClient.fetchPlayerSummary(STEAM_ID)).thenReturn(Optional.of(summary));
-        when(profileRepository.upsertSteamProfile(
+        when(profileRepository.linkSteamAccountToProfile(
+                eq(PROFILE_ID),
                 eq(STEAM_ID),
-                eq(AUTH_USER_ID),
-                eq("Dota Player"),
                 eq("Dota Player"),
                 eq("https://cdn.example.test/avatar.png"),
                 eq("https://steamcommunity.com/profiles/" + STEAM_ID + "/"),
-                eq(CLAIMED_ID))).thenReturn(new SteamProfileUpsertResult(
-                PROFILE_ID,
-                EXTERNAL_ACCOUNT_ID,
-                false,
-                false));
+                eq(CLAIMED_ID))).thenReturn(EXTERNAL_ACCOUNT_ID);
         doThrow(new IllegalStateException("executor rejected"))
                 .when(profileBootstrapService)
                 .bootstrapAfterSteamLogin(PROFILE_ID, STEAM_ID, summary);
@@ -187,6 +226,64 @@ class SteamAuthServiceTest {
 
         assertThat(result.profileId()).isEqualTo(PROFILE_ID);
         assertThat(result.steamId()).isEqualTo(STEAM_ID);
+    }
+
+    @Test
+    void completeCallbackReturnsConflictWhenSteamBelongsToAnotherActiveProfile() {
+        MultiValueMap<String, String> params = validCallbackParams("state-token");
+        when(loginStateRepository.consume(anyString())).thenReturn(Optional.of(stateContext()));
+        when(openIdClient.verifyAuthentication(params)).thenReturn(true);
+        when(openIdClient.fetchPlayerSummary(STEAM_ID)).thenReturn(Optional.empty());
+        when(profileRepository.linkSteamAccountToProfile(
+                eq(PROFILE_ID),
+                eq(STEAM_ID),
+                eq(null),
+                eq(null),
+                eq("https://steamcommunity.com/profiles/" + STEAM_ID + "/"),
+                eq(CLAIMED_ID))).thenThrow(new DataIntegrityViolationException(
+                        "Steam account is already linked to a different profile."));
+
+        assertThatThrownBy(() -> steamAuthService.completeCallback(params))
+                .isInstanceOf(ConflictException.class)
+                .hasMessage("This Steam account is already connected to another DotaOps profile.");
+    }
+
+    @Test
+    void completeCallbackUpsertsProfileForUnlinkedSteamLogin() {
+        MultiValueMap<String, String> params = validCallbackParams("state-token");
+        when(loginStateRepository.consume(anyString())).thenReturn(Optional.of(new SteamLoginStateContext(
+                STATE_ID,
+                "http://localhost:3000/auth/steam/callback",
+                null,
+                null,
+                "127.0.0.1",
+                "JUnit")));
+        when(openIdClient.verifyAuthentication(params)).thenReturn(true);
+        when(openIdClient.fetchPlayerSummary(STEAM_ID)).thenReturn(Optional.empty());
+        when(profileRepository.upsertSteamProfile(
+                eq(STEAM_ID),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq("https://steamcommunity.com/profiles/" + STEAM_ID + "/"),
+                eq(CLAIMED_ID))).thenReturn(new SteamProfileUpsertResult(
+                PROFILE_ID,
+                EXTERNAL_ACCOUNT_ID,
+                true,
+                true));
+
+        var result = steamAuthService.completeCallback(params);
+
+        assertThat(result.newProfile()).isTrue();
+        assertThat(result.externalAccountId()).isEqualTo(EXTERNAL_ACCOUNT_ID);
+        verify(profileRepository, never()).linkSteamAccountToProfile(
+                any(),
+                anyString(),
+                any(),
+                any(),
+                any(),
+                anyString());
     }
 
     @Test
@@ -203,6 +300,13 @@ class SteamAuthServiceTest {
                 anyString(),
                 any(),
                 any(),
+                any(),
+                any(),
+                any(),
+                anyString());
+        verify(profileRepository, never()).linkSteamAccountToProfile(
+                any(),
+                anyString(),
                 any(),
                 any(),
                 any(),
@@ -225,6 +329,13 @@ class SteamAuthServiceTest {
                 anyString(),
                 any(),
                 any(),
+                any(),
+                any(),
+                any(),
+                anyString());
+        verify(profileRepository, never()).linkSteamAccountToProfile(
+                any(),
+                anyString(),
                 any(),
                 any(),
                 any(),
@@ -284,8 +395,15 @@ class SteamAuthServiceTest {
         };
     }
 
-    @SuppressWarnings("unused")
     private static SupabasePrincipal principal() {
-        return new SupabasePrincipal(AUTH_USER_ID, "player@example.com", Optional.empty(), null);
+        return new SupabasePrincipal(
+                AUTH_USER_ID,
+                "player@example.com",
+                Optional.of(authenticatedProfile()),
+                null);
+    }
+
+    private static AuthenticatedProfile authenticatedProfile() {
+        return new AuthenticatedProfile(PROFILE_ID, AUTH_USER_ID, "player", ProfileRole.PLAYER);
     }
 }

@@ -15,6 +15,7 @@ import java.util.regex.Pattern;
 import jakarta.servlet.http.HttpServletRequest;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -33,6 +34,7 @@ import si.um.feri.dotaops.backend.auth.steam.domain.SteamProfileUpsertResult;
 import si.um.feri.dotaops.backend.auth.steam.repository.SteamLoginStateRepository;
 import si.um.feri.dotaops.backend.auth.steam.repository.SteamProfileRepository;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
+import si.um.feri.dotaops.backend.common.error.ConflictException;
 import si.um.feri.dotaops.backend.common.security.ClientIpAddressResolver;
 import si.um.feri.dotaops.backend.common.security.RequestRateLimiter;
 import si.um.feri.dotaops.backend.config.properties.SteamAuthProperties;
@@ -142,6 +144,13 @@ public class SteamAuthService {
                 .toUri();
     }
 
+    @Transactional
+    public URI beginProfileLink(HttpServletRequest request) {
+        currentUserProvider.requireProfile();
+        return beginLogin(request);
+    }
+
+    @Transactional
     public SteamAuthResult completeCallback(MultiValueMap<String, String> callbackParams) {
         String rawState = requiredParam(callbackParams, "state");
         SteamLoginStateContext state = loginStateRepository.consume(hashState(rawState))
@@ -160,10 +169,9 @@ public class SteamAuthService {
         String profileUrl = StringUtils.hasText(summary.profileUrl()) ? summary.profileUrl() : profileUrlFallback;
         String personaName = summary.personaName();
 
-        SteamProfileUpsertResult upsertResult = profileRepository.upsertSteamProfile(
+        SteamProfileUpsertResult upsertResult = linkOrUpsertSteamProfile(
+                state,
                 steamId,
-                state.authUserId(),
-                personaName,
                 personaName,
                 summary.avatarUrl(),
                 profileUrl,
@@ -181,6 +189,51 @@ public class SteamAuthService {
                 summary.avatarUrl(),
                 profileUrl,
                 buildFrontendRedirect(state.returnTo(), steamId, upsertResult));
+    }
+
+    private SteamProfileUpsertResult linkOrUpsertSteamProfile(
+            SteamLoginStateContext state,
+            String steamId,
+            String personaName,
+            String avatarUrl,
+            String profileUrl,
+            String claimedId
+    ) {
+        if (state.profileId() != null) {
+            UUID externalAccountId;
+            try {
+                externalAccountId = profileRepository.linkSteamAccountToProfile(
+                        state.profileId(),
+                        steamId,
+                        personaName,
+                        avatarUrl,
+                        profileUrl,
+                        claimedId);
+            } catch (DataAccessException exception) {
+                if (isSteamProfileOwnershipConflict(exception)) {
+                    throw new ConflictException(
+                            "This Steam account is already connected to another DotaOps profile.");
+                }
+
+                throw exception;
+            }
+
+            return new SteamProfileUpsertResult(state.profileId(), externalAccountId, false, false);
+        }
+
+        return profileRepository.upsertSteamProfile(
+                steamId,
+                state.authUserId(),
+                personaName,
+                personaName,
+                avatarUrl,
+                profileUrl,
+                claimedId);
+    }
+
+    private boolean isSteamProfileOwnershipConflict(DataAccessException exception) {
+        String message = exception.getMostSpecificCause().getMessage();
+        return message != null && message.contains("Steam account is already linked to a different profile.");
     }
 
     private void scheduleProfileBootstrap(UUID profileId, String steamId, SteamPlayerSummary summary) {

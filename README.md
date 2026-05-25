@@ -68,6 +68,7 @@ OPENDOTA_RETRY_BACKOFF=250ms
 NEXT_PUBLIC_SUPABASE_URL=https://<projectRef>.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
 NEXT_PUBLIC_API_URL=http://localhost:8080/api
+FRONTEND_AUTH_REDIRECT_URL=http://localhost:3000/profile
 ```
 
 Frontend ima svoj `.env.local`, ker Next.js bere env datoteke iz `frontend/` mape:

@@ -17,6 +17,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
+import org.springframework.http.HttpHeaders;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -131,7 +132,10 @@ public class SupabaseJwtAuthenticationFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
         } catch (AuthenticationException exception) {
             SecurityContextHolder.clearContext();
-            reject(request, response, exception);
+            response.addHeader(
+                    HttpHeaders.SET_COOKIE,
+                    steamSessionCookieService.clearSessionCookie().toString());
+            filterChain.doFilter(request, response);
         }
     }
 

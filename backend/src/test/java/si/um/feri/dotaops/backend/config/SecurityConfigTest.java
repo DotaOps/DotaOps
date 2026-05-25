@@ -19,6 +19,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.test.context.ActiveProfiles;
@@ -38,6 +39,7 @@ import si.um.feri.dotaops.backend.auth.service.SupabasePrincipal;
 import si.um.feri.dotaops.backend.auth.steam.domain.SteamAuthResult;
 import si.um.feri.dotaops.backend.auth.steam.service.SteamSessionTokenService;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -139,6 +141,14 @@ class SecurityConfigTest {
     }
 
     @Test
+    void invalidJwtIsRejectedOnPublicEndpoint() throws Exception {
+        mockMvc.perform(get("/api/health")
+                        .header("Authorization", "Bearer invalid"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
     void validJwtCreatesCurrentUserContext() throws Exception {
         mockMvc.perform(get("/api/me/security-test")
                         .header("Authorization", bearerToken(PLAYER_AUTH_USER_ID)))
@@ -190,7 +200,19 @@ class SecurityConfigTest {
         mockMvc.perform(get("/api/me/security-test")
                         .cookie(new Cookie("dotaops_steam_session", "invalid")))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")));
+    }
+
+    @Test
+    void invalidSteamSessionCookieDoesNotBlockPublicEndpoint() throws Exception {
+        mockMvc.perform(get("/api/health")
+                        .cookie(new Cookie("dotaops_steam_session", "invalid")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ok"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")));
     }
 
     @Test
