@@ -273,6 +273,8 @@ Frontend je privzeto na:
 http://localhost:3000
 ```
 
+Production deployment (hosted): https://dotaops-frontend.vercel.app/
+
 Ce backend ni zagnan ali API se nima podatkov, frontend uporablja fallback/mock podatke iz `frontend/src/lib/mock-data.ts`.
 
 ## Preverjanje Projekta
