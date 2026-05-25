@@ -6,6 +6,26 @@ export default async function Home() {
   const { data } = supabase
     ? await supabase.auth.getClaims()
     : { data: null };
+  const authUserId = typeof data?.claims?.sub === "string" ? data.claims.sub : null;
+  let avatarUrl: string | null = null;
+  let displayName = "Profile";
 
-  return <PublicHomepage isAuthenticated={Boolean(data?.claims)} />;
+  if (supabase && authUserId) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("avatar_url,display_name,nickname")
+      .eq("auth_user_id", authUserId)
+      .maybeSingle();
+
+    avatarUrl = profile?.avatar_url ?? null;
+    displayName = profile?.display_name || profile?.nickname || displayName;
+  }
+
+  return (
+    <PublicHomepage
+      avatarUrl={avatarUrl}
+      displayName={displayName}
+      isAuthenticated={Boolean(data?.claims)}
+    />
+  );
 }

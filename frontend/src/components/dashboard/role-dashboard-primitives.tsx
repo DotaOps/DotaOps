@@ -1,7 +1,7 @@
-import { Bell, Shield, UserRound } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { HeaderProfileLink } from "@/components/header-profile-link";
 import type {
   DashboardAction,
   DashboardAlert,
@@ -12,46 +12,18 @@ import type {
 import { classNames } from "@/lib/utils";
 
 interface DashboardTopbarProps {
-  activeLabel: string;
-  activeValue: string;
-  action?: DashboardAction;
-  rank?: string;
+  avatarUrl?: string | null;
+  displayName: string;
 }
 
 export function DashboardTopbar({
-  activeLabel,
-  activeValue,
-  action,
-  rank
+  avatarUrl,
+  displayName
 }: DashboardTopbarProps) {
   return (
     <header className="role-dashboard-topbar">
-      <div className="role-topbar-left">
-        <div className="role-live-chip">
-          <span />
-          Live Uplink
-        </div>
-        <div className="role-active-context">
-          <span>{activeLabel}</span>
-          <strong>{activeValue}</strong>
-        </div>
-      </div>
-
       <div className="role-topbar-actions">
-        {rank ? (
-          <div className="role-rank-chip">
-            <Shield size={15} />
-            <span>Rank</span>
-            <strong>{rank}</strong>
-          </div>
-        ) : null}
-        <button className="role-icon-button" type="button" aria-label="Notifications">
-          <Bell size={18} />
-        </button>
-        {action ? <RoleActionButton action={action} variant="primary" /> : null}
-        <Link className="role-avatar" href="/profile" aria-label="User profile">
-          <UserRound size={18} />
-        </Link>
+        <HeaderProfileLink avatarUrl={avatarUrl} displayName={displayName} />
       </div>
     </header>
   );

@@ -1,8 +1,11 @@
+"use client";
+
+import { useCurrentUserProfile } from "@/components/current-user-profile-context";
+import { DashboardTopbar } from "@/components/dashboard/role-dashboard-primitives";
 import { classNames } from "@/lib/utils";
 
 export type DashboardLoadingRole = "captain" | "organizer" | "player";
 
-const topbarActions = ["notifications", "primary-action", "profile"];
 const rosterRows = ["player-a", "player-b", "player-c", "player-d", "player-e"];
 const squadRows = ["squad-a", "squad-b", "squad-c"];
 const chipRows = ["form-a", "form-b", "form-c", "form-d", "form-e"];
@@ -12,6 +15,8 @@ export function DashboardLoadingSkeleton({
 }: {
   role?: DashboardLoadingRole;
 }) {
+  const profile = useCurrentUserProfile();
+
   return (
     <section
       aria-busy="true"
@@ -19,7 +24,14 @@ export function DashboardLoadingSkeleton({
       className={classNames("role-dashboard", `role-dashboard-${role}`, "dashboard-loading-skeleton")}
       role="status"
     >
-      <DashboardTopbarSkeleton hasRank={role !== "organizer"} />
+      {profile ? (
+        <DashboardTopbar
+          avatarUrl={profile.avatarUrl}
+          displayName={profile.displayName || profile.nickname || "Profile"}
+        />
+      ) : (
+        <DashboardTopbarSkeleton />
+      )}
 
       <div aria-hidden="true" className="role-dashboard-content">
         {role === "captain" ? <CaptainDashboardContentSkeleton /> : null}
@@ -30,30 +42,11 @@ export function DashboardLoadingSkeleton({
   );
 }
 
-function DashboardTopbarSkeleton({ hasRank }: { hasRank: boolean }) {
+function DashboardTopbarSkeleton() {
   return (
     <header aria-hidden="true" className="role-dashboard-topbar dashboard-skeleton-topbar">
-      <div className="role-topbar-left">
-        <SkeletonItem className="dashboard-skeleton-live-chip" />
-        <div className="dashboard-skeleton-active-context">
-          <SkeletonItem className="dashboard-skeleton-topbar-label" />
-          <SkeletonItem className="dashboard-skeleton-topbar-value" />
-        </div>
-      </div>
-
       <div className="role-topbar-actions">
-        {hasRank ? <SkeletonItem className="dashboard-skeleton-rank-chip" /> : null}
-        {topbarActions.map((action) => (
-          <SkeletonItem
-            className={classNames(
-              action === "primary-action"
-                ? "dashboard-skeleton-topbar-action"
-                : "dashboard-skeleton-topbar-icon",
-              action === "profile" && "dashboard-skeleton-topbar-avatar"
-            )}
-            key={action}
-          />
-        ))}
+        <SkeletonItem className="dashboard-skeleton-topbar-profile" />
       </div>
     </header>
   );

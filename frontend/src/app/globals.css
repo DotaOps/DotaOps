@@ -458,9 +458,19 @@ p {
   cursor: pointer;
 }
 
-.topbar-profile > span:last-child {
+.topbar-profile-label {
   display: grid;
   gap: 2px;
+  min-width: 0;
+  max-width: 180px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.topbar-profile-label strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .topbar-avatar {
@@ -4708,7 +4718,7 @@ textarea:focus {
   z-index: 20;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 24px;
   min-height: 76px;
   padding: 14px 64px;
@@ -4721,27 +4731,9 @@ textarea:focus {
   pointer-events: none;
 }
 
-.dashboard-skeleton-active-context {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.dashboard-skeleton-live-chip {
-  width: 112px;
-  height: 28px;
-  border-radius: 999px;
-}
-
-.dashboard-skeleton-topbar-label,
 .dashboard-skeleton-inline-label {
   width: 84px;
   height: 10px;
-}
-
-.dashboard-skeleton-topbar-value {
-  width: clamp(120px, 16vw, 190px);
-  height: 28px;
 }
 
 .dashboard-skeleton-rank-chip {
@@ -4761,6 +4753,12 @@ textarea:focus {
 
 .dashboard-skeleton-topbar-avatar {
   border-radius: 999px;
+}
+
+.dashboard-skeleton-topbar-profile {
+  width: 156px;
+  height: 42px;
+  border-radius: 4px;
 }
 
 .dashboard-skeleton-hero-copy,
@@ -5030,7 +5028,6 @@ textarea:focus {
   height: 28px;
 }
 
-.role-topbar-left,
 .role-topbar-actions {
   display: flex;
   align-items: center;
@@ -5038,43 +5035,11 @@ textarea:focus {
   min-width: 0;
 }
 
-.role-live-chip,
-.role-rank-chip,
-.role-active-context strong {
+.role-rank-chip {
   border: 1px solid rgba(171, 137, 133, 0.42);
   background: rgba(67, 48, 46, 0.55);
 }
 
-.role-live-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 28px;
-  padding: 5px 12px;
-  border-radius: 999px;
-  color: #7bd1f8;
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.role-live-chip span {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #7bd1f8;
-  box-shadow: 0 0 0 5px rgba(123, 209, 248, 0.1);
-}
-
-.role-active-context {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.role-active-context span,
 .role-rank-chip span,
 .role-kpi-heading span,
 .role-panel-header p,
@@ -5092,20 +5057,6 @@ textarea:focus {
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-}
-
-.role-active-context span {
-  color: #e4beba;
-}
-
-.role-active-context strong {
-  min-width: 0;
-  padding: 4px 10px;
-  border-radius: 4px;
-  color: #fff2f0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .role-rank-chip {
@@ -5153,7 +5104,22 @@ textarea:focus {
   border-radius: 999px;
   color: #7bd1f8;
   cursor: pointer;
+  overflow: hidden;
   text-decoration: none;
+}
+
+.role-dashboard-topbar .topbar-profile,
+.public-home-header .topbar-profile {
+  border-color: rgba(171, 137, 133, 0.42);
+  background: rgba(18, 18, 18, 0.82);
+  color: #f9dcd9;
+}
+
+.role-dashboard-topbar .topbar-avatar,
+.public-home-header .topbar-avatar {
+  border: 1px solid rgba(255, 179, 172, 0.34);
+  background: rgba(211, 47, 47, 0.14);
+  color: #ffb3ac;
 }
 
 .role-action-button {
@@ -6080,9 +6046,8 @@ textarea:focus {
 
 @media (max-width: 860px) {
   .role-dashboard-topbar,
-  .role-topbar-left,
   .role-topbar-actions {
-    align-items: flex-start;
+    align-items: flex-end;
     flex-direction: column;
   }
 
@@ -6092,7 +6057,6 @@ textarea:focus {
   }
 
   .role-topbar-actions {
-    width: 100%;
     gap: 12px;
   }
 
@@ -6476,24 +6440,9 @@ textarea:focus {
   color: #ffb3ac;
 }
 
-.public-home-header .public-dashboard-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.public-home-header .public-profile-link {
-  display: inline-grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid rgba(255, 179, 172, 0.34);
-  border-radius: 4px;
-  background: rgba(18, 18, 18, 0.62);
-  color: #f9dcd9;
-}
-
-.public-home-header .public-profile-link:hover {
+.topbar.ops-panel .topbar-profile:is(:hover, :focus-visible),
+.role-dashboard-topbar .topbar-profile:is(:hover, :focus-visible),
+.public-home-header .topbar-profile:is(:hover, :focus-visible) {
   border-color: rgba(255, 179, 172, 0.72);
   background: rgba(255, 179, 172, 0.08);
 }
@@ -8153,8 +8102,12 @@ textarea:focus {
   gap: 12px;
 }
 
+.user-avatar {
+  overflow: hidden;
+}
+
 .profile-avatar-image,
-.topbar-avatar-image {
+.user-avatar-image {
   width: 100%;
   height: 100%;
   display: block;
@@ -8162,7 +8115,7 @@ textarea:focus {
   background-size: cover;
 }
 
-.topbar-avatar-image {
+.user-avatar-image {
   border-radius: inherit;
 }
 
@@ -10755,6 +10708,40 @@ textarea:focus {
   color: #ffb4ab;
 }
 
+.org-tournament-detail-hero .org-tournament-status {
+  min-height: 54px;
+  padding: 14px 24px;
+  border-width: 2px;
+  font-size: 0.82rem;
+  letter-spacing: 0.14em;
+  box-shadow: 0 0 26px rgba(255, 180, 171, 0.12);
+}
+
+.org-tournament-detail-hero .org-tournament-status-draft {
+  background: rgba(171, 137, 133, 0.12);
+}
+
+.org-tournament-detail-hero .org-tournament-status-registration,
+.org-tournament-detail-hero .org-tournament-status-published {
+  background: rgba(123, 209, 248, 0.12);
+  box-shadow: 0 0 26px rgba(123, 209, 248, 0.12);
+}
+
+.org-tournament-detail-hero .org-tournament-status-live {
+  background: rgba(233, 193, 118, 0.14);
+  box-shadow: 0 0 26px rgba(233, 193, 118, 0.14);
+}
+
+.org-tournament-detail-hero .org-tournament-status-finished {
+  background: rgba(87, 242, 135, 0.12);
+  box-shadow: 0 0 26px rgba(87, 242, 135, 0.12);
+}
+
+.org-tournament-detail-hero .org-tournament-status-archived {
+  background: rgba(211, 47, 47, 0.2);
+  box-shadow: 0 0 28px rgba(211, 47, 47, 0.18);
+}
+
 .org-tournament-form-shell {
   display: grid;
   gap: 22px;
@@ -10897,38 +10884,15 @@ textarea:focus {
   font-weight: 900;
 }
 
-.org-tournament-status-flow {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  padding: 18px;
-}
-
-.org-tournament-flow-step {
-  display: grid;
-  min-height: 58px;
-  place-items: center;
-  border: 1px solid rgba(171, 137, 133, 0.2);
-  background: rgba(255, 255, 255, 0.025);
-  color: var(--ops-muted);
-  font-family: var(--font-display);
-  font-size: 0.72rem;
-  font-weight: 950;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.org-tournament-flow-step.is-active {
-  border-color: var(--ops-red);
-  background: rgba(211, 47, 47, 0.18);
-  color: var(--ops-text);
-}
-
 .org-tournament-detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 24px;
   align-items: start;
+}
+
+.org-tournament-detail-grid.is-full-width {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .org-tournament-detail-main,
@@ -11098,8 +11062,7 @@ textarea:focus {
 
   .org-tournament-summary,
   .org-tournament-meta-grid,
-  .org-tournament-form-grid,
-  .org-tournament-status-flow {
+  .org-tournament-form-grid {
     grid-template-columns: 1fr;
   }
 
@@ -11814,7 +11777,9 @@ textarea:focus {
   padding: 10px;
 }
 
-.org-tournament-section-shortcuts button {
+.org-tournament-section-shortcuts a {
+  display: inline-flex;
+  align-items: center;
   border: 1px solid var(--ops-line-soft);
   border-radius: var(--ops-radius-sm);
   padding: 8px 11px;
@@ -11825,12 +11790,18 @@ textarea:focus {
   font-size: 0.72rem;
   font-weight: 900;
   letter-spacing: 0.06em;
+  text-decoration: none;
   text-transform: uppercase;
 }
 
-.org-tournament-section-shortcuts button:hover {
+.org-tournament-section-shortcuts a:hover,
+.org-tournament-section-shortcuts a.is-active {
   border-color: var(--ops-cyan);
   color: var(--ops-cyan);
+}
+
+.org-tournament-section-shortcuts a.is-active {
+  background: rgba(123, 209, 248, 0.12);
 }
 
 .org-groups-layout {

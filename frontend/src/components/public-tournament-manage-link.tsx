@@ -43,7 +43,7 @@ export function PublicTournamentManageLink({
 
         if (isMounted && manageableTournament) {
           setHref(
-            `/organizator?tournamentId=${encodeURIComponent(manageableTournament.id)}&slug=${encodeURIComponent(manageableTournament.slug)}&view=groups#group-management`
+            `/organizator?tournamentId=${encodeURIComponent(manageableTournament.id)}&slug=${encodeURIComponent(manageableTournament.slug)}&view=groups`
           );
         }
       } catch {

@@ -4,15 +4,14 @@ import {
   BarChart3,
   CalendarDays,
   DatabaseZap,
-  LayoutDashboard,
   RadioTower,
   Shield,
   Trophy,
-  UserRound,
   UsersRound
 } from "lucide-react";
 import Link from "next/link";
 import { AnimatedHomepageBackground } from "@/components/home/animated-homepage-background";
+import { HeaderProfileLink } from "@/components/header-profile-link";
 
 const upcomingOps = [
   { left: "Liquid", regionA: "EUW", right: "Falcons", regionB: "MENA", time: "18:00" },
@@ -33,7 +32,15 @@ const platformStats = [
   { icon: DatabaseZap, label: "Data Points/sec", value: "1,240,492" }
 ];
 
-export function PublicHomepage({ isAuthenticated = false }: { isAuthenticated?: boolean }) {
+export function PublicHomepage({
+  avatarUrl = null,
+  displayName = "Profile",
+  isAuthenticated = false
+}: {
+  avatarUrl?: string | null;
+  displayName?: string;
+  isAuthenticated?: boolean;
+}) {
   return (
     <div className="public-home">
       <AnimatedHomepageBackground />
@@ -42,24 +49,11 @@ export function PublicHomepage({ isAuthenticated = false }: { isAuthenticated?: 
           DotaOps
         </Link>
         <nav aria-label="Public navigation">
-          <Link href="/turnirji">Tournaments</Link>
           {isAuthenticated ? (
-            <>
-              <Link className="public-dashboard-link" href="/dashboard">
-                <LayoutDashboard size={16} />
-                <span>Dashboard</span>
-              </Link>
-              <Link
-                aria-label="Profile"
-                className="public-profile-link"
-                href="/profile"
-                title="Profile"
-              >
-                <UserRound size={18} />
-              </Link>
-            </>
+            <HeaderProfileLink avatarUrl={avatarUrl} displayName={displayName} />
           ) : (
             <>
+              <Link href="/turnirji">Tournaments</Link>
               <Link href="/login">Login</Link>
               <Link href="/register">Register</Link>
             </>

@@ -31,11 +31,7 @@ export function WorkspaceLoadingSkeleton({ dashboard = false }: { dashboard?: bo
         {dashboard ? null : (
           <header aria-hidden="true" className="topbar ops-panel route-shell-topbar">
             <div className="route-shell-topbar-actions">
-              <span className="route-skeleton-item route-shell-status" />
-              <span className="route-skeleton-item route-shell-status" />
-              <span className="route-skeleton-item route-shell-icon" />
               <span className="route-skeleton-item route-shell-profile" />
-              <span className="route-skeleton-item route-shell-action" />
             </div>
           </header>
         )}
