@@ -32,6 +32,7 @@ import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
 import { LiveSyncIndicator } from "@/components/live-sync-indicator";
+import { MatchImportPanel } from "@/components/match-import-panel";
 import { OrganizerBracketManagementPanel } from "@/components/organizer-bracket-management-panel";
 import { OrganizerGroupManagementPanel } from "@/components/organizer-group-management-panel";
 import { OrganizerMatchResultsPanel } from "@/components/organizer-match-results-panel";
@@ -65,6 +66,15 @@ import {
 import { classNames } from "@/lib/utils";
 
 type OrganizerView = "dashboard" | "form" | "detail";
+type TournamentDetailView =
+  | "overview"
+  | "registrations"
+  | "groups"
+  | "bracket"
+  | "matches"
+  | "import"
+  | "staff"
+  | "match-controls";
 type FormMode = "create" | "edit";
 type LoadState = "loading" | "ready" | "login" | "permission" | "error";
 
@@ -103,12 +113,15 @@ const formatOptions: Array<{ label: string; value: OrganizerTournamentFormat }> 
   { label: "Group Stage + Playoff", value: "groups_playoff" }
 ];
 
-const statusFlow: OrganizerTournamentStatus[] = [
-  "draft",
-  "published",
-  "live",
-  "finished",
-  "archived"
+const tournamentDetailNavigation: Array<{ label: string; view: TournamentDetailView }> = [
+  { label: "Overview", view: "overview" },
+  { label: "Registrations", view: "registrations" },
+  { label: "Groups", view: "groups" },
+  { label: "Bracket", view: "bracket" },
+  { label: "Matches", view: "matches" },
+  { label: "Import", view: "import" },
+  { label: "Staff", view: "staff" },
+  { label: "Match Controls", view: "match-controls" }
 ];
 
 function emptyForm(): TournamentFormState {
@@ -317,24 +330,24 @@ function canAccessOrganizer(role?: ProfileRole | null) {
   return role === "organizer" || role === "admin";
 }
 
-function sectionIdForInitialView(view?: string) {
-  if (view === "registrations") {
-    return "registration-review";
+function detailViewFromParam(view?: string): TournamentDetailView {
+  switch (view) {
+    case "registrations":
+    case "groups":
+    case "bracket":
+    case "matches":
+    case "import":
+    case "staff":
+    case "match-controls":
+    case "overview":
+      return view;
+    default:
+      return "overview";
   }
+}
 
-  if (view === "groups") {
-    return "group-management";
-  }
-
-  if (view === "bracket") {
-    return "bracket-control";
-  }
-
-  if (view === "matches") {
-    return "match-results";
-  }
-
-  return null;
+function organizerDetailHref(tournament: OrganizerTournament, view: TournamentDetailView) {
+  return `/organizator?tournamentId=${encodeURIComponent(tournament.id)}&slug=${encodeURIComponent(tournament.slug)}&view=${view}`;
 }
 
 export function OrganizerCommandPage({
@@ -431,7 +444,7 @@ export function OrganizerCommandPage({
       setTournaments(nextTournaments);
       setLoadState("ready");
 
-      if (sectionIdForInitialView(initialView) && (initialTournamentId || initialSlug)) {
+      if (initialTournamentId || initialSlug) {
         const matchedTournament = nextTournaments.find(
           (tournament) =>
             (initialTournamentId && tournament.id === initialTournamentId) ||
@@ -473,7 +486,7 @@ export function OrganizerCommandPage({
       setLoadState("error");
       setActionError(errorMessage(error));
     }
-  }, [initialSlug, initialTournamentId, initialView, loadOrganizerMatchFlow]);
+  }, [initialSlug, initialTournamentId, loadOrganizerMatchFlow]);
 
   const loadDetail = useCallback(async (tournamentId: string, options?: { silent?: boolean }) => {
     if (!options?.silent) {
@@ -518,23 +531,6 @@ export function OrganizerCommandPage({
 
     return () => window.clearTimeout(timeout);
   }, [loadOrganizerAccess]);
-
-  useEffect(() => {
-    const targetId = sectionIdForInitialView(initialView);
-
-    if (view !== "detail" || !selectedTournament || !targetId) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      document.getElementById(targetId)?.scrollIntoView({
-        behavior: "smooth",
-        block: "start"
-      });
-    }, 180);
-
-    return () => window.clearTimeout(timeout);
-  }, [initialView, selectedTournament, view]);
 
   const counts = useMemo(() => dashboardCounts(tournaments), [tournaments]);
   const detailLiveSync = useTournamentLiveRefresh({
@@ -753,6 +749,7 @@ export function OrganizerCommandPage({
           />
           <TournamentDetail
             currentProfile={currentProfile}
+            detailView={detailViewFromParam(initialView)}
             isMutating={isMutating}
             matchFlowError={matchFlowError}
             matches={organizerMatches}
@@ -1048,6 +1045,7 @@ function TournamentForm({
 
 function TournamentDetail({
   currentProfile,
+  detailView,
   isMutating,
   matchFlowError,
   matches,
@@ -1061,6 +1059,7 @@ function TournamentDetail({
   tournament
 }: {
   currentProfile: CurrentUserProfile | null;
+  detailView: TournamentDetailView;
   isMutating: boolean;
   matchFlowError: OrganizerPanelError | null;
   matches: OrganizerMatch[];
@@ -1079,13 +1078,7 @@ function TournamentDetail({
     () => registrations.filter((registration) => filter === "all" || registration.displayStatus === filter),
     [filter, registrations]
   );
-
-  function scrollToSection(sectionId: string) {
-    document.getElementById(sectionId)?.scrollIntoView({
-      behavior: "smooth",
-      block: "start"
-    });
-  }
+  const hasSidePanel = detailView === "overview" || detailView === "registrations";
 
   return (
     <>
@@ -1109,181 +1102,204 @@ function TournamentDetail({
         </section>
       ) : null}
 
-      <section className="org-tournament-status-flow ops-panel">
-        {statusFlow.map((status) => (
-          <div className={classNames("org-tournament-flow-step", tournament.status === status && "is-active")} key={status}>
-            <span>{statusLabel(status)}</span>
-          </div>
-        ))}
-      </section>
-
       <nav className="org-tournament-section-shortcuts ops-panel" aria-label="Tournament detail sections">
-        <button onClick={() => scrollToSection("registration-review")} type="button">Registrations</button>
-        <button onClick={() => scrollToSection("group-management")} type="button">Groups</button>
-        <button onClick={() => scrollToSection("bracket-control")} type="button">Bracket</button>
-        <button onClick={() => scrollToSection("match-results")} type="button">Matches</button>
-        <button onClick={() => scrollToSection("staff-officials")} type="button">Staff</button>
-        <button onClick={() => scrollToSection("match-operations-flow")} type="button">Match Controls</button>
+        {tournamentDetailNavigation.map((item) => (
+          <Link
+            aria-current={detailView === item.view ? "page" : undefined}
+            className={classNames(detailView === item.view && "is-active")}
+            href={organizerDetailHref(tournament, item.view)}
+            key={item.view}
+            scroll={false}
+          >
+            {item.label}
+          </Link>
+        ))}
       </nav>
 
-      <section className="org-tournament-detail-grid">
+      <section className={classNames("org-tournament-detail-grid", !hasSidePanel && "is-full-width")}>
         <main className="org-tournament-detail-main">
-          <section className="org-tournament-meta-grid">
-            <MetaCard icon={ClipboardList} label="Format" value={formatLabel(tournament.format)} />
-            <MetaCard icon={Globe2} label="Timezone" value={tournament.timezone} />
-            <MetaCard icon={CalendarDays} label="Registration Deadline" value={formatDate(tournament.registrationClosesAt)} />
-            <MetaCard icon={CalendarDays} label="Date Range" value={`${formatDate(tournament.startsAt)} - ${formatDate(tournament.endsAt)}`} />
-            <MetaCard icon={UsersRound} label="Max Teams" value={String(tournament.maxTeams)} />
-            <MetaCard icon={Trophy} label="Registered Teams" value={String(tournament.registrationsCount)} />
-          </section>
+          {detailView === "overview" ? (
+            <section className="org-tournament-meta-grid" id="overview">
+              <MetaCard icon={ClipboardList} label="Format" value={formatLabel(tournament.format)} />
+              <MetaCard icon={Globe2} label="Timezone" value={tournament.timezone} />
+              <MetaCard icon={CalendarDays} label="Registration Deadline" value={formatDate(tournament.registrationClosesAt)} />
+              <MetaCard icon={CalendarDays} label="Date Range" value={`${formatDate(tournament.startsAt)} - ${formatDate(tournament.endsAt)}`} />
+              <MetaCard icon={UsersRound} label="Max Teams" value={String(tournament.maxTeams)} />
+              <MetaCard icon={Trophy} label="Registered Teams" value={String(tournament.registrationsCount)} />
+            </section>
+          ) : null}
 
-          <section className="org-tournament-panel ops-panel" id="registration-review">
-            <div className="org-tournament-panel-title">
-              <div>
-                <p className="ops-label">Registration Review</p>
-                <h2>Team Submissions</h2>
-              </div>
-              <button className="org-tournament-secondary" disabled={isMutating} onClick={onRefresh} type="button">
-                Refresh
-              </button>
-            </div>
-            <div className="org-registration-review-summary">
-              <RegistrationCount label="Total" value={registrations.length} />
-              <RegistrationCount label="Pending" value={counts.pending} />
-              <RegistrationCount label="Approved" value={counts.approved} />
-              <RegistrationCount label="Rejected" value={counts.rejected} />
-              <RegistrationCount label="Waitlisted" value={counts.waitlisted} />
-              <RegistrationCount label="Checked-in" value={counts.checkedIn} />
-            </div>
-            <div className="org-registration-filters">
-              {(["all", "pending", "approved", "rejected", "waitlisted", "checked-in"] as const).map((status) => (
-                <button
-                  className={classNames(filter === status && "is-active")}
-                  key={status}
-                  onClick={() => setFilter(status)}
-                  type="button"
-                >
-                  {statusLabel(status)}
+          {detailView === "registrations" ? (
+            <section className="org-tournament-panel ops-panel" id="registration-review">
+              <div className="org-tournament-panel-title">
+                <div>
+                  <p className="ops-label">Registration Review</p>
+                  <h2>Team Submissions</h2>
+                </div>
+                <button className="org-tournament-secondary" disabled={isMutating} onClick={onRefresh} type="button">
+                  Refresh
                 </button>
-              ))}
-            </div>
-            {registrations.length === 0 ? (
-              <p className="org-tournament-muted">No registrations are available for this tournament yet.</p>
-            ) : (
-              <div className="org-tournament-registration-list">
-                {filteredRegistrations.map((registration) => (
-                  <article className="org-tournament-registration-card" key={registration.id}>
-                    <div>
-                      <strong>{registration.teamName}</strong>
-                      <span>
-                        {registration.teamTag ?? registration.teamSlug ?? "No team tag"} - Captain: {registration.captainNickname ?? "Unknown"} - Roster {registration.members.length || "?"}
-                      </span>
-                    </div>
-                    <StatusBadge status={registration.displayStatus} />
-                    <span>{formatDate(registration.createdAt)}</span>
-                    <div className="org-tournament-actions">
-                      <button disabled={isMutating || registration.displayStatus === "checked-in" || registration.status === "approved"} onClick={() => onReviewRegistration(registration, "approve")} type="button">
-                        <Check size={15} />
-                        Approve
-                      </button>
-                      <button disabled={isMutating || registration.displayStatus === "checked-in" || registration.status === "waitlisted"} onClick={() => onReviewRegistration(registration, "waitlist")} type="button">
-                        Waitlist
-                      </button>
-                      <button disabled={isMutating || registration.displayStatus === "checked-in" || registration.status === "rejected"} onClick={() => onReviewRegistration(registration, "reject")} type="button">
-                        <X size={15} />
-                        Reject
-                      </button>
-                      <button disabled={isMutating || registration.status !== "approved" || registration.displayStatus === "checked-in"} onClick={() => onReviewRegistration(registration, "check-in")} type="button">
-                        Check-in
-                      </button>
-                      <button disabled type="button">
-                        View Team
-                      </button>
-                    </div>
-                  </article>
+              </div>
+              <div className="org-registration-review-summary">
+                <RegistrationCount label="Total" value={registrations.length} />
+                <RegistrationCount label="Pending" value={counts.pending} />
+                <RegistrationCount label="Approved" value={counts.approved} />
+                <RegistrationCount label="Rejected" value={counts.rejected} />
+                <RegistrationCount label="Waitlisted" value={counts.waitlisted} />
+                <RegistrationCount label="Checked-in" value={counts.checkedIn} />
+              </div>
+              <div className="org-registration-filters">
+                {(["all", "pending", "approved", "rejected", "waitlisted", "checked-in"] as const).map((status) => (
+                  <button
+                    className={classNames(filter === status && "is-active")}
+                    key={status}
+                    onClick={() => setFilter(status)}
+                    type="button"
+                  >
+                    {statusLabel(status)}
+                  </button>
                 ))}
               </div>
-            )}
-          </section>
+              {registrations.length === 0 ? (
+                <p className="org-tournament-muted">No registrations are available for this tournament yet.</p>
+              ) : (
+                <div className="org-tournament-registration-list">
+                  {filteredRegistrations.map((registration) => (
+                    <article className="org-tournament-registration-card" key={registration.id}>
+                      <div>
+                        <strong>{registration.teamName}</strong>
+                        <span>
+                          {registration.teamTag ?? registration.teamSlug ?? "No team tag"} - Captain: {registration.captainNickname ?? "Unknown"} - Roster {registration.members.length || "?"}
+                        </span>
+                      </div>
+                      <StatusBadge status={registration.displayStatus} />
+                      <span>{formatDate(registration.createdAt)}</span>
+                      <div className="org-tournament-actions">
+                        <button disabled={isMutating || registration.displayStatus === "checked-in" || registration.status === "approved"} onClick={() => onReviewRegistration(registration, "approve")} type="button">
+                          <Check size={15} />
+                          Approve
+                        </button>
+                        <button disabled={isMutating || registration.displayStatus === "checked-in" || registration.status === "waitlisted"} onClick={() => onReviewRegistration(registration, "waitlist")} type="button">
+                          Waitlist
+                        </button>
+                        <button disabled={isMutating || registration.displayStatus === "checked-in" || registration.status === "rejected"} onClick={() => onReviewRegistration(registration, "reject")} type="button">
+                          <X size={15} />
+                          Reject
+                        </button>
+                        <button disabled={isMutating || registration.status !== "approved" || registration.displayStatus === "checked-in"} onClick={() => onReviewRegistration(registration, "check-in")} type="button">
+                          Check-in
+                        </button>
+                        <button disabled type="button">
+                          View Team
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null}
 
-          <OrganizerGroupManagementPanel
-            matches={matches}
-            registrations={registrations}
-            tournament={tournament}
-          />
+          {detailView === "groups" ? (
+            <OrganizerGroupManagementPanel
+              matches={matches}
+              registrations={registrations}
+              tournament={tournament}
+            />
+          ) : null}
 
-          <OrganizerBracketManagementPanel
-            onRefresh={onRefresh}
-            tournament={tournament}
-          />
+          {detailView === "bracket" ? (
+            <OrganizerBracketManagementPanel
+              onRefresh={onRefresh}
+              tournament={tournament}
+            />
+          ) : null}
 
-          <OrganizerMatchResultsPanel
-            onRefresh={onRefresh}
-            tournament={tournament}
-          />
+          {detailView === "matches" ? (
+            <OrganizerMatchResultsPanel
+              onRefresh={onRefresh}
+              tournament={tournament}
+            />
+          ) : null}
 
-          <StaffOfficialsPanel
-            currentProfile={currentProfile}
-            isMutating={isMutating}
-            onRefresh={onRefresh}
-            tournament={tournament}
-          />
+          {detailView === "import" ? (
+            <div className="org-tournament-panel organizer-import-shell ops-panel" id="match-import">
+              <MatchImportPanel />
+            </div>
+          ) : null}
 
-          <MatchOperationsControlPanel
-            error={matchFlowError}
-            matches={matches}
-            tournament={tournament}
-          />
+          {detailView === "staff" ? (
+            <StaffOfficialsPanel
+              currentProfile={currentProfile}
+              isMutating={isMutating}
+              onRefresh={onRefresh}
+              tournament={tournament}
+            />
+          ) : null}
+
+          {detailView === "match-controls" ? (
+            <MatchOperationsControlPanel
+              error={matchFlowError}
+              matches={matches}
+              tournament={tournament}
+            />
+          ) : null}
         </main>
 
-        <aside className="org-tournament-detail-side">
-          <section className="org-tournament-panel ops-panel">
-            <div className="org-tournament-panel-title">
-              <h2>Quick Actions</h2>
-            </div>
-            <div className="org-tournament-side-actions">
-              <button className="org-tournament-primary" disabled={tournament.status === "archived"} onClick={onEdit} type="button">
-                <Edit3 size={17} />
-                Edit Tournament
-              </button>
-              <button disabled={isMutating || !canPublish(tournament.status)} onClick={onPublish} type="button">
-                <Rocket size={17} />
-                Publish
-              </button>
-              <button disabled={isMutating || !canArchive(tournament.status)} onClick={onArchive} type="button">
-                <Archive size={17} />
-                Archive
-              </button>
-              <Link href={`/turnirji/${tournament.slug}`}>
-                <Globe2 size={17} />
-                View Public Page
-              </Link>
-            </div>
-          </section>
+        {hasSidePanel ? (
+          <aside className="org-tournament-detail-side">
+            {detailView === "overview" ? (
+              <section className="org-tournament-panel ops-panel">
+                <div className="org-tournament-panel-title">
+                  <h2>Quick Actions</h2>
+                </div>
+                <div className="org-tournament-side-actions">
+                  <button className="org-tournament-primary" disabled={tournament.status === "archived"} onClick={onEdit} type="button">
+                    <Edit3 size={17} />
+                    Edit Tournament
+                  </button>
+                  <button disabled={isMutating || !canPublish(tournament.status)} onClick={onPublish} type="button">
+                    <Rocket size={17} />
+                    Publish
+                  </button>
+                  <button disabled={isMutating || !canArchive(tournament.status)} onClick={onArchive} type="button">
+                    <Archive size={17} />
+                    Archive
+                  </button>
+                  <Link href={`/turnirji/${tournament.slug}`}>
+                    <Globe2 size={17} />
+                    View Public Page
+                  </Link>
+                </div>
+              </section>
+            ) : null}
 
-          <section className="org-tournament-panel ops-panel">
-            <div className="org-tournament-panel-title">
-              <h2>Registration Commands</h2>
-            </div>
-            <p className="org-tournament-muted">Export, close registration, and bulk action endpoints are not available yet.</p>
-            <div className="org-tournament-side-actions">
-              <button className="org-tournament-secondary" disabled={isMutating} onClick={onRefresh} type="button">
-                Refresh Registrations
-              </button>
-              <button disabled type="button">Export List unavailable</button>
-              <button disabled type="button">Close Registration unavailable</button>
-              <button disabled type="button">Bulk Actions unavailable</button>
-            </div>
-            <div className="org-tournament-audit-row">
-              <span>Last Update</span>
-              <strong>{formatDate(tournament.updatedAt)}</strong>
-            </div>
-            <div className="org-tournament-audit-row">
-              <span>Published</span>
-              <strong>{formatDate(tournament.publishedAt)}</strong>
-            </div>
-          </section>
-        </aside>
+            {detailView === "registrations" ? (
+              <section className="org-tournament-panel ops-panel">
+                <div className="org-tournament-panel-title">
+                  <h2>Registration Commands</h2>
+                </div>
+                <p className="org-tournament-muted">Export, close registration, and bulk action endpoints are not available yet.</p>
+                <div className="org-tournament-side-actions">
+                  <button className="org-tournament-secondary" disabled={isMutating} onClick={onRefresh} type="button">
+                    Refresh Registrations
+                  </button>
+                  <button disabled type="button">Export List unavailable</button>
+                  <button disabled type="button">Close Registration unavailable</button>
+                  <button disabled type="button">Bulk Actions unavailable</button>
+                </div>
+                <div className="org-tournament-audit-row">
+                  <span>Last Update</span>
+                  <strong>{formatDate(tournament.updatedAt)}</strong>
+                </div>
+                <div className="org-tournament-audit-row">
+                  <span>Published</span>
+                  <strong>{formatDate(tournament.publishedAt)}</strong>
+                </div>
+              </section>
+            ) : null}
+          </aside>
+        ) : null}
       </section>
     </>
   );

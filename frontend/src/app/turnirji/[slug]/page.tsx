@@ -1,25 +1,27 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import {
-  BarChart3,
   CalendarDays,
   DatabaseZap,
   Trophy,
   UsersRound
 } from "lucide-react";
 
-import { AnalyticsOverview } from "@/components/analytics-overview";
 import { PublicTournamentManageLink } from "@/components/public-tournament-manage-link";
 import { PublicTournamentLivePanels } from "@/components/public-tournament-live-panels";
-import { SectionHeader } from "@/components/section-header";
 import { TournamentCommandHeader } from "@/components/tournament-command-header";
+import { TournamentAnalyticsPanel } from "@/components/tournament-analytics-panel";
 import { TournamentMetaGrid } from "@/components/tournament-meta-grid";
 import { TournamentRegistrationPanel } from "@/components/tournament-registration-panel";
 import {
-  getAnalytics,
   getTournamentBySlug,
   getTournaments
 } from "@/lib/data";
+import {
+  getPublicTournamentAnalytics,
+  type TournamentAnalyticsMetric
+} from "@/lib/analytics-data";
+import { ApiRequestError } from "@/lib/api";
 import {
   getPublicGroupsStandingsData,
   type PublicGroupsStandingsData
@@ -52,10 +54,7 @@ export default async function TournamentDetailPage({
   params
 }: TournamentDetailPageProps) {
   const { slug } = await params;
-  const [analytics, tournament] = await Promise.all([
-    getAnalytics(),
-    getTournamentBySlug(slug)
-  ]);
+  const tournament = await getTournamentBySlug(slug);
 
   if (!tournament) {
     notFound();
@@ -70,6 +69,8 @@ export default async function TournamentDetailPage({
   let bracketError: string | null = null;
   let publicMatches: TournamentMatch[] = [];
   let publicMatchesError: string | null = null;
+  let tournamentAnalytics: TournamentAnalyticsMetric | null = null;
+  let tournamentAnalyticsError: string | null = null;
 
   try {
     groupsStandings = await getPublicGroupsStandingsData(tournament.id);
@@ -93,6 +94,16 @@ export default async function TournamentDetailPage({
     publicMatchesError = error instanceof Error
       ? error.message
       : "Schedule is unavailable.";
+  }
+
+  try {
+    tournamentAnalytics = await getPublicTournamentAnalytics(tournament.id);
+  } catch (error) {
+    tournamentAnalyticsError = error instanceof ApiRequestError && error.status === 404
+      ? null
+      : error instanceof Error
+      ? error.message
+      : "Analytics unavailable.";
   }
 
   return (
@@ -162,20 +173,10 @@ export default async function TournamentDetailPage({
         tournamentId={tournament.id}
       />
 
-      <section className="tournament-command-panel tournament-analytics-panel ops-panel">
-        <SectionHeader
-          eyebrow="Tournament Analytics"
-          title="Metrics from Imported Matches"
-          description="Ready for win rate, KDA, match duration, and hero performance."
-          action={
-            <Link className="text-link ops-mono" href="/analitika">
-              <BarChart3 size={16} />
-              <span>Open Analytics</span>
-            </Link>
-          }
-        />
-        <AnalyticsOverview heroes={analytics.heroMetrics} teams={analytics.teams} />
-      </section>
+      <TournamentAnalyticsPanel
+        error={tournamentAnalyticsError}
+        metrics={tournamentAnalytics}
+      />
     </div>
   );
 }

@@ -11,13 +11,18 @@ import {
 } from "@/components/dashboard/role-dashboard-primitives";
 import { organizerDashboardData as data } from "@/lib/role-dashboard-data";
 
-export function OrganizerDashboardView() {
+export function OrganizerDashboardView({
+  avatarUrl,
+  displayName
+}: {
+  avatarUrl?: string | null;
+  displayName: string;
+}) {
   return (
     <div className="role-dashboard role-dashboard-organizer">
       <DashboardTopbar
-        activeLabel="Active Tournament"
-        activeValue={data.topbar.activeTournament}
-        action={data.topbar.primaryAction}
+        avatarUrl={avatarUrl}
+        displayName={displayName}
       />
 
       <div className="role-dashboard-content">

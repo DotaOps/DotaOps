@@ -2,12 +2,9 @@
 
 import {
   BarChart3,
-  Bell,
   Brackets,
   LayoutDashboard,
   LogIn,
-  Plus,
-  RadioTower,
   Shield,
   Swords,
   Trophy,
@@ -21,6 +18,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import { CurrentUserProfileProvider } from "@/components/current-user-profile-context";
+import { HeaderProfileLink } from "@/components/header-profile-link";
 import { getCurrentUserProfile, type CurrentUserProfile } from "@/lib/auth";
 import { isOrganizerRole, routeAccessForPath } from "@/lib/route-access";
 import { classNames } from "@/lib/utils";
@@ -155,22 +154,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.replace(`/login?next=${encodeURIComponent(pathname)}`);
   }, [access, isPrivateAuthCheckPending, pathname, profile, router]);
 
-  const primaryAction = useMemo(() => {
-    if (isPublicContentGuest) {
-      return { href: "/login", icon: LogIn, label: "Login" };
-    }
-
-    if (isOrganizerRole(profile?.role)) {
-      return { href: "/organizator", icon: Plus, label: "New Tournament" };
-    }
-
-    if (profile?.role === "captain") {
-      return { href: "/turnirji", icon: Trophy, label: "Join Tournament" };
-    }
-
-    return { href: "/turnirji", icon: Trophy, label: "View Tournaments" };
-  }, [isPublicContentGuest, profile?.role]);
-  const PrimaryActionIcon = primaryAction.icon;
   const visibleNavItems = useMemo(() => {
     if (isPublicContentGuest) {
       return publicContentNavItems;
@@ -178,9 +161,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     return navItems.filter((item) => !item.organizerOnly || canUseOrganizer);
   }, [canUseOrganizer, isPublicContentGuest]);
-  const profileHref = isPublicContentGuest ? "/login" : "/profile";
-  const profileLabel = isPublicContentGuest ? "PUBLIC OPS" : profile?.nickname ?? "SOLO_TACTICIAN";
-  const profileRoleLabel = isPublicContentGuest ? "Visitor" : profile?.role ?? "Profile";
+  const hasAuthenticatedProfile = Boolean(profile);
+  const profileDisplayName = profile?.displayName || profile?.nickname || "Profile";
   const shouldShowPageSkeleton = isPrivateAuthCheckPending && Boolean(profile);
   const pageDashboardLoadingRole = dashboardLoadingRole(profile?.role);
 
@@ -263,57 +245,33 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="main-area">
         {isRoleDashboard ? null : (
           <header className="topbar ops-panel">
-            <div className="topbar-actions" aria-label="Application status and actions">
-              <div className="topbar-status-segment">
-                <RadioTower size={16} />
-                <span>OPS STATUS</span>
-                <strong>ONLINE</strong>
-              </div>
-
-              <div className="topbar-status-segment topbar-rank-segment">
-                <Shield size={16} />
-                <span>RANK</span>
-                <strong>IMMORTAL</strong>
-              </div>
-
-              <button className="topbar-icon-button" type="button" aria-label="Notifications">
-                <Bell size={17} />
-              </button>
-
-              <Link className="topbar-profile" href={profileHref} aria-label="User profile">
-                <span className="topbar-avatar" aria-hidden="true">
-                  {!isPublicContentGuest && profile?.avatarUrl ? (
-                    <span
-                      className="topbar-avatar-image"
-                      style={{ backgroundImage: `url(${profile.avatarUrl})` }}
-                    />
-                  ) : (
-                    <UserRound size={16} />
-                  )}
-                </span>
-                <span>
-                  <strong>{profileLabel}</strong>
-                  <small>{profileRoleLabel}</small>
-                </span>
-              </Link>
-
-              <Link className="button button-primary ops-button-primary topbar-primary-action" href={primaryAction.href}>
-                <PrimaryActionIcon size={18} />
-                <span>{primaryAction.label}</span>
-              </Link>
+            <div
+              className={classNames("topbar-actions", !hasAuthenticatedProfile && "topbar-actions-public")}
+              aria-label="Account actions"
+            >
+              {hasAuthenticatedProfile ? (
+                <HeaderProfileLink avatarUrl={profile?.avatarUrl} displayName={profileDisplayName} />
+              ) : (
+                <Link className="button button-primary ops-button-primary topbar-primary-action" href="/login">
+                  <LogIn size={18} />
+                  <span>Login</span>
+                </Link>
+              )}
             </div>
           </header>
         )}
 
-        <main className={classNames("page", isRoleDashboard && "dashboard-page")}>
-          {shouldShowPageSkeleton ? (
-            isRoleDashboard ? (
-              <DashboardLoadingSkeleton role={pageDashboardLoadingRole} />
-            ) : (
-              <RouteLoadingSkeleton />
-            )
-          ) : children}
-        </main>
+        <CurrentUserProfileProvider profile={profile}>
+          <main className={classNames("page", isRoleDashboard && "dashboard-page")}>
+            {shouldShowPageSkeleton ? (
+              isRoleDashboard ? (
+                <DashboardLoadingSkeleton role={pageDashboardLoadingRole} />
+              ) : (
+                <RouteLoadingSkeleton />
+              )
+            ) : children}
+          </main>
+        </CurrentUserProfileProvider>
       </div>
     </div>
   );

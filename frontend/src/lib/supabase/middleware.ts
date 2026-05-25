@@ -8,14 +8,24 @@ function getSupabaseConfig() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing Supabase frontend environment variables.");
+    return null;
   }
 
   return { supabaseUrl, supabaseKey };
 }
 
 export async function updateSession(request: NextRequest) {
-  const { supabaseUrl, supabaseKey } = getSupabaseConfig();
+  const config = getSupabaseConfig();
+
+  if (!config) {
+    return NextResponse.next({
+      request: {
+        headers: request.headers
+      }
+    });
+  }
+
+  const { supabaseUrl, supabaseKey } = config;
 
   let supabaseResponse = NextResponse.next({
     request: {

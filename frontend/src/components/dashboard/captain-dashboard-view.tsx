@@ -12,14 +12,18 @@ import {
 } from "@/components/dashboard/role-dashboard-primitives";
 import { captainDashboardData as data } from "@/lib/role-dashboard-data";
 
-export function CaptainDashboardView() {
+export function CaptainDashboardView({
+  avatarUrl,
+  displayName
+}: {
+  avatarUrl?: string | null;
+  displayName: string;
+}) {
   return (
     <div className="role-dashboard role-dashboard-captain">
       <DashboardTopbar
-        activeLabel="Active"
-        activeValue={data.topbar.activeTeam}
-        action={data.topbar.primaryAction}
-        rank={data.topbar.rank}
+        avatarUrl={avatarUrl}
+        displayName={displayName}
       />
 
       <div className="role-dashboard-content">

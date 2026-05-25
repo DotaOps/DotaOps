@@ -165,7 +165,7 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
   const isCaptain = Boolean(data?.isCaptain && hasBackendTeam);
   const isOrganizer = isOrganizerRole(data?.currentProfile.role);
   const canSubmit = Boolean(isCaptain && !registration && hasRealTournamentId);
-  const organizerHref = `/organizator?tournamentId=${encodeURIComponent(manageableTournamentId ?? tournament.id)}&slug=${encodeURIComponent(tournament.slug)}&view=registrations#registration-review`;
+  const organizerHref = `/organizator?tournamentId=${encodeURIComponent(manageableTournamentId ?? tournament.id)}&slug=${encodeURIComponent(tournament.slug)}&view=registrations`;
   const validationItems = [
     {
       ok: Boolean(data?.team),
