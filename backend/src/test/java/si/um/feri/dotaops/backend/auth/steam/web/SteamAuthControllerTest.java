@@ -32,6 +32,8 @@ import si.um.feri.dotaops.backend.common.error.RateLimitExceededException;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -108,6 +110,15 @@ class SteamAuthControllerTest {
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.code").value("RATE_LIMITED"))
                 .andExpect(jsonPath("$.path").value("/api/auth/steam/login"));
+    }
+
+    @Test
+    void profileLinkRequiresAuthentication() throws Exception {
+        mockMvc.perform(post("/api/auth/steam/link"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        verify(steamAuthService, never()).beginProfileLink(any());
     }
 
     @Test

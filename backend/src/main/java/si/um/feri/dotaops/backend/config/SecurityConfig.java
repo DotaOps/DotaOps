@@ -54,6 +54,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/info", "/api/health").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/steam/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/steam/logout").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/steam/link").authenticated()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/teams/*/invitations",
                                 "/api/teams/*/tournament-registrations",

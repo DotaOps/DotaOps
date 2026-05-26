@@ -59,6 +59,39 @@ public class SteamProfileRepository {
                 claimedId);
     }
 
+    public UUID linkSteamAccountToProfile(
+            UUID profileId,
+            String steamId,
+            String displayName,
+            String avatarUrl,
+            String profileUrl,
+            String claimedId
+    ) {
+        return jdbcTemplate.queryForObject(
+                """
+                select private.link_steam_account_to_profile(
+                  ?,
+                  ?,
+                  ?,
+                  ?,
+                  ?,
+                  jsonb_build_object(
+                    'source', 'steam_openid',
+                    'claimed_id', ?,
+                    'verified_by_backend', true
+                  ),
+                  true
+                )
+                """,
+                UUID.class,
+                profileId,
+                steamId,
+                displayName,
+                avatarUrl,
+                profileUrl,
+                claimedId);
+    }
+
     private SteamProfileUpsertResult mapUpsertResult(ResultSet resultSet, int rowNumber) throws SQLException {
         return new SteamProfileUpsertResult(
                 resultSet.getObject("out_profile_id", UUID.class),

@@ -124,24 +124,32 @@ const tournamentDetailNavigation: Array<{ label: string; view: TournamentDetailV
   { label: "Match Controls", view: "match-controls" }
 ];
 
-function emptyForm(): TournamentFormState {
+function addLocalDays(value: Date, days: number) {
+  const result = new Date(value);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function emptyForm(now = new Date()): TournamentFormState {
+  const startsAt = addLocalDays(now, 7);
+
   return {
     allowSubstitutes: true,
     bestOf: "3",
     checkInClosesAt: "",
     checkInEnabled: false,
     checkInOpensAt: "",
-    description: "",
-    endsAt: "",
+    description: "DotaOps tournament",
+    endsAt: toLocalInput(addLocalDays(startsAt, 1).toISOString()),
     format: "single_elimination",
     maxTeams: "8",
     minTeams: "2",
     prizePool: "",
-    registrationClosesAt: "",
-    registrationOpensAt: "",
-    rules: "",
+    registrationClosesAt: toLocalInput(addLocalDays(startsAt, -1).toISOString()),
+    registrationOpensAt: toLocalInput(now.toISOString()),
+    rules: "standard DotaOps ruleset",
     slug: "",
-    startsAt: "",
+    startsAt: toLocalInput(startsAt.toISOString()),
     teamSize: "5",
     timezone: "UTC",
     title: ""

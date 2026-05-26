@@ -68,6 +68,7 @@ OPENDOTA_RETRY_BACKOFF=250ms
 NEXT_PUBLIC_SUPABASE_URL=https://<projectRef>.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
 NEXT_PUBLIC_API_URL=http://localhost:8080/api
+FRONTEND_AUTH_REDIRECT_URL=http://localhost:3000/profile
 ```
 
 Frontend ima svoj `.env.local`, ker Next.js bere env datoteke iz `frontend/` mape:
@@ -402,6 +403,8 @@ docker-compose down
 ```
 
 Opombe:
+- `NEXT_PUBLIC_API_URL` uporablja brskalnik, zato pri lokalnem Docker zagonu ostane `http://localhost:8080/api`.
+- Server-side renderiranje znotraj frontend containerja uporablja `COMPOSE_NEXT_SERVER_API_URL`, ki je privzeto `http://backend:8080/api`. Nastavite jo le, ce backend tece izven Compose omrezja.
 - `docker-compose` uporablja vrednosti iz vaše root `.env`; poskrbite, da so `SUPABASE_DB_URL`, `SUPABASE_DB_USER` in `SUPABASE_DB_PASSWORD` pravilno nastavljene za vašo Supabase bazo (ali uporabite lokalno Postgres, če želite).
 - Če uporabljate Supabase v oblaku, bo aplikacija zahtevala ustrezne `NEXT_PUBLIC_SUPABASE_*` vrednosti za frontend (nastavite v root `.env` ali v `frontend/.env.local`).
 - Volumni `./backend/src` in `./frontend/src` so nastavljeni kot volumi v `docker-compose` za razvojno izkušnjo (če želite hot-reload). Če želite čisto produkcijsko sliko, odstranite volumenne mape iz `docker-compose.yml`.

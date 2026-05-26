@@ -13,10 +13,7 @@ import { TournamentCommandHeader } from "@/components/tournament-command-header"
 import { TournamentAnalyticsPanel } from "@/components/tournament-analytics-panel";
 import { TournamentMetaGrid } from "@/components/tournament-meta-grid";
 import { TournamentRegistrationPanel } from "@/components/tournament-registration-panel";
-import {
-  getTournamentBySlug,
-  getTournaments
-} from "@/lib/data";
+import { getTournamentBySlug } from "@/lib/data";
 import {
   getPublicTournamentAnalytics,
   type TournamentAnalyticsMetric
@@ -43,12 +40,6 @@ interface TournamentDetailPageProps {
 }
 
 export const dynamic = "force-dynamic";
-
-export async function generateStaticParams() {
-  const tournaments = await getTournaments();
-
-  return tournaments.map((tournament) => ({ slug: tournament.slug }));
-}
 
 export default async function TournamentDetailPage({
   params

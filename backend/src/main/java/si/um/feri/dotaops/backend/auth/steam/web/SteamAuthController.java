@@ -47,6 +47,13 @@ public class SteamAuthController {
                 .build();
     }
 
+    @PostMapping("/link")
+    ResponseEntity<ApiResponse<SteamLinkStartResponse>> link(HttpServletRequest request) {
+        URI redirectUri = steamAuthService.beginProfileLink(request);
+
+        return ResponseEntity.ok(ApiResponse.of(new SteamLinkStartResponse(redirectUri.toString())));
+    }
+
     @GetMapping("/callback")
     ResponseEntity<?> callback(@RequestParam MultiValueMap<String, String> params) {
         SteamAuthResult result = steamAuthService.completeCallback(params);
