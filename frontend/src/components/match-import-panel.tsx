@@ -142,6 +142,7 @@ export function MatchImportPanel() {
 
   const validationMessage = useMemo(() => validateMatchId(matchId), [matchId]);
   const jobId = job?.id ?? null;
+  const displayedStatus = isSubmitting ? "processing" : job?.status ?? "idle";
 
   const refreshJob = useCallback(async () => {
     if (!jobId) {
@@ -257,7 +258,7 @@ export function MatchImportPanel() {
           <p className="eyebrow">OpenDota Flow</p>
           <h3>Match Data Import</h3>
         </div>
-        <StatusBadge status={job?.status ?? "idle"} />
+        <StatusBadge status={displayedStatus} />
       </div>
 
       <p className="import-panel-copy">
