@@ -248,7 +248,7 @@ export function AnalyticsDashboard() {
         </section>
       ) : null}
 
-      {allEmpty(snapshot) ? (
+      {!error && allEmpty(snapshot) ? (
         <section className="analytics-state-panel analytics-empty-state ops-panel">
           <div>
             <FileWarning size={22} />
