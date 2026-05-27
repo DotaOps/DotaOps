@@ -226,27 +226,63 @@ function NoTeamState({
   }
 
   return (
-    <section className="team-mgmt-state ops-panel">
-      <p className="ops-label">No active squad</p>
-      <h1>You are not currently in a team</h1>
-      <p>Create a team to become its captain, or accept an invitation to join an existing roster.</p>
-      <div className="team-mgmt-empty-actions">
-        <button
-          className="button button-primary ops-button-primary"
-          disabled={isMutating}
-          onClick={() => setShowCreateForm((current) => !current)}
-          type="button"
-        >
-          Create Team
-        </button>
-        <button className="button button-secondary" disabled type="button">
-          Request to Join
-        </button>
-        <button className="button button-secondary" onClick={onRefresh} type="button">
-          <RefreshCcw size={16} />
-          Retry
-        </button>
+    <section className="team-mgmt-state team-mgmt-empty-state ops-panel">
+      <div className="team-mgmt-empty-copy">
+        <div className="team-mgmt-empty-icon" aria-hidden="true">
+          <UsersRound size={32} />
+        </div>
+        <p className="ops-label">No active squad</p>
+        <h1>You are not currently in a team</h1>
+        <p>
+          Create a team to become its captain, or accept an invitation to join an existing roster.
+          Once your squad is ready, you can manage roster slots and register for tournaments.
+        </p>
+        <div className="team-mgmt-empty-actions">
+          <button
+            className="button button-primary ops-button-primary team-mgmt-empty-primary"
+            disabled={isMutating}
+            onClick={() => setShowCreateForm((current) => !current)}
+            type="button"
+          >
+            Create Team
+          </button>
+          <div className="team-mgmt-empty-invite-note">
+            <button className="button button-secondary team-mgmt-empty-secondary" disabled type="button">
+              Join by invite
+            </button>
+            <span>Ask a team captain to send you an invitation.</span>
+          </div>
+          <button className="button button-secondary team-mgmt-empty-utility" onClick={onRefresh} type="button">
+            <RefreshCcw size={16} />
+            Retry
+          </button>
+        </div>
       </div>
+
+      <div className="team-mgmt-empty-briefing" aria-label="Team onboarding steps">
+        <article>
+          <Shield size={18} />
+          <div>
+            <strong>Create a roster</strong>
+            <span>Start a team workspace and become its captain.</span>
+          </div>
+        </article>
+        <article>
+          <UserPlus size={18} />
+          <div>
+            <strong>Invite players</strong>
+            <span>Fill roster slots from the team management screen.</span>
+          </div>
+        </article>
+        <article>
+          <Swords size={18} />
+          <div>
+            <strong>Join tournaments</strong>
+            <span>Submit the squad when registration is open.</span>
+          </div>
+        </article>
+      </div>
+
       {message ? <p className="team-mgmt-message team-mgmt-error">{message}</p> : null}
       {formError ? <p className="team-mgmt-message team-mgmt-error">{formError}</p> : null}
       {showCreateForm ? (
