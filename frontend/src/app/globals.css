@@ -8863,34 +8863,36 @@ textarea:focus {
 }
 
 .team-mgmt-empty-primary,
-.team-mgmt-empty-secondary,
 .team-mgmt-empty-utility {
   min-height: 46px;
 }
 
-.team-mgmt-empty-secondary {
-  border-color: rgba(233, 195, 73, 0.52);
-  background: transparent;
-  color: var(--ops-secondary);
-}
-
-.team-mgmt-empty-secondary:disabled {
-  border-color: rgba(233, 195, 73, 0.28);
-  color: rgba(233, 195, 73, 0.62);
-}
-
 .team-mgmt-empty-invite-note {
   display: inline-flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 190px;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+  width: fit-content;
+  max-width: min(100%, 460px);
+  margin-top: -2px;
+  padding: 9px 12px;
+  border: 1px solid rgba(233, 195, 73, 0.22);
+  border-left: 3px solid rgba(233, 195, 73, 0.58);
+  border-radius: 8px;
+  background: rgba(233, 195, 73, 0.055);
 }
 
 .team-mgmt-empty-invite-note span {
-  max-width: 220px;
   color: var(--ops-muted);
   font-size: 0.78rem;
   line-height: 1.35;
+}
+
+.team-mgmt-empty-invite-label {
+  color: var(--ops-secondary) !important;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .team-mgmt-empty-utility {

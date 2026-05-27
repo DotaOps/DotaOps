@@ -234,8 +234,8 @@ function NoTeamState({
         <p className="ops-label">No active squad</p>
         <h1>You are not currently in a team</h1>
         <p>
-          Create a team to become its captain, or accept an invitation to join an existing roster.
-          Once your squad is ready, you can manage roster slots and register for tournaments.
+          Create your own team or accept an invitation from a captain. Once your squad is ready,
+          you can manage roster slots and register for tournaments.
         </p>
         <div className="team-mgmt-empty-actions">
           <button
@@ -246,16 +246,14 @@ function NoTeamState({
           >
             Create Team
           </button>
-          <div className="team-mgmt-empty-invite-note">
-            <button className="button button-secondary team-mgmt-empty-secondary" disabled type="button">
-              Join by invite
-            </button>
-            <span>Ask a team captain to send you an invitation.</span>
-          </div>
           <button className="button button-secondary team-mgmt-empty-utility" onClick={onRefresh} type="button">
             <RefreshCcw size={16} />
             Retry
           </button>
+        </div>
+        <div className="team-mgmt-empty-invite-note" aria-label="Join by invitation">
+          <span className="team-mgmt-empty-invite-label">Join by invite</span>
+          <span>Ask a team captain to send you an invitation.</span>
         </div>
       </div>
 
@@ -1002,11 +1000,11 @@ function OverviewTab({
                 </div>
                 <span className={classNames("team-mgmt-online-dot", !memberOnline(index) && "is-offline")} />
                 <div className="team-mgmt-tile-actions">
-                  <button onClick={() => onPlaceholder("Player profile route is not available yet.")} type="button">
-                    Profile
+                  <button disabled onClick={() => onPlaceholder("Player profile route is not available yet.")} type="button">
+                    Profile later
                   </button>
-                  <button onClick={() => onPlaceholder("Player stats route is not available yet.")} type="button">
-                    Stats
+                  <button disabled onClick={() => onPlaceholder("Player stats route is not available yet.")} type="button">
+                    Stats later
                   </button>
                 </div>
               </article>
@@ -1026,7 +1024,7 @@ function OverviewTab({
             onPlaceholder={onPlaceholder}
             onRosterTab={onRosterTab}
           />
-          <JoinRequests onPlaceholder={onPlaceholder} />
+          <JoinRequests />
           <TacticalAlert tone="red" />
         </aside>
       </section>
@@ -1081,28 +1079,13 @@ function InviteRegistry({
   );
 }
 
-function JoinRequests({ onPlaceholder }: { onPlaceholder: (message: string) => void }) {
+function JoinRequests() {
   return (
     <section className="team-mgmt-side-card ops-panel">
       <h2>Join Requests</h2>
-      {["w33.haa", "Gh"].map((name) => (
-        <article className="team-mgmt-request" key={name}>
-          <span className="team-mgmt-mini-avatar">{initials(name)}</span>
-          <div>
-            <strong>{name}</strong>
-            <p>Rank: Immortal</p>
-          </div>
-          <button disabled onClick={() => onPlaceholder("Join request workflow not available yet.")} type="button">
-            <Check size={14} />
-          </button>
-          <button disabled onClick={() => onPlaceholder("Join request workflow not available yet.")} type="button">
-            <X size={14} />
-          </button>
-        </article>
-      ))}
-      <button disabled onClick={() => onPlaceholder("Join request workflow not available yet.")} type="button">
-        Load More Requests
-      </button>
+      <p className="team-mgmt-muted">
+        Join requests are not available in this version. Add players by sending roster invitations.
+      </p>
     </section>
   );
 }
@@ -1388,7 +1371,7 @@ function InvitationsTab({
       <section className="team-mgmt-metrics team-mgmt-invite-metrics">
         <MetricCard icon={Mail} label="Incoming Invites" value={String(incomingTotal).padStart(2, "0")} />
         <MetricCard icon={UserPlus} label="Outgoing Invites" value={String(outgoingTotal).padStart(2, "0")} />
-        <MetricCard icon={Clock} label="Pending Requests" value="03" />
+        <MetricCard icon={Clock} label="Join Requests Unavailable" value="--" />
         <MetricCard icon={Check} label="Accepted This Week" tone="gold" value={String(acceptedThisWeek).padStart(2, "0")} />
       </section>
       <section className="team-mgmt-layout">
@@ -1425,16 +1408,9 @@ function InvitationsTab({
           />
           <section className="team-mgmt-join-placeholder ops-panel">
             <h2>Join Requests</h2>
-            <article>
-              <span className="team-mgmt-mini-avatar">W3</span>
-              <div>
-                <strong>w33.haa</strong>
-                <p>Rank: Immortal #24</p>
-              </div>
-              <button disabled type="button">Accept</button>
-              <button disabled type="button">Decline</button>
-              <p>Join request workflow not available yet.</p>
-            </article>
+            <p className="team-mgmt-muted">
+              Join requests are not available in this version. Captains can manage roster access through invitations.
+            </p>
           </section>
         </main>
         <aside className="team-mgmt-side-stack">
