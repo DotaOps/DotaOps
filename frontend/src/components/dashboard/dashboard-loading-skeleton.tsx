@@ -1,7 +1,5 @@
 "use client";
 
-import { useCurrentUserProfile } from "@/components/current-user-profile-context";
-import { DashboardTopbar } from "@/components/dashboard/role-dashboard-primitives";
 import { classNames } from "@/lib/utils";
 
 export type DashboardLoadingRole = "captain" | "organizer" | "player";
@@ -15,8 +13,6 @@ export function DashboardLoadingSkeleton({
 }: {
   role?: DashboardLoadingRole;
 }) {
-  const profile = useCurrentUserProfile();
-
   return (
     <section
       aria-busy="true"
@@ -24,31 +20,12 @@ export function DashboardLoadingSkeleton({
       className={classNames("role-dashboard", `role-dashboard-${role}`, "dashboard-loading-skeleton")}
       role="status"
     >
-      {profile ? (
-        <DashboardTopbar
-          avatarUrl={profile.avatarUrl}
-          displayName={profile.displayName || profile.nickname || "Profile"}
-        />
-      ) : (
-        <DashboardTopbarSkeleton />
-      )}
-
       <div aria-hidden="true" className="role-dashboard-content">
         {role === "captain" ? <CaptainDashboardContentSkeleton /> : null}
         {role === "organizer" ? <OrganizerDashboardContentSkeleton /> : null}
         {role === "player" ? <PlayerDashboardContentSkeleton /> : null}
       </div>
     </section>
-  );
-}
-
-function DashboardTopbarSkeleton() {
-  return (
-    <header aria-hidden="true" className="role-dashboard-topbar dashboard-skeleton-topbar">
-      <div className="role-topbar-actions">
-        <SkeletonItem className="dashboard-skeleton-topbar-profile" />
-      </div>
-    </header>
   );
 }
 

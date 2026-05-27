@@ -335,28 +335,77 @@ p {
   box-shadow: inset 3px 0 0 var(--red);
 }
 
-.sidebar-panel {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
+.sidebar-user-card {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px 12px;
+  align-items: center;
   margin-top: auto;
   padding: 14px;
   border: 1px solid #ffffff18;
   border-radius: var(--radius);
   background: #ffffff0d;
+  color: #f7f7f8;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
 }
 
-.sidebar-panel span {
-  display: block;
+.sidebar-user-card:hover,
+.sidebar-user-card:focus-visible {
+  border-color: rgba(255, 179, 172, 0.48);
+  background: rgba(255, 255, 255, 0.075);
+  transform: translateY(-1px);
+}
+
+.sidebar-user-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 179, 172, 0.28);
+  border-radius: var(--radius);
+  background: rgba(217, 74, 56, 0.14);
+  color: #ffb3ac;
+}
+
+.sidebar-user-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sidebar-user-kicker,
+.sidebar-user-meta,
+.sidebar-user-badge {
   color: #c8ccd4;
-  font-size: 0.78rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.sidebar-panel strong {
+.sidebar-user-copy strong {
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-user-meta {
+  color: #eabcb7;
+}
+
+.sidebar-user-badge {
+  grid-column: 1 / -1;
   display: block;
   margin-top: 4px;
-  overflow-wrap: anywhere;
-  font-size: 0.84rem;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--ops-secondary);
+  font-size: 0.64rem;
 }
 
 .main-area {
@@ -1534,7 +1583,7 @@ textarea:focus {
   background: var(--ops-primary-strong);
 }
 
-.sidebar-panel.ops-card {
+.sidebar-user-card.ops-card {
   background: var(--ops-surface-low);
 }
 
@@ -2475,6 +2524,13 @@ textarea:focus {
   gap: var(--ops-space-6);
   overflow: hidden;
   padding: 34px;
+  border-color: rgba(171, 137, 133, 0.44);
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, rgba(30, 15, 14, 0.96), rgba(30, 15, 14, 0.66), rgba(10, 10, 10, 0.46)),
+    radial-gradient(circle at 76% 10%, rgba(123, 209, 248, 0.12), transparent 28%),
+    radial-gradient(circle at 22% 18%, rgba(211, 47, 47, 0.22), transparent 34%),
+    #121212;
 }
 
 .tournament-command-header::before {
@@ -2482,8 +2538,8 @@ textarea:focus {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(120deg, rgba(255, 84, 78, 0.16), transparent 42%),
-    radial-gradient(circle at 82% 0%, rgba(233, 195, 73, 0.12), transparent 30%);
+    linear-gradient(90deg, transparent 0 84%, rgba(123, 209, 248, 0.06)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 42%);
   content: "";
 }
 
@@ -2491,12 +2547,9 @@ textarea:focus {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
-  background-size: 44px 44px;
+  background: linear-gradient(90deg, transparent 0 88%, rgba(123, 209, 248, 0.06));
   content: "";
-  opacity: 0.55;
+  opacity: 0.58;
 }
 
 .tournament-command-header > * {
@@ -2561,10 +2614,11 @@ textarea:focus {
   min-width: 0;
   min-height: 116px;
   padding: var(--ops-space-4);
-  border: 1px solid var(--ops-line-soft);
-  border-left: 3px solid var(--ops-cyan);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-left: 4px solid var(--ops-cyan);
   border-radius: var(--ops-radius);
-  background: rgba(10, 10, 10, 0.58);
+  background: rgba(18, 18, 18, 0.74);
+  backdrop-filter: blur(12px);
 }
 
 .tournament-meta-card svg {
@@ -2606,6 +2660,9 @@ textarea:focus {
 .tournament-status-panel {
   min-width: 0;
   padding: var(--ops-space-5);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    rgba(18, 18, 18, 0.74);
 }
 
 .tournament-card-grid {
@@ -2616,12 +2673,13 @@ textarea:focus {
   position: relative;
   min-height: 280px;
   overflow: hidden;
-  border-color: var(--ops-line);
-  border-left: 2px solid var(--ops-primary);
+  border-color: rgba(255, 255, 255, 0.07);
+  border-left: 4px solid var(--ops-primary);
+  border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(255, 84, 78, 0.1), transparent 44%),
-    radial-gradient(circle at 86% 0%, rgba(0, 221, 221, 0.08), transparent 30%),
-    var(--ops-surface);
+    linear-gradient(180deg, rgba(255, 84, 78, 0.07), transparent 48%),
+    rgba(18, 18, 18, 0.74);
+  backdrop-filter: blur(12px);
 }
 
 .tournament-command .tournament-card.ops-card::after {
@@ -3216,13 +3274,10 @@ textarea:focus {
   z-index: -1;
   pointer-events: none;
   background:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-    radial-gradient(circle at 82% 8%, rgba(0, 221, 221, 0.08), transparent 24%),
-    radial-gradient(circle at 18% 18%, rgba(255, 84, 78, 0.08), transparent 28%);
-  background-size: 100% 42px, 58px 100%, auto, auto;
+    radial-gradient(circle at 82% 8%, rgba(123, 209, 248, 0.055), transparent 25%),
+    radial-gradient(circle at 18% 18%, rgba(211, 47, 47, 0.08), transparent 30%);
   content: "";
-  opacity: 0.8;
+  opacity: 0.66;
 }
 
 .analytics-terminal-header {
@@ -3233,6 +3288,13 @@ textarea:focus {
   overflow: hidden;
   min-height: 330px;
   padding: 38px;
+  border-color: rgba(171, 137, 133, 0.44);
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, rgba(30, 15, 14, 0.96), rgba(30, 15, 14, 0.66), rgba(10, 10, 10, 0.46)),
+    radial-gradient(circle at 76% 10%, rgba(123, 209, 248, 0.12), transparent 28%),
+    radial-gradient(circle at 22% 18%, rgba(211, 47, 47, 0.22), transparent 34%),
+    #121212;
 }
 
 .analytics-terminal-header::before {
@@ -3240,9 +3302,8 @@ textarea:focus {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(115deg, rgba(255, 84, 78, 0.18), transparent 46%),
-    radial-gradient(circle at 83% 20%, rgba(0, 221, 221, 0.13), transparent 30%),
-    radial-gradient(circle at 70% 88%, rgba(233, 195, 73, 0.1), transparent 32%);
+    linear-gradient(90deg, transparent 0 84%, rgba(123, 209, 248, 0.06)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 42%);
   content: "";
 }
 
@@ -3250,10 +3311,9 @@ textarea:focus {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(to bottom, transparent 50%, rgba(0, 221, 221, 0.035) 50%);
-  background-size: 100% 4px;
+  background: linear-gradient(90deg, transparent 0 88%, rgba(123, 209, 248, 0.06));
   content: "";
-  opacity: 0.65;
+  opacity: 0.58;
 }
 
 .analytics-terminal-header > * {
@@ -3294,11 +3354,11 @@ textarea:focus {
   min-width: 0;
   min-height: 82px;
   padding: var(--ops-space-3);
-  border: 1px solid var(--ops-line-soft);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: var(--ops-radius);
   background:
-    linear-gradient(90deg, rgba(0, 221, 221, 0.06), transparent 58%),
-    rgba(10, 10, 10, 0.62);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    rgba(18, 18, 18, 0.72);
 }
 
 .analytics-terminal-status svg,
@@ -3319,10 +3379,10 @@ textarea:focus {
   gap: var(--ops-space-2);
   min-height: 92px;
   padding: var(--ops-space-4);
-  border: 1px solid var(--ops-line-soft);
-  border-left: 2px solid var(--ops-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-left: 3px solid var(--ops-secondary);
   border-radius: var(--ops-radius);
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(18, 18, 18, 0.62);
 }
 
 .analytics-terminal-strip strong {
@@ -3343,7 +3403,10 @@ textarea:focus {
   min-height: 150px;
   overflow: hidden;
   padding: var(--ops-space-5);
-  border-left: 3px solid var(--ops-cyan);
+  border-color: rgba(255, 255, 255, 0.07);
+  border-left: 4px solid var(--ops-cyan);
+  border-radius: 8px;
+  background: rgba(18, 18, 18, 0.74);
 }
 
 .real-analytics-dashboard .telemetry-card::after {
@@ -3414,6 +3477,9 @@ textarea:focus {
 .analytics-terminal-panel {
   min-width: 0;
   padding: var(--ops-space-5);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    rgba(18, 18, 18, 0.74);
 }
 
 .analytics-data-panel {
@@ -3426,12 +3492,9 @@ textarea:focus {
   inset: 0;
   pointer-events: none;
   border-top: 1px solid rgba(255, 84, 78, 0.18);
-  background:
-    linear-gradient(90deg, rgba(255, 84, 78, 0.06), transparent 36%),
-    linear-gradient(to bottom, transparent 50%, rgba(0, 221, 221, 0.022) 50%);
-  background-size: auto, 100% 5px;
+  background: linear-gradient(90deg, rgba(255, 84, 78, 0.055), transparent 38%);
   content: "";
-  opacity: 0.8;
+  opacity: 0.72;
 }
 
 .analytics-data-panel > * {
@@ -3450,11 +3513,9 @@ textarea:focus {
   border: 1px solid var(--ops-line-soft);
   border-radius: var(--ops-radius);
   background:
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    radial-gradient(circle at 74% 18%, rgba(0, 221, 221, 0.1), transparent 32%),
-    rgba(10, 10, 10, 0.55);
-  background-size: 100% 48px, 72px 100%, auto, auto;
+    radial-gradient(circle at 74% 18%, rgba(123, 209, 248, 0.08), transparent 32%),
+    linear-gradient(180deg, rgba(255, 84, 78, 0.06), transparent 58%),
+    rgba(18, 18, 18, 0.66);
 }
 
 .analytics-chart svg {
@@ -3671,13 +3732,17 @@ textarea:focus {
   gap: var(--ops-space-5);
   overflow: hidden;
   background:
-    radial-gradient(circle at 86% 50%, rgba(233, 195, 73, 0.12), transparent 30%),
-    linear-gradient(90deg, rgba(255, 84, 78, 0.12), transparent 42%),
-    var(--ops-surface-panel);
+    linear-gradient(90deg, rgba(255, 84, 78, 0.09), transparent 42%),
+    rgba(18, 18, 18, 0.74);
+}
+
+.analytics-empty-state > div:first-child {
+  display: grid;
+  align-content: center;
+  gap: var(--ops-space-2);
 }
 
 .analytics-empty-state svg {
-  margin-bottom: var(--ops-space-3);
   color: var(--ops-secondary);
 }
 
@@ -3700,9 +3765,9 @@ textarea:focus {
   display: block;
   padding: var(--ops-space-3);
   border: 1px solid var(--ops-line-soft);
-  border-left: 2px solid var(--ops-cyan);
+  border-left: 2px solid var(--ops-secondary);
   border-radius: var(--ops-radius-sm);
-  background: rgba(10, 10, 10, 0.46);
+  background: rgba(10, 10, 10, 0.38);
   color: var(--ops-muted-strong);
   font-family: var(--ops-font-mono);
   font-size: 0.75rem;
@@ -3736,11 +3801,12 @@ textarea:focus {
   gap: var(--ops-space-2);
   min-height: 172px;
   padding: var(--ops-space-5);
-  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-left: 3px solid var(--ops-secondary);
   border-radius: var(--ops-radius);
   background:
-    radial-gradient(circle at 14% 18%, rgba(0, 221, 221, 0.08), transparent 28%),
-    rgba(10, 10, 10, 0.44);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    rgba(18, 18, 18, 0.62);
 }
 
 .analytics-empty-block strong {
@@ -3759,7 +3825,7 @@ textarea:focus {
   overflow-x: auto;
   border: 1px solid var(--ops-line-soft);
   border-radius: var(--ops-radius);
-  background: rgba(10, 10, 10, 0.46);
+  background: rgba(10, 10, 10, 0.38);
 }
 
 .analytics-real-table {
@@ -3776,9 +3842,7 @@ textarea:focus {
 }
 
 .analytics-real-table th {
-  background:
-    linear-gradient(90deg, rgba(255, 84, 78, 0.08), transparent),
-    var(--ops-surface-low);
+  background: var(--ops-surface-low);
   color: var(--ops-muted-strong);
   font-family: var(--ops-font-mono);
   font-size: 0.72rem;
@@ -3857,20 +3921,18 @@ textarea:focus {
   gap: var(--ops-space-4);
   overflow: hidden;
   background:
-    linear-gradient(120deg, rgba(255, 84, 78, 0.1), transparent 42%),
-    var(--ops-surface-panel);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    rgba(18, 18, 18, 0.74);
 }
 
 .tournament-real-analytics-panel::before {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 100% 42px, 64px 100%;
+  border-top: 1px solid rgba(255, 84, 78, 0.16);
+  background: linear-gradient(90deg, rgba(255, 84, 78, 0.055), transparent 38%);
   content: "";
-  opacity: 0.55;
+  opacity: 0.72;
 }
 
 .tournament-real-analytics-panel > * {
@@ -4336,7 +4398,7 @@ textarea:focus {
     padding-bottom: 2px;
   }
 
-  .sidebar-panel {
+  .sidebar-user-card {
     display: none;
   }
 

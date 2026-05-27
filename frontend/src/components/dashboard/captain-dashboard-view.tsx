@@ -2,7 +2,6 @@ import { Clock3, Gamepad2 } from "lucide-react";
 
 import {
   AlertsPanel,
-  DashboardTopbar,
   FormChips,
   PlayerAvatar,
   RoleActionButton,
@@ -12,20 +11,9 @@ import {
 } from "@/components/dashboard/role-dashboard-primitives";
 import { captainDashboardData as data } from "@/lib/role-dashboard-data";
 
-export function CaptainDashboardView({
-  avatarUrl,
-  displayName
-}: {
-  avatarUrl?: string | null;
-  displayName: string;
-}) {
+export function CaptainDashboardView() {
   return (
     <div className="role-dashboard role-dashboard-captain">
-      <DashboardTopbar
-        avatarUrl={avatarUrl}
-        displayName={displayName}
-      />
-
       <div className="role-dashboard-content">
         <RoleKpiGrid items={data.kpis} />
 
