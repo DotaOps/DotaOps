@@ -85,16 +85,16 @@ export function RoleDashboard({ role }: { role?: DashboardRole }) {
       : role ?? actualRole;
 
   if (resolvedRole === "player") {
-    return <PlayerDashboardView avatarUrl={viewer.avatarUrl} displayName={viewer.displayName} />;
+    return <PlayerDashboardView />;
   }
 
   if (resolvedRole === "organizer") {
-    return <OrganizerDashboardView avatarUrl={viewer.avatarUrl} displayName={viewer.displayName} />;
+    return <OrganizerDashboardView />;
   }
 
   if (resolvedRole === "public") {
     return <PublicDashboardGate />;
   }
 
-  return <CaptainDashboardView avatarUrl={viewer.avatarUrl} displayName={viewer.displayName} />;
+  return <CaptainDashboardView />;
 }

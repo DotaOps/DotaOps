@@ -5,7 +5,6 @@ import {
   Brackets,
   LayoutDashboard,
   LogIn,
-  Shield,
   Swords,
   Trophy,
   UserPlus,
@@ -19,7 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { CurrentUserProfileProvider } from "@/components/current-user-profile-context";
-import { HeaderProfileLink } from "@/components/header-profile-link";
+import { UserAvatar } from "@/components/user-avatar";
 import { getCurrentUserProfile, type CurrentUserProfile } from "@/lib/auth";
 import { isOrganizerRole, routeAccessForPath } from "@/lib/route-access";
 import { classNames } from "@/lib/utils";
@@ -62,10 +61,17 @@ function dashboardLoadingRole(role?: string | null): DashboardLoadingRole {
   return role === "captain" ? "captain" : "player";
 }
 
+function formatRoleLabel(role?: string | null) {
+  if (!role) {
+    return "Visitor";
+  }
+
+  return role.replace(/_/g, " ");
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "mock data";
   const isRoleDashboard = pathname.startsWith("/dashboard");
   const access = routeAccessForPath(pathname);
   const [profile, setProfile] = useState<CurrentUserProfile | null>(null);
@@ -163,6 +169,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [canUseOrganizer, isPublicContentGuest]);
   const hasAuthenticatedProfile = Boolean(profile);
   const profileDisplayName = profile?.displayName || profile?.nickname || "Profile";
+  const sidebarProfileHref = hasAuthenticatedProfile ? "/profile" : "/login";
+  const sidebarProfileLabel = hasAuthenticatedProfile ? profileDisplayName : "Public visitor";
+  const sidebarProfileMeta = hasAuthenticatedProfile
+    ? formatRoleLabel(profile?.role)
+    : "Browse public tournaments";
+  const sidebarProfileSyncState = profile?.steamId
+    ? "Steam linked"
+    : hasAuthenticatedProfile
+      ? "Steam/Dota profile pending"
+      : "Login to unlock workspace";
   const shouldShowPageSkeleton = isPrivateAuthCheckPending && Boolean(profile);
   const pageDashboardLoadingRole = dashboardLoadingRole(profile?.role);
 
@@ -233,34 +249,20 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className="sidebar-panel ops-card">
-          <Shield size={18} />
-          <div>
-            <span>API connection</span>
-            <strong>{apiUrl}</strong>
-          </div>
-        </div>
+        <Link className="sidebar-user-card ops-card" href={sidebarProfileHref}>
+          <UserAvatar avatarUrl={profile?.avatarUrl} className="sidebar-user-avatar" size={18} />
+          <span className="sidebar-user-copy">
+            <span className="sidebar-user-kicker">
+              {hasAuthenticatedProfile ? "Signed in" : "Public session"}
+            </span>
+            <strong>{sidebarProfileLabel}</strong>
+            <span className="sidebar-user-meta">{sidebarProfileMeta}</span>
+          </span>
+          <span className="sidebar-user-badge">{sidebarProfileSyncState}</span>
+        </Link>
       </aside>
 
       <div className="main-area">
-        {isRoleDashboard ? null : (
-          <header className="topbar ops-panel">
-            <div
-              className={classNames("topbar-actions", !hasAuthenticatedProfile && "topbar-actions-public")}
-              aria-label="Account actions"
-            >
-              {hasAuthenticatedProfile ? (
-                <HeaderProfileLink avatarUrl={profile?.avatarUrl} displayName={profileDisplayName} />
-              ) : (
-                <Link className="button button-primary ops-button-primary topbar-primary-action" href="/login">
-                  <LogIn size={18} />
-                  <span>Login</span>
-                </Link>
-              )}
-            </div>
-          </header>
-        )}
-
         <CurrentUserProfileProvider profile={profile}>
           <main className={classNames("page", isRoleDashboard && "dashboard-page")}>
             {shouldShowPageSkeleton ? (

@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import {
   AlertsPanel,
-  DashboardTopbar,
   PlayerAvatar,
   RoleActionButton,
   RoleKpiGrid,
@@ -11,20 +10,9 @@ import {
 } from "@/components/dashboard/role-dashboard-primitives";
 import { organizerDashboardData as data } from "@/lib/role-dashboard-data";
 
-export function OrganizerDashboardView({
-  avatarUrl,
-  displayName
-}: {
-  avatarUrl?: string | null;
-  displayName: string;
-}) {
+export function OrganizerDashboardView() {
   return (
     <div className="role-dashboard role-dashboard-organizer">
-      <DashboardTopbar
-        avatarUrl={avatarUrl}
-        displayName={displayName}
-      />
-
       <div className="role-dashboard-content">
         <section className="role-hero role-organizer-hero">
           <div className="role-organizer-hero-copy">

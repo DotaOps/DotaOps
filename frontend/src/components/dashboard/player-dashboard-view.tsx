@@ -1,7 +1,6 @@
 import { Gamepad2 } from "lucide-react";
 
 import {
-  DashboardTopbar,
   FormChips,
   PlayerAvatar,
   RoleActionButton,
@@ -11,20 +10,9 @@ import {
 import { playerDashboardData as data } from "@/lib/role-dashboard-data";
 import { classNames } from "@/lib/utils";
 
-export function PlayerDashboardView({
-  avatarUrl,
-  displayName
-}: {
-  avatarUrl?: string | null;
-  displayName: string;
-}) {
+export function PlayerDashboardView() {
   return (
     <div className="role-dashboard role-dashboard-player">
-      <DashboardTopbar
-        avatarUrl={avatarUrl}
-        displayName={displayName}
-      />
-
       <div className="role-dashboard-content">
         <section className="role-hero role-player-hero">
           <div className="role-player-hero-copy">

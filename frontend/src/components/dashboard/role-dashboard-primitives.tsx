@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { HeaderProfileLink } from "@/components/header-profile-link";
 import type {
   DashboardAction,
   DashboardAlert,
@@ -10,24 +9,6 @@ import type {
   RosterPlayer
 } from "@/lib/role-dashboard-data";
 import { classNames } from "@/lib/utils";
-
-interface DashboardTopbarProps {
-  avatarUrl?: string | null;
-  displayName: string;
-}
-
-export function DashboardTopbar({
-  avatarUrl,
-  displayName
-}: DashboardTopbarProps) {
-  return (
-    <header className="role-dashboard-topbar">
-      <div className="role-topbar-actions">
-        <HeaderProfileLink avatarUrl={avatarUrl} displayName={displayName} />
-      </div>
-    </header>
-  );
-}
 
 export function RoleActionButton({
   action,
