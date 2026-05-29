@@ -444,8 +444,8 @@ public class TournamentService {
             throw new BadRequestException("Tournament settings minTeams cannot exceed maxTeams.");
         }
 
-        if (settings.teamSize() != TournamentSettings.DOTA_TEAM_SIZE) {
-            throw new BadRequestException("Tournament settings teamSize must be 5 for Dota 2.");
+        if (!TournamentSettings.isSupportedTeamSize(settings.teamSize())) {
+            throw new BadRequestException("Tournament settings teamSize must be 1, 3, or 5.");
         }
 
         if (settings.bestOf() != 1 && settings.bestOf() != 3 && settings.bestOf() != 5) {
@@ -615,6 +615,10 @@ public class TournamentService {
 
         if (message != null && message.contains("tournaments_max_teams")) {
             return new BadRequestException("Tournament maxTeams must be between 2 and 128.");
+        }
+
+        if (message != null && message.contains("tournaments_settings_team_size_supported")) {
+            return new BadRequestException("Tournament settings teamSize must be 1, 3, or 5.");
         }
 
         if (message != null && message.contains("tournaments_dates_order")) {

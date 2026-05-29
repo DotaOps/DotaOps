@@ -1,5 +1,6 @@
 package si.um.feri.dotaops.backend.tournament.domain;
 
+import java.util.List;
 import java.util.UUID;
 
 public record PublicTournamentTeam(
@@ -8,6 +9,8 @@ public record PublicTournamentTeam(
         String tag,
         String slug,
         String logoUrl,
-        Integer seedNumber
+        String bannerUrl,
+        Integer seedNumber,
+        List<PublicManualPlayer> manualPlayers
 ) {
 }

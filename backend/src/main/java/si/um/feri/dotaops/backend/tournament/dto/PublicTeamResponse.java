@@ -1,5 +1,6 @@
 package si.um.feri.dotaops.backend.tournament.dto;
 
+import java.util.List;
 import java.util.UUID;
 
 import si.um.feri.dotaops.backend.tournament.domain.PublicTournamentTeam;
@@ -10,8 +11,21 @@ public record PublicTeamResponse(
         String tag,
         String slug,
         String logoUrl,
-        Integer seedNumber
+        String bannerUrl,
+        Integer seedNumber,
+        List<PublicManualPlayerResponse> manualPlayers
 ) {
+
+    public PublicTeamResponse(
+            UUID id,
+            String name,
+            String tag,
+            String slug,
+            String logoUrl,
+            Integer seedNumber
+    ) {
+        this(id, name, tag, slug, logoUrl, null, seedNumber, List.of());
+    }
 
     public static PublicTeamResponse from(PublicTournamentTeam team) {
         if (team == null) {
@@ -24,6 +38,10 @@ public record PublicTeamResponse(
                 team.tag(),
                 team.slug(),
                 team.logoUrl(),
-                team.seedNumber());
+                team.bannerUrl(),
+                team.seedNumber(),
+                team.manualPlayers().stream()
+                        .map(PublicManualPlayerResponse::from)
+                        .toList());
     }
 }

@@ -1,6 +1,7 @@
 package si.um.feri.dotaops.backend.team.service;
 
 import java.text.Normalizer;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -11,6 +12,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedProfile;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
@@ -18,11 +20,16 @@ import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
 import si.um.feri.dotaops.backend.common.error.ResourceNotFoundException;
 import si.um.feri.dotaops.backend.common.pagination.PageResponse;
+import si.um.feri.dotaops.backend.storage.service.StoredImage;
+import si.um.feri.dotaops.backend.storage.service.SupabaseImageStorageService;
 import si.um.feri.dotaops.backend.team.domain.Team;
+import si.um.feri.dotaops.backend.team.domain.TeamManualPlayer;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamCommand;
+import si.um.feri.dotaops.backend.team.repository.TeamManualPlayerRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
 import si.um.feri.dotaops.backend.team.repository.UpdateTeamCommand;
 import si.um.feri.dotaops.backend.team.web.CreateTeamRequest;
+import si.um.feri.dotaops.backend.team.web.TeamManualPlayerResponse;
 import si.um.feri.dotaops.backend.team.web.TeamResponse;
 import si.um.feri.dotaops.backend.team.web.UpdateTeamRequest;
 
@@ -33,13 +40,19 @@ public class TeamService {
     private static final int MAX_SLUG_LENGTH = 80;
 
     private final TeamRepository teamRepository;
+    private final TeamManualPlayerRepository teamManualPlayerRepository;
+    private final SupabaseImageStorageService imageStorageService;
     private final CurrentUserProvider currentUserProvider;
 
     public TeamService(
             TeamRepository teamRepository,
+            TeamManualPlayerRepository teamManualPlayerRepository,
+            SupabaseImageStorageService imageStorageService,
             CurrentUserProvider currentUserProvider
     ) {
         this.teamRepository = teamRepository;
+        this.teamManualPlayerRepository = teamManualPlayerRepository;
+        this.imageStorageService = imageStorageService;
         this.currentUserProvider = currentUserProvider;
     }
 
@@ -64,7 +77,7 @@ public class TeamService {
     @Transactional(readOnly = true)
     public TeamResponse getTeam(UUID teamId) {
         return teamRepository.findById(teamId)
-                .map(TeamResponse::from)
+                .map(this::toDetailResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
     }
 
@@ -73,7 +86,7 @@ public class TeamService {
         String normalizedSlug = normalizeSlug(slug);
 
         return teamRepository.findBySlug(normalizedSlug)
-                .map(TeamResponse::from)
+                .map(this::toDetailResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "slug", normalizedSlug));
     }
 
@@ -136,10 +149,78 @@ public class TeamService {
         }
     }
 
+    @Transactional
+    public TeamResponse uploadTeamLogo(UUID teamId, MultipartFile logo) {
+        AuthenticatedProfile profile = currentUserProvider.requireProfile();
+        Team existing = teamRepository.findById(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
+        if (!canUpdate(profile, existing)) {
+            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+        }
+
+        StoredImage storedLogo = imageStorageService.storeTeamLogo(teamId, logo);
+        return teamRepository.updateLogoUrl(teamId, storedLogo.publicUrl())
+                .map(this::toDetailResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
+    }
+
+    @Transactional
+    public TeamResponse uploadTeamBanner(UUID teamId, MultipartFile banner) {
+        AuthenticatedProfile profile = currentUserProvider.requireProfile();
+        Team existing = teamRepository.findById(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
+        if (!canUpdate(profile, existing)) {
+            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+        }
+
+        StoredImage storedBanner = imageStorageService.storeTeamBanner(teamId, banner);
+        return teamRepository.updateBannerUrl(teamId, storedBanner.publicUrl())
+                .map(this::toDetailResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
+    }
+
+    @Transactional
+    public TeamResponse deleteTeamLogo(UUID teamId) {
+        AuthenticatedProfile profile = currentUserProvider.requireProfile();
+        Team existing = teamRepository.findById(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
+        if (!canUpdate(profile, existing)) {
+            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+        }
+
+        return teamRepository.updateLogoUrl(teamId, null)
+                .map(this::toDetailResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
+    }
+
+    @Transactional
+    public TeamResponse deleteTeamBanner(UUID teamId) {
+        AuthenticatedProfile profile = currentUserProvider.requireProfile();
+        Team existing = teamRepository.findById(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
+        if (!canUpdate(profile, existing)) {
+            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+        }
+
+        return teamRepository.updateBannerUrl(teamId, null)
+                .map(this::toDetailResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
+    }
+
     private boolean canUpdate(AuthenticatedProfile profile, Team team) {
         return profile.role() == ProfileRole.ORGANIZER
                 || profile.role() == ProfileRole.ADMIN
                 || profile.profileId().equals(team.captainProfileId());
+    }
+
+    private TeamResponse toDetailResponse(Team team) {
+        var manualPlayers = teamManualPlayerRepository.findByTeamId(team.id());
+        return TeamResponse.from(
+                team,
+                (manualPlayers == null ? Collections.<TeamManualPlayer>emptyList() : manualPlayers)
+                        .stream()
+                        .map(TeamManualPlayerResponse::from)
+                        .toList());
     }
 
     private BadRequestException duplicateTeamException(DataIntegrityViolationException exception) {
