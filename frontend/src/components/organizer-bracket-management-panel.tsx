@@ -3,9 +3,7 @@
 import { AlertTriangle, DatabaseZap, GitBranch, Lock, RefreshCw, ShieldCheck, Trophy } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import { LiveSyncIndicator } from "@/components/live-sync-indicator";
 import { TournamentBracketPanel } from "@/components/tournament-bracket-panel";
-import { useTournamentLiveRefresh } from "@/hooks/use-tournament-live-refresh";
 import { ApiRequestError, type ApiFieldError } from "@/lib/api";
 import type { OrganizerTournament } from "@/lib/organizer-tournament-data";
 import {
@@ -48,17 +46,6 @@ function panelError(error: unknown, fallback: string): PanelErrorState {
     message: error instanceof Error ? error.message : fallback,
     status: null
   };
-}
-
-function finishedMatches(bracket: TournamentBracket | null) {
-  return bracket?.matches.filter((match) => match.status === "finished").length ?? 0;
-}
-
-function openSlots(bracket: TournamentBracket | null) {
-  return bracket?.matches.reduce(
-    (total, match) => total + match.slots.filter((slot) => slot.state === "tbd" || slot.state === "source").length,
-    0
-  ) ?? 0;
 }
 
 function resultTeams(match: BracketMatch | null) {
@@ -165,14 +152,6 @@ export function OrganizerBracketManagementPanel({
     return () => window.clearTimeout(timeout);
   }, [loadBracket]);
 
-  const liveSync = useTournamentLiveRefresh({
-    enabled: true,
-    hiddenIntervalMs: 60_000,
-    intervalMs: 15_000,
-    label: "organizer bracket",
-    onRefresh: () => loadBracket(selectedMatchId, { silent: true })
-  });
-
   async function generateBracket() {
     setIsMutating(true);
     setError(null);
@@ -258,22 +237,6 @@ export function OrganizerBracketManagementPanel({
           Backend advancement
         </span>
       </div>
-
-      <div className="org-bracket-summary-grid">
-        <SummaryCard label="Bracket Status" value={bracket?.matches.length ? "Generated" : "Empty"} />
-        <SummaryCard label="Generated Size" value={bracket ? String(bracket.bracketSize || "-") : "-"} />
-        <SummaryCard label="Open Slots" value={String(openSlots(bracket))} />
-        <SummaryCard label="Finished Matches" value={String(finishedMatches(bracket))} />
-        <SummaryCard label="Advancement Mode" value="Backend" />
-      </div>
-
-      <LiveSyncIndicator
-        errorCount={liveSync.errorCount}
-        lastError={liveSync.lastError}
-        lastUpdated={liveSync.lastUpdated}
-        onRefresh={liveSync.refreshNow}
-        status={liveSync.status}
-      />
 
       {notice ? <p className="org-bracket-notice">{notice}</p> : null}
       {error ? <PanelError error={error} /> : null}
@@ -387,15 +350,6 @@ export function OrganizerBracketManagementPanel({
         </aside>
       </div>
     </section>
-  );
-}
-
-function SummaryCard({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="org-bracket-summary-card ops-card">
-      <span className="ops-label">{label}</span>
-      <strong className="ops-data">{value}</strong>
-    </article>
   );
 }
 
