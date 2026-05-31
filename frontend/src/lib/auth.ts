@@ -95,6 +95,10 @@ export interface ProfileSaveResult {
   profile: CurrentUserProfile;
 }
 
+interface SteamLinkStartResponse {
+  redirectUrl?: string | null;
+}
+
 interface ProfileRow {
   id?: string | null;
   avatar_url?: string | null;
@@ -591,6 +595,31 @@ export async function uploadCurrentUserAvatar(file: File): Promise<AvatarUploadR
     message: "Avatar uploaded successfully.",
     persisted: true
   };
+}
+
+export async function startSteamProfileLink(): Promise<string> {
+  const supabase = requireSupabaseClient();
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data.session?.access_token) {
+    throw new Error("Login session expired. Please log in again.");
+  }
+
+  const result = await postApiAuthenticated<SteamLinkStartResponse>(
+    "/auth/steam/link",
+    {},
+    data.session.access_token
+  );
+
+  if (!result.redirectUrl) {
+    throw new Error("Steam connection could not be started.");
+  }
+
+  return result.redirectUrl;
 }
 
 export async function signOutCurrentUser() {
