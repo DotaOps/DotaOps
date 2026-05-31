@@ -38,7 +38,9 @@ export function PublicTournamentManageLink({
 
         const tournaments = await listOrganizerTournaments();
         const manageableTournament = tournaments.find(
-          (tournament) => tournament.id === tournamentId || tournament.slug === slug
+          (tournament) =>
+            tournament.format === "groups_playoff" &&
+            (tournament.id === tournamentId || tournament.slug === slug)
         );
 
         if (isMounted && manageableTournament) {

@@ -252,14 +252,6 @@ export function OrganizerGroupManagementPanel({
         status={liveSync.status}
       />
 
-      <div className="org-groups-summary">
-        <SummaryCard icon={GitBranch} label="Groups" value={String(data?.groups.length ?? 0)} tone="red" />
-        <SummaryCard icon={UsersRound} label="Assigned Teams" value={String(assignedTeams)} tone="cyan" />
-        <SummaryCard icon={ShieldCheck} label="Approved Unassigned Teams" value={String(approvedUnassignedRegistrations.length)} tone="gold" />
-        <SummaryCard icon={ListOrdered} label="Finished Matches" value={String(finishedMatches)} tone="green" />
-        <SummaryCard icon={ShieldCheck} label="Standings Status" value={standingsStatus(data)} tone={data?.standingsError ? "red" : "cyan"} />
-      </div>
-
       {notice ? <p className="org-groups-notice">{notice}</p> : null}
       {error ? <GroupPanelError error={error} /> : null}
       {fieldErrors.length > 0 ? (
@@ -385,21 +377,15 @@ export function OrganizerGroupManagementPanel({
               Add Team
             </button>
           </form>
-
-          <div className="org-groups-command-card ops-card">
-            <div>
-              <p className="ops-label">Unsupported Commands</p>
-              <h3>Backend Required</h3>
-            </div>
-            <button disabled type="button">Auto-generate groups unavailable</button>
-            <button disabled type="button">Bulk seed teams unavailable</button>
-            <button disabled type="button">Recalculate standings unavailable</button>
-            <button disabled type="button">Manual tie-break override unavailable</button>
-            <button disabled type="button">Export standings unavailable</button>
-            <button disabled type="button">Advanced tie-break editor unavailable</button>
-            <p>Standings are read-only and calculated by backend results.</p>
-          </div>
         </aside>
+      </div>
+
+      <div className="org-groups-summary">
+        <SummaryCard icon={GitBranch} label="Groups" value={String(data?.groups.length ?? 0)} tone="red" />
+        <SummaryCard icon={UsersRound} label="Assigned Teams" value={String(assignedTeams)} tone="cyan" />
+        <SummaryCard icon={ShieldCheck} label="Approved Unassigned Teams" value={String(approvedUnassignedRegistrations.length)} tone="gold" />
+        <SummaryCard icon={ListOrdered} label="Finished Matches" value={String(finishedMatches)} tone="green" />
+        <SummaryCard icon={ShieldCheck} label="Standings Status" value={standingsStatus(data)} tone={data?.standingsError ? "red" : "cyan"} />
       </div>
     </section>
   );

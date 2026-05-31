@@ -75,6 +75,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const isRoleDashboard = pathname.startsWith("/dashboard");
   const access = routeAccessForPath(pathname);
+  const isOrganizerWorkspace = access === "organizer";
   const [profile, setProfile] = useState<CurrentUserProfile | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(access !== "public");
   const [checkedAuthPathname, setCheckedAuthPathname] = useState<string | null>(
@@ -86,6 +87,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     access !== "public" &&
     access !== "public-content" &&
     (isCheckingAuth || checkedAuthPathname !== pathname);
+  const shouldUseOrganizerLoader = isOrganizerWorkspace && isPrivateAuthCheckPending;
 
   useEffect(() => {
     let isMounted = true;
@@ -168,10 +170,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     return navItems.filter(
       (item) =>
-        (!item.organizerOnly || canUseOrganizer) &&
+        (!item.organizerOnly || canUseOrganizer || shouldUseOrganizerLoader) &&
         (!item.hideForOrganizer || profile?.role !== "organizer")
     );
-  }, [canUseOrganizer, isPublicContentGuest, profile?.role]);
+  }, [canUseOrganizer, isPublicContentGuest, profile?.role, shouldUseOrganizerLoader]);
   const hasAuthenticatedProfile = Boolean(profile);
   const profileDisplayName = profile?.displayName || profile?.nickname || "Profile";
   const sidebarProfileHref = hasAuthenticatedProfile ? "/profile" : "/login";
@@ -184,14 +186,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     : hasAuthenticatedProfile
       ? "Steam/Dota profile pending"
       : "Login to unlock workspace";
-  const shouldShowPageSkeleton = isPrivateAuthCheckPending && Boolean(profile);
+  const shouldShowPageSkeleton = isPrivateAuthCheckPending && Boolean(profile) && !shouldUseOrganizerLoader;
   const pageDashboardLoadingRole = dashboardLoadingRole(profile?.role);
 
   if (access === "public") {
     return <>{children}</>;
   }
 
-  if (isPrivateAuthCheckPending && !profile) {
+  if (isPrivateAuthCheckPending && !profile && !shouldUseOrganizerLoader) {
     return <WorkspaceLoadingSkeleton dashboard={isRoleDashboard} />;
   }
 
@@ -205,7 +207,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (access === "organizer" && !canUseOrganizer) {
+  if (!isPrivateAuthCheckPending && isOrganizerWorkspace && !canUseOrganizer) {
     return (
       <RouteState
         action={

@@ -25,7 +25,7 @@ const PROFILE_SELECT_COLUMNS = [
   "updated_at"
 ].join(",");
 
-export type RequestedAuthRole = "player" | "organizer";
+export type RequestedAuthRole = "player" | "captain" | "organizer";
 export type ProfileRole = RequestedAuthRole | "visitor" | "admin";
 
 export interface LoginInput {
@@ -142,7 +142,7 @@ function requireSupabaseClient() {
 }
 
 export function dashboardPathForRole(role?: string | null) {
-  if (role === "organizer" || role === "player") {
+  if (role === "captain" || role === "organizer" || role === "player") {
     return `/dashboard?role=${role}`;
   }
 
@@ -176,7 +176,7 @@ function normalizeRequiredText(value: string, fallback: string) {
 }
 
 function profileRoleForRegistration(role: RequestedAuthRole) {
-  return role;
+  return role === "organizer" ? "organizer" : "player";
 }
 
 function createProfilePayload(input: RegisterInput) {
@@ -243,16 +243,6 @@ function isRegistrationRateLimitError(value: unknown) {
     code.includes("rate") ||
     message.includes("rate limit") ||
     message.includes("too many")
-  );
-}
-
-function isAlreadyRegisteredErrorMessage(message?: string | null) {
-  const normalized = message?.toLowerCase() ?? "";
-
-  return (
-    normalized.includes("already") ||
-    normalized.includes("registered") ||
-    normalized.includes("exists")
   );
 }
 
@@ -393,7 +383,7 @@ export async function getCurrentUserProfile(): Promise<CurrentUserProfile | null
     opendotaProfileSyncedAt: null,
     profileId: null,
     role:
-      requestedRole === "organizer" || requestedRole === "player"
+      requestedRole === "captain" || requestedRole === "organizer" || requestedRole === "player"
         ? requestedRole
         : "player",
     steamId: null,
@@ -652,19 +642,10 @@ export async function loginWithEmailPassword(input: LoginInput): Promise<AuthRes
     throw error;
   }
 
-  let sessionData: typeof data.session | null = data.session;
+  const { data: sessionData } = await supabase.auth.getSession();
 
-  if (!sessionData) {
-    const sessionDeadline = Date.now() + 1000;
-
-    while (Date.now() < sessionDeadline && !sessionData) {
-      const { data: refreshedSession } = await supabase.auth.getSession();
-      sessionData = refreshedSession.session;
-
-      if (!sessionData) {
-        await new Promise((resolve) => window.setTimeout(resolve, 50));
-      }
-    }
+  if (!sessionData.session?.access_token) {
+    throw new Error("Login session was not established. Please try again.");
   }
 
   const authUserId = data.user?.id;
@@ -682,65 +663,6 @@ export async function loginWithEmailPassword(input: LoginInput): Promise<AuthRes
     dashboardPath: dashboardPathForRole(role),
     message: role ? undefined : "No profile role was found; using the player dashboard fallback."
   };
-}
-
-async function enableOrganizerAccessForExistingAccount(
-  input: RegisterInput,
-  email: string
-): Promise<AuthResult> {
-  const supabase = requireSupabaseClient();
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password: input.password
-  });
-
-  if (error) {
-    if (isRegistrationRateLimitError(error)) {
-      throw new RegistrationRateLimitError();
-    }
-
-    throw new Error(
-      "This email already has a DotaOps account. Use the existing password or log in first to enable organizer access."
-    );
-  }
-
-  if (!data.user?.id || !data.session?.access_token) {
-    throw new Error("Existing account login completed, but no active session was returned.");
-  }
-
-  try {
-    const profile = profileFromBackend(
-      await postApiAuthenticated<BackendProfileResponse>(
-        "/me/profile",
-        {
-          ...createProfilePayload(input),
-          desired_role: "organizer"
-        },
-        data.session.access_token
-      ),
-      email
-    );
-
-    if (!profile || (profile.role !== "organizer" && profile.role !== "admin")) {
-      throw new Error("Backend profile setup did not grant organizer access.");
-    }
-
-    return {
-      dashboardPath: "/dashboard?role=organizer",
-      message: "Organizer access enabled for your existing DotaOps account."
-    };
-  } catch (caught) {
-    await supabase.auth.signOut();
-
-    throw new Error(
-      [
-        "Existing account login succeeded, but organizer access could not be enabled.",
-        caught instanceof Error ? caught.message : null
-      ]
-        .filter(Boolean)
-        .join(" ")
-    );
-  }
 }
 
 export async function registerWithEmailPassword(input: RegisterInput): Promise<AuthResult> {
@@ -769,10 +691,6 @@ export async function registerWithEmailPassword(input: RegisterInput): Promise<A
   if (error) {
     if (isRegistrationRateLimitError(error)) {
       throw new RegistrationRateLimitError();
-    }
-
-    if (input.requestedRole === "organizer" && isAlreadyRegisteredErrorMessage(error.message)) {
-      return enableOrganizerAccessForExistingAccount(input, email);
     }
 
     throw new Error(registrationErrorMessage(error.message, email));
@@ -842,7 +760,9 @@ export async function registerWithEmailPassword(input: RegisterInput): Promise<A
     message:
       input.requestedRole === "player"
         ? "Account created. Log in to enter your dashboard."
-        : "Account created. Log in to enter your organizer dashboard."
+        : input.requestedRole === "captain"
+          ? "Account created. Team captain access is assigned through team ownership after login."
+          : "Account created. Log in to enter your organizer dashboard."
   };
 }
 
@@ -853,7 +773,7 @@ function registrationErrorMessage(message: string, email: string) {
     return `Supabase rejected "${email}" as an invalid email address. Check for hidden spaces or use a normal inbox address.`;
   }
 
-  if (isAlreadyRegisteredErrorMessage(normalized)) {
+  if (normalized.includes("already") || normalized.includes("registered")) {
     return "An account with this email may already exist. Try logging in instead.";
   }
 

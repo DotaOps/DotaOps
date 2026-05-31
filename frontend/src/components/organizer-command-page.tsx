@@ -31,12 +31,11 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
-import { LiveSyncIndicator } from "@/components/live-sync-indicator";
 import { MatchImportPanel } from "@/components/match-import-panel";
 import { OrganizerBracketManagementPanel } from "@/components/organizer-bracket-management-panel";
 import { OrganizerGroupManagementPanel } from "@/components/organizer-group-management-panel";
 import { OrganizerMatchResultsPanel } from "@/components/organizer-match-results-panel";
-import { RouteLoadingSkeleton } from "@/components/route-loading-skeleton";
+import { OrganizerWorkspaceLoading } from "@/components/organizer-workspace-loading";
 import { useTournamentLiveRefresh } from "@/hooks/use-tournament-live-refresh";
 import { ApiRequestError, type ApiFieldError } from "@/lib/api";
 import { getCurrentUserProfile, type CurrentUserProfile, type ProfileRole } from "@/lib/auth";
@@ -354,8 +353,51 @@ function detailViewFromParam(view?: string): TournamentDetailView {
   }
 }
 
+function supportsGroupsView(tournament: OrganizerTournament) {
+  return tournament.format === "groups_playoff";
+}
+
+function detailViewForTournament(
+  tournament: OrganizerTournament,
+  view: TournamentDetailView
+): TournamentDetailView {
+  return view === "groups" && !supportsGroupsView(tournament) ? "overview" : view;
+}
+
 function organizerDetailHref(tournament: OrganizerTournament, view: TournamentDetailView) {
   return `/organizator?tournamentId=${encodeURIComponent(tournament.id)}&slug=${encodeURIComponent(tournament.slug)}&view=${view}`;
+}
+
+function updateOrganizerDetailHistory(
+  tournament: OrganizerTournament,
+  view: TournamentDetailView,
+  mode: "push" | "replace" = "push"
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const href = organizerDetailHref(tournament, view);
+
+  if (mode === "replace") {
+    window.history.replaceState(null, "", href);
+    return;
+  }
+
+  window.history.pushState(null, "", href);
+}
+
+function updateOrganizerDashboardHistory(mode: "push" | "replace" = "push") {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (mode === "replace") {
+    window.history.replaceState(null, "", "/organizator");
+    return;
+  }
+
+  window.history.pushState(null, "", "/organizator");
 }
 
 export function OrganizerCommandPage({
@@ -377,6 +419,7 @@ export function OrganizerCommandPage({
   const [organizerMatches, setOrganizerMatches] = useState<OrganizerMatch[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [currentProfile, setCurrentProfile] = useState<CurrentUserProfile | null>(null);
+  const [detailView, setDetailView] = useState<TournamentDetailView>(() => detailViewFromParam(initialView));
   const [registrations, setRegistrations] = useState<TournamentRegistration[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<OrganizerTournament | null>(null);
   const [tournaments, setTournaments] = useState<OrganizerTournament[]>([]);
@@ -453,6 +496,8 @@ export function OrganizerCommandPage({
       setLoadState("ready");
 
       if (initialTournamentId || initialSlug) {
+        setDetailView(detailViewFromParam(initialView));
+
         const matchedTournament = nextTournaments.find(
           (tournament) =>
             (initialTournamentId && tournament.id === initialTournamentId) ||
@@ -469,8 +514,14 @@ export function OrganizerCommandPage({
           getOrganizerTournament(matchedTournament.id),
           listOrganizerTournamentRegistrations(matchedTournament.id)
         ]);
+        const requestedDetailView = detailViewFromParam(initialView);
+        const resolvedDetailView = detailViewForTournament(tournament, requestedDetailView);
 
+        if (resolvedDetailView !== requestedDetailView) {
+          updateOrganizerDetailHistory(tournament, resolvedDetailView, "replace");
+        }
         setSelectedTournament(tournament);
+        setDetailView(resolvedDetailView);
         setRegistrations(registrationList);
         await loadOrganizerMatchFlow(tournament.id);
         setView("detail");
@@ -494,7 +545,7 @@ export function OrganizerCommandPage({
       setLoadState("error");
       setActionError(errorMessage(error));
     }
-  }, [initialSlug, initialTournamentId, loadOrganizerMatchFlow]);
+  }, [initialSlug, initialTournamentId, initialView, loadOrganizerMatchFlow]);
 
   const loadDetail = useCallback(async (tournamentId: string, options?: { silent?: boolean }) => {
     if (!options?.silent) {
@@ -511,6 +562,7 @@ export function OrganizerCommandPage({
       ]);
 
       setSelectedTournament(tournament);
+      setDetailView((currentDetailView) => detailViewForTournament(tournament, currentDetailView));
       setRegistrations(registrationList);
       await loadOrganizerMatchFlow(tournamentId);
       setView("detail");
@@ -540,8 +592,61 @@ export function OrganizerCommandPage({
     return () => window.clearTimeout(timeout);
   }, [loadOrganizerAccess]);
 
+  useEffect(() => {
+    function handleBrowserNavigation() {
+      const params = new URLSearchParams(window.location.search);
+      const nextTournamentId = params.get("tournamentId");
+      const nextSlug = params.get("slug");
+      const nextView = detailViewFromParam(params.get("view") ?? undefined);
+
+      if (!nextTournamentId && !nextSlug) {
+        setDetailView(nextView);
+        setView("dashboard");
+        return;
+      }
+
+      if (
+        selectedTournament &&
+        (selectedTournament.id === nextTournamentId || selectedTournament.slug === nextSlug)
+      ) {
+        const resolvedDetailView = detailViewForTournament(selectedTournament, nextView);
+
+        if (resolvedDetailView !== nextView) {
+          updateOrganizerDetailHistory(selectedTournament, resolvedDetailView, "replace");
+        }
+        setDetailView(resolvedDetailView);
+        setView("detail");
+        return;
+      }
+
+      const targetTournament = tournaments.find(
+        (tournament) =>
+          (nextTournamentId && tournament.id === nextTournamentId) ||
+          (nextSlug && tournament.slug === nextSlug)
+      );
+
+      if (targetTournament) {
+        const resolvedDetailView = detailViewForTournament(targetTournament, nextView);
+
+        if (resolvedDetailView !== nextView) {
+          updateOrganizerDetailHistory(targetTournament, resolvedDetailView, "replace");
+        }
+        setDetailView(resolvedDetailView);
+        void loadDetail(targetTournament.id, { silent: true })
+          .catch((error) => {
+            setActionError(errorMessage(error));
+            setView("dashboard");
+          });
+      }
+    }
+
+    window.addEventListener("popstate", handleBrowserNavigation);
+
+    return () => window.removeEventListener("popstate", handleBrowserNavigation);
+  }, [loadDetail, selectedTournament, tournaments]);
+
   const counts = useMemo(() => dashboardCounts(tournaments), [tournaments]);
-  const detailLiveSync = useTournamentLiveRefresh({
+  useTournamentLiveRefresh({
     enabled: view === "detail" && Boolean(selectedTournament),
     hiddenIntervalMs: 60_000,
     intervalMs: 15_000,
@@ -569,6 +674,45 @@ export function OrganizerCommandPage({
     setFormMode("edit");
     setSelectedTournament(tournament);
     setView("form");
+  }
+
+  async function openDetail(tournament: OrganizerTournament) {
+    clearMessages();
+    setDetailView("overview");
+    setSelectedTournament(tournament);
+    setRegistrations([]);
+    setOrganizerMatches([]);
+    setView("detail");
+    updateOrganizerDetailHistory(tournament, "overview");
+
+    try {
+      await loadDetail(tournament.id);
+    } catch {
+      updateOrganizerDashboardHistory("replace");
+      setView("dashboard");
+    }
+  }
+
+  function closeDetail() {
+    clearMessages();
+    setView("dashboard");
+    updateOrganizerDashboardHistory();
+  }
+
+  function changeDetailView(nextView: TournamentDetailView) {
+    if (!selectedTournament || nextView === detailView) {
+      return;
+    }
+
+    const resolvedDetailView = detailViewForTournament(selectedTournament, nextView);
+
+    if (resolvedDetailView !== nextView) {
+      return;
+    }
+
+    clearMessages();
+    setDetailView(resolvedDetailView);
+    updateOrganizerDetailHistory(selectedTournament, resolvedDetailView);
   }
 
   function updateForm<K extends keyof TournamentFormState>(key: K, value: TournamentFormState[K]) {
@@ -678,7 +822,7 @@ export function OrganizerCommandPage({
   }
 
   if (loadState === "loading") {
-    return <RouteLoadingSkeleton />;
+    return <OrganizerWorkspaceLoading />;
   }
 
   if (loadState === "login" || loadState === "permission" || loadState === "error") {
@@ -722,7 +866,7 @@ export function OrganizerCommandPage({
           isMutating={isMutating}
           onArchive={(tournament) => mutateTournament(tournament, "archive")}
           onCreate={openCreate}
-          onDetail={(tournament) => loadDetail(tournament.id)}
+          onDetail={(tournament) => void openDetail(tournament)}
           onEdit={openEdit}
           onPublish={(tournament) => mutateTournament(tournament, "publish")}
           tournaments={tournaments}
@@ -747,33 +891,22 @@ export function OrganizerCommandPage({
       ) : null}
 
       {view === "detail" && selectedTournament ? (
-        <>
-          <LiveSyncIndicator
-            errorCount={detailLiveSync.errorCount}
-            lastError={detailLiveSync.lastError}
-            lastUpdated={detailLiveSync.lastUpdated}
-            onRefresh={detailLiveSync.refreshNow}
-            status={detailLiveSync.status}
-          />
-          <TournamentDetail
-            currentProfile={currentProfile}
-            detailView={detailViewFromParam(initialView)}
-            isMutating={isMutating}
-            matchFlowError={matchFlowError}
-            matches={organizerMatches}
-            onArchive={() => mutateTournament(selectedTournament, "archive")}
-            onBack={() => {
-              clearMessages();
-              setView("dashboard");
-            }}
-            onEdit={() => openEdit(selectedTournament)}
-            onPublish={() => mutateTournament(selectedTournament, "publish")}
-            onRefresh={() => loadDetail(selectedTournament.id)}
-            onReviewRegistration={reviewRegistration}
-            registrations={registrations}
-            tournament={selectedTournament}
-          />
-        </>
+        <TournamentDetail
+          currentProfile={currentProfile}
+          detailView={detailView}
+          isMutating={isMutating}
+          matchFlowError={matchFlowError}
+          matches={organizerMatches}
+          onArchive={() => mutateTournament(selectedTournament, "archive")}
+          onBack={closeDetail}
+          onDetailViewChange={changeDetailView}
+          onEdit={() => openEdit(selectedTournament)}
+          onPublish={() => mutateTournament(selectedTournament, "publish")}
+          onRefresh={() => loadDetail(selectedTournament.id)}
+          onReviewRegistration={reviewRegistration}
+          registrations={registrations}
+          tournament={selectedTournament}
+        />
       ) : null}
     </div>
   );
@@ -810,14 +943,6 @@ function TournamentDashboard({
           <Plus size={18} />
           Create Tournament
         </button>
-      </section>
-
-      <section className="org-tournament-summary">
-        <SummaryCard icon={FileText} label="Drafts" value={counts.drafts} />
-        <SummaryCard icon={RadioTower} label="Published" tone="cyan" value={counts.published} />
-        <SummaryCard icon={Trophy} label="Live" tone="red" value={counts.live} />
-        <SummaryCard icon={ShieldCheck} label="Finished" tone="green" value={counts.finished} />
-        <SummaryCard icon={Archive} label="Archived" tone="muted" value={counts.archived} />
       </section>
 
       <section className="org-tournament-panel ops-panel">
@@ -902,6 +1027,14 @@ function TournamentDashboard({
             </table>
           </div>
         )}
+      </section>
+
+      <section className="org-tournament-summary">
+        <SummaryCard icon={FileText} label="Drafts" value={counts.drafts} />
+        <SummaryCard icon={RadioTower} label="Published" tone="cyan" value={counts.published} />
+        <SummaryCard icon={Trophy} label="Live" tone="red" value={counts.live} />
+        <SummaryCard icon={ShieldCheck} label="Finished" tone="green" value={counts.finished} />
+        <SummaryCard icon={Archive} label="Archived" tone="muted" value={counts.archived} />
       </section>
     </>
   );
@@ -1059,6 +1192,7 @@ function TournamentDetail({
   matches,
   onArchive,
   onBack,
+  onDetailViewChange,
   onEdit,
   onPublish,
   onRefresh,
@@ -1073,6 +1207,7 @@ function TournamentDetail({
   matches: OrganizerMatch[];
   onArchive: () => void;
   onBack: () => void;
+  onDetailViewChange: (view: TournamentDetailView) => void;
   onEdit: () => void;
   onPublish: () => void;
   onRefresh: () => void;
@@ -1081,12 +1216,16 @@ function TournamentDetail({
   tournament: OrganizerTournament;
 }) {
   const [filter, setFilter] = useState<RegistrationStatus | "all">("all");
+  const activeDetailView = detailViewForTournament(tournament, detailView);
+  const availableDetailNavigation = tournamentDetailNavigation.filter(
+    (item) => item.view !== "groups" || supportsGroupsView(tournament)
+  );
   const counts = useMemo(() => registrationCounts(registrations), [registrations]);
   const filteredRegistrations = useMemo(
     () => registrations.filter((registration) => filter === "all" || registration.displayStatus === filter),
     [filter, registrations]
   );
-  const hasSidePanel = detailView === "overview" || detailView === "registrations";
+  const hasSidePanel = activeDetailView === "overview" || activeDetailView === "registrations";
 
   return (
     <>
@@ -1111,22 +1250,22 @@ function TournamentDetail({
       ) : null}
 
       <nav className="org-tournament-section-shortcuts ops-panel" aria-label="Tournament detail sections">
-        {tournamentDetailNavigation.map((item) => (
-          <Link
-            aria-current={detailView === item.view ? "page" : undefined}
-            className={classNames(detailView === item.view && "is-active")}
-            href={organizerDetailHref(tournament, item.view)}
+        {availableDetailNavigation.map((item) => (
+          <button
+            aria-pressed={activeDetailView === item.view}
+            className={classNames(activeDetailView === item.view && "is-active")}
             key={item.view}
-            scroll={false}
+            onClick={() => onDetailViewChange(item.view)}
+            type="button"
           >
             {item.label}
-          </Link>
+          </button>
         ))}
       </nav>
 
       <section className={classNames("org-tournament-detail-grid", !hasSidePanel && "is-full-width")}>
         <main className="org-tournament-detail-main">
-          {detailView === "overview" ? (
+          {activeDetailView === "overview" ? (
             <section className="org-tournament-meta-grid" id="overview">
               <MetaCard icon={ClipboardList} label="Format" value={formatLabel(tournament.format)} />
               <MetaCard icon={Globe2} label="Timezone" value={tournament.timezone} />
@@ -1137,7 +1276,7 @@ function TournamentDetail({
             </section>
           ) : null}
 
-          {detailView === "registrations" ? (
+          {activeDetailView === "registrations" ? (
             <section className="org-tournament-panel ops-panel" id="registration-review">
               <div className="org-tournament-panel-title">
                 <div>
@@ -1208,7 +1347,7 @@ function TournamentDetail({
             </section>
           ) : null}
 
-          {detailView === "groups" ? (
+          {activeDetailView === "groups" ? (
             <OrganizerGroupManagementPanel
               matches={matches}
               registrations={registrations}
@@ -1216,27 +1355,27 @@ function TournamentDetail({
             />
           ) : null}
 
-          {detailView === "bracket" ? (
+          {activeDetailView === "bracket" ? (
             <OrganizerBracketManagementPanel
               onRefresh={onRefresh}
               tournament={tournament}
             />
           ) : null}
 
-          {detailView === "matches" ? (
+          {activeDetailView === "matches" ? (
             <OrganizerMatchResultsPanel
               onRefresh={onRefresh}
               tournament={tournament}
             />
           ) : null}
 
-          {detailView === "import" ? (
+          {activeDetailView === "import" ? (
             <div className="org-tournament-panel organizer-import-shell ops-panel" id="match-import">
               <MatchImportPanel />
             </div>
           ) : null}
 
-          {detailView === "staff" ? (
+          {activeDetailView === "staff" ? (
             <StaffOfficialsPanel
               currentProfile={currentProfile}
               isMutating={isMutating}
@@ -1245,7 +1384,7 @@ function TournamentDetail({
             />
           ) : null}
 
-          {detailView === "match-controls" ? (
+          {activeDetailView === "match-controls" ? (
             <MatchOperationsControlPanel
               error={matchFlowError}
               matches={matches}
@@ -1256,7 +1395,7 @@ function TournamentDetail({
 
         {hasSidePanel ? (
           <aside className="org-tournament-detail-side">
-            {detailView === "overview" ? (
+            {activeDetailView === "overview" ? (
               <section className="org-tournament-panel ops-panel">
                 <div className="org-tournament-panel-title">
                   <h2>Quick Actions</h2>
@@ -1282,7 +1421,7 @@ function TournamentDetail({
               </section>
             ) : null}
 
-            {detailView === "registrations" ? (
+            {activeDetailView === "registrations" ? (
               <section className="org-tournament-panel ops-panel">
                 <div className="org-tournament-panel-title">
                   <h2>Registration Commands</h2>

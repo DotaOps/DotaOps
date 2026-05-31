@@ -2,6 +2,7 @@ import {
   ApiRequestError,
   getApi,
   getApiAuthenticated,
+  getPagedApi,
   patchApiAuthenticated,
   postApiAuthenticated
 } from "@/lib/api";
@@ -37,6 +38,28 @@ interface BackendTournamentDto {
   updatedAt?: string | null;
 }
 
+interface SupabaseTournamentRow {
+  check_in_closes_at?: string | null;
+  check_in_opens_at?: string | null;
+  created_at?: string | null;
+  description?: string | null;
+  ends_at?: string | null;
+  format?: string | null;
+  id?: string | null;
+  is_public?: boolean | null;
+  max_teams?: number | null;
+  prize_pool?: string | null;
+  published_at?: string | null;
+  registration_closes_at?: string | null;
+  registration_opens_at?: string | null;
+  slug?: string | null;
+  starts_at?: string | null;
+  status?: string | null;
+  title?: string | null;
+  tournament_registrations?: Array<{ count?: number | null }> | null;
+  updated_at?: string | null;
+}
+
 export interface TournamentWriteInput {
   checkInClosesAt?: string | null;
   checkInOpensAt?: string | null;
@@ -62,6 +85,34 @@ const validStatuses: TournamentStatus[] = [
   "finished",
   "archived"
 ];
+const publicStatuses: TournamentStatus[] = [
+  "registration",
+  "published",
+  "live",
+  "finished"
+];
+const publicTournamentPageSize = 100;
+const supabaseTournamentSelect = `
+  id,
+  slug,
+  title,
+  status,
+  format,
+  description,
+  prize_pool,
+  max_teams,
+  starts_at,
+  ends_at,
+  registration_opens_at,
+  registration_closes_at,
+  check_in_opens_at,
+  check_in_closes_at,
+  is_public,
+  published_at,
+  created_at,
+  updated_at,
+  tournament_registrations(count)
+`;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -105,6 +156,36 @@ export function mapTournamentDto(value: BackendTournamentDto): Tournament {
     title: value.title ?? "Untitled Tournament",
     updatedAt: value.updatedAt ?? null
   };
+}
+
+function mapSupabaseTournamentRow(value: SupabaseTournamentRow): Tournament {
+  const registrationsCount =
+    value.tournament_registrations?.reduce(
+      (total, registration) => total + (registration.count ?? 0),
+      0
+    ) ?? 0;
+
+  return mapTournamentDto({
+    checkInClosesAt: value.check_in_closes_at,
+    checkInOpensAt: value.check_in_opens_at,
+    createdAt: value.created_at,
+    description: value.description,
+    endsAt: value.ends_at,
+    format: value.format,
+    id: value.id,
+    maxTeams: value.max_teams,
+    prizePool: value.prize_pool,
+    publicVisible: value.is_public,
+    publishedAt: value.published_at,
+    registrationClosesAt: value.registration_closes_at,
+    registrationOpensAt: value.registration_opens_at,
+    registrationsCount,
+    slug: value.slug,
+    startsAt: value.starts_at,
+    status: value.status,
+    title: value.title,
+    updatedAt: value.updated_at
+  });
 }
 
 function safeMapTournamentList(value: unknown): Tournament[] {

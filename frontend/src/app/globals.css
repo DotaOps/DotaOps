@@ -5411,10 +5411,10 @@ textarea:focus {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, transparent 0 88%, rgba(123, 209, 248, 0.08)),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 86px);
+    linear-gradient(90deg, transparent 0 72%, rgba(123, 209, 248, 0.045)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 48%);
   content: "";
-  opacity: 0.55;
+  opacity: 0.6;
 }
 
 .role-hero > * {
@@ -10849,9 +10849,19 @@ textarea:focus {
   padding: 42px;
   overflow: hidden;
   background:
-    linear-gradient(90deg, rgba(211, 47, 47, 0.18), transparent 44%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 96px),
-    linear-gradient(135deg, rgba(255, 179, 172, 0.08), rgba(10, 10, 10, 0.72)),
+    linear-gradient(100deg, rgba(211, 47, 47, 0.2), rgba(35, 17, 17, 0.72) 42%, rgba(10, 10, 10, 0.86) 78%),
+    radial-gradient(circle at 82% 22%, rgba(123, 209, 248, 0.065), transparent 34%),
+    linear-gradient(135deg, rgba(255, 179, 172, 0.065), rgba(10, 10, 10, 0.78)),
+    #121111;
+}
+
+.org-tournament-hero {
+  min-height: 108px;
+  gap: 18px;
+  padding: 18px 24px;
+  background:
+    linear-gradient(100deg, rgba(211, 47, 47, 0.075), rgba(35, 17, 17, 0.48) 44%, rgba(10, 10, 10, 0.72) 80%),
+    radial-gradient(circle at 84% 16%, rgba(123, 209, 248, 0.035), transparent 30%),
     #121111;
 }
 
@@ -10872,6 +10882,10 @@ textarea:focus {
   z-index: 1;
 }
 
+.org-tournament-hero::before {
+  opacity: 0.38;
+}
+
 .org-tournament-hero h1,
 .org-tournament-form-hero h1,
 .org-tournament-detail-hero h1 {
@@ -10884,6 +10898,13 @@ textarea:focus {
   text-transform: uppercase;
 }
 
+.org-tournament-hero h1 {
+  max-width: 620px;
+  margin-top: 5px;
+  font-size: clamp(1.45rem, 2.2vw, 2.35rem);
+  line-height: 1.05;
+}
+
 .org-tournament-hero p:not(.ops-label),
 .org-tournament-form-hero p:not(.ops-label),
 .org-tournament-detail-hero p:not(.ops-label) {
@@ -10892,6 +10913,47 @@ textarea:focus {
   color: var(--ops-muted);
   font-size: 1rem;
   line-height: 1.6;
+}
+
+.org-tournament-hero p:not(.ops-label) {
+  max-width: 660px;
+  margin-top: 8px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.org-tournament-hero .org-tournament-primary {
+  min-height: 36px;
+  padding: 8px 14px;
+  font-size: 0.7rem;
+}
+
+.org-tournament-detail-hero {
+  min-height: 112px;
+  gap: 18px;
+  padding: 18px 24px;
+  background:
+    linear-gradient(100deg, rgba(211, 47, 47, 0.075), rgba(35, 17, 17, 0.48) 44%, rgba(10, 10, 10, 0.72) 80%),
+    radial-gradient(circle at 84% 16%, rgba(123, 209, 248, 0.035), transparent 30%),
+    #121111;
+}
+
+.org-tournament-detail-hero::before {
+  opacity: 0.38;
+}
+
+.org-tournament-detail-hero h1 {
+  max-width: 640px;
+  margin-top: 5px;
+  font-size: clamp(1.5rem, 2.4vw, 2.5rem);
+  line-height: 1.05;
+}
+
+.org-tournament-detail-hero p:not(.ops-label) {
+  max-width: 660px;
+  margin-top: 8px;
+  font-size: 0.86rem;
+  line-height: 1.5;
 }
 
 .org-tournament-primary,
@@ -10927,6 +10989,12 @@ textarea:focus {
 
 .org-tournament-secondary {
   background: rgba(18, 18, 18, 0.74);
+}
+
+.org-tournament-detail-hero > button {
+  min-height: 36px;
+  padding: 8px 14px;
+  font-size: 0.7rem;
 }
 
 .org-tournament-primary:disabled,
@@ -11143,12 +11211,12 @@ textarea:focus {
 }
 
 .org-tournament-detail-hero .org-tournament-status {
-  min-height: 54px;
-  padding: 14px 24px;
-  border-width: 2px;
-  font-size: 0.82rem;
-  letter-spacing: 0.14em;
-  box-shadow: 0 0 26px rgba(255, 180, 171, 0.12);
+  min-height: 36px;
+  padding: 8px 14px;
+  border-width: 1px;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  box-shadow: none;
 }
 
 .org-tournament-detail-hero .org-tournament-status-draft {
@@ -11157,23 +11225,19 @@ textarea:focus {
 
 .org-tournament-detail-hero .org-tournament-status-registration,
 .org-tournament-detail-hero .org-tournament-status-published {
-  background: rgba(123, 209, 248, 0.12);
-  box-shadow: 0 0 26px rgba(123, 209, 248, 0.12);
+  background: rgba(123, 209, 248, 0.08);
 }
 
 .org-tournament-detail-hero .org-tournament-status-live {
-  background: rgba(233, 193, 118, 0.14);
-  box-shadow: 0 0 26px rgba(233, 193, 118, 0.14);
+  background: rgba(233, 193, 118, 0.08);
 }
 
 .org-tournament-detail-hero .org-tournament-status-finished {
-  background: rgba(87, 242, 135, 0.12);
-  box-shadow: 0 0 26px rgba(87, 242, 135, 0.12);
+  background: rgba(87, 242, 135, 0.08);
 }
 
 .org-tournament-detail-hero .org-tournament-status-archived {
-  background: rgba(211, 47, 47, 0.2);
-  box-shadow: 0 0 28px rgba(211, 47, 47, 0.18);
+  background: rgba(211, 47, 47, 0.12);
 }
 
 .org-tournament-form-shell {
@@ -11181,13 +11245,11 @@ textarea:focus {
   gap: 22px;
 }
 
-.org-tournament-form-hero,
-.org-tournament-detail-hero {
+.org-tournament-form-hero {
   min-height: 190px;
 }
 
-.org-tournament-form-hero h1,
-.org-tournament-detail-hero h1 {
+.org-tournament-form-hero h1 {
   font-size: clamp(2.2rem, 4vw, 4.2rem);
 }
 
@@ -11492,6 +11554,10 @@ textarea:focus {
     align-items: flex-start;
     flex-direction: column;
     padding: 28px 22px;
+  }
+
+  .org-tournament-detail-hero {
+    padding: 18px;
   }
 
   .org-tournament-summary,
@@ -12211,14 +12277,17 @@ textarea:focus {
   padding: 10px;
 }
 
-.org-tournament-section-shortcuts a {
+.org-tournament-section-shortcuts a,
+.org-tournament-section-shortcuts button {
   display: inline-flex;
   align-items: center;
+  appearance: none;
   border: 1px solid var(--ops-line-soft);
   border-radius: var(--ops-radius-sm);
   padding: 8px 11px;
   background: rgba(255, 255, 255, 0.045);
   color: var(--ops-muted-strong);
+  cursor: pointer;
   font-family:
     "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.72rem;
@@ -12229,12 +12298,15 @@ textarea:focus {
 }
 
 .org-tournament-section-shortcuts a:hover,
-.org-tournament-section-shortcuts a.is-active {
+.org-tournament-section-shortcuts a.is-active,
+.org-tournament-section-shortcuts button:hover,
+.org-tournament-section-shortcuts button.is-active {
   border-color: var(--ops-cyan);
   color: var(--ops-cyan);
 }
 
-.org-tournament-section-shortcuts a.is-active {
+.org-tournament-section-shortcuts a.is-active,
+.org-tournament-section-shortcuts button.is-active {
   background: rgba(123, 209, 248, 0.12);
 }
 

@@ -3,9 +3,7 @@
 import { AlertTriangle, CalendarDays, Lock, Play, RefreshCw, Square, Trophy, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import { LiveSyncIndicator } from "@/components/live-sync-indicator";
 import { TournamentScheduleResultsPanel } from "@/components/tournament-schedule-results-panel";
-import { useTournamentLiveRefresh } from "@/hooks/use-tournament-live-refresh";
 import { ApiRequestError, type ApiFieldError } from "@/lib/api";
 import type { OrganizerTournament } from "@/lib/organizer-tournament-data";
 import {
@@ -131,10 +129,6 @@ function canFinish(match: TournamentMatch | null) {
   return Boolean(match.winnerTeamId) && status !== "finished" && status !== "cancelled";
 }
 
-function pendingResults(matches: TournamentMatch[]) {
-  return matches.filter((match) => realTeams(match).length === 2 && match.status !== "finished" && match.status !== "cancelled").length;
-}
-
 export function OrganizerMatchResultsPanel({
   onRefresh,
   tournament
@@ -219,14 +213,6 @@ export function OrganizerMatchResultsPanel({
     return () => window.clearTimeout(timeout);
   }, [loadMatches]);
 
-  const liveSync = useTournamentLiveRefresh({
-    enabled: true,
-    hiddenIntervalMs: 60_000,
-    intervalMs: 15_000,
-    label: "organizer matches",
-    onRefresh: () => loadMatches(selectedMatchId, { silent: true })
-  });
-
   async function runMatchMutation(
     action: () => Promise<unknown>,
     successMessage: string,
@@ -307,22 +293,6 @@ export function OrganizerMatchResultsPanel({
         </div>
         <span className="ops-badge">Backend validated</span>
       </div>
-
-      <div className="org-match-results-summary">
-        <SummaryCard label="Total Matches" value={String(matches.length)} />
-        <SummaryCard label="Live" value={String(matches.filter((match) => match.status === "live").length)} />
-        <SummaryCard label="Pending Results" value={String(pendingResults(matches))} />
-        <SummaryCard label="Finished" value={String(matches.filter((match) => match.status === "finished").length)} />
-        <SummaryCard label="Validation Mode" value="Best-of" />
-      </div>
-
-      <LiveSyncIndicator
-        errorCount={liveSync.errorCount}
-        lastError={liveSync.lastError}
-        lastUpdated={liveSync.lastUpdated}
-        onRefresh={liveSync.refreshNow}
-        status={liveSync.status}
-      />
 
       {notice ? <p className="org-match-results-notice">{notice}</p> : null}
       {error ? <PanelError error={error} /> : null}
@@ -479,15 +449,6 @@ export function OrganizerMatchResultsPanel({
         </aside>
       </div>
     </section>
-  );
-}
-
-function SummaryCard({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="org-match-results-summary-card ops-card">
-      <span className="ops-label">{label}</span>
-      <strong className="ops-data">{value}</strong>
-    </article>
   );
 }
 
