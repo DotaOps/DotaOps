@@ -9,26 +9,29 @@ import { OrganizerDashboardView } from "@/components/dashboard/organizer-dashboa
 import { PlayerDashboardView } from "@/components/dashboard/player-dashboard-view";
 import { PublicDashboardGate } from "@/components/dashboard/public-dashboard-gate";
 import { getCurrentUserProfile, type CurrentUserProfile } from "@/lib/auth";
-import type { DashboardRole } from "@/lib/role-dashboard-data";
-import { isOrganizerRole } from "@/lib/route-access";
+import type { ProductionDashboardRole } from "@/lib/dashboard-production-data";
 import { useEffect, useState } from "react";
 
-function roleFromProfile(role?: string | null): DashboardRole {
-  if (isOrganizerRole(role)) {
+function roleFromProfile(role?: string | null): ProductionDashboardRole {
+  if (role === "admin") {
+    return "admin";
+  }
+
+  if (role === "organizer") {
     return "organizer";
   }
 
   return "player";
 }
 
-function loadingRole(role?: DashboardRole): DashboardLoadingRole {
-  return role === "organizer" ? role : "player";
+function loadingRole(role?: ProductionDashboardRole): DashboardLoadingRole {
+  return role === "admin" || role === "organizer" ? "organizer" : "player";
 }
 
 interface DashboardViewer {
   avatarUrl: string | null;
   displayName: string;
-  role: DashboardRole;
+  role: ProductionDashboardRole;
 }
 
 function viewerFromProfile(profile: CurrentUserProfile | null): DashboardViewer {
@@ -39,7 +42,7 @@ function viewerFromProfile(profile: CurrentUserProfile | null): DashboardViewer 
   };
 }
 
-export function RoleDashboard({ role }: { role?: DashboardRole }) {
+export function RoleDashboard({ role }: { role?: ProductionDashboardRole }) {
   const shellProfile = useCurrentUserProfile();
   const [loadedViewer, setLoadedViewer] = useState<DashboardViewer | null>(null);
   const viewer = shellProfile !== undefined ? viewerFromProfile(shellProfile) : loadedViewer;
@@ -72,20 +75,15 @@ export function RoleDashboard({ role }: { role?: DashboardRole }) {
     return <DashboardLoadingSkeleton role={loadingRole(role)} />;
   }
 
-  const actualRole = viewer.role === "captain" ? "player" : viewer.role;
-  const requestedRole = role === "captain" ? "player" : role;
-  const resolvedRole = requestedRole === "organizer" && actualRole !== "organizer"
-    ? actualRole
-    : requestedRole === "public"
-      ? actualRole
-      : requestedRole ?? actualRole;
+  const actualRole = viewer.role;
+  const resolvedRole = actualRole;
 
   if (resolvedRole === "player") {
     return <PlayerDashboardView />;
   }
 
-  if (resolvedRole === "organizer") {
-    return <OrganizerDashboardView />;
+  if (resolvedRole === "admin" || resolvedRole === "organizer") {
+    return <OrganizerDashboardView role={resolvedRole} />;
   }
 
   if (resolvedRole === "public") {

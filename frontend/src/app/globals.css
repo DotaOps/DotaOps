@@ -5794,6 +5794,35 @@ textarea:focus {
   border-left-color: #e9c176;
 }
 
+.role-empty-state {
+  display: grid;
+  gap: 8px;
+  padding: 20px;
+  color: #e4beba;
+}
+
+.role-empty-state strong {
+  color: #f9dcd9;
+}
+
+.role-empty-state p {
+  margin: 0;
+  color: #e4beba;
+  line-height: 1.55;
+}
+
+.role-empty-state-wide {
+  grid-column: 1 / -1;
+  min-height: 150px;
+  align-content: center;
+  text-align: left;
+}
+
+.role-inline-empty-state {
+  color: #e4beba;
+  font-size: 0.82rem;
+}
+
 .role-alert strong {
   display: block;
   margin-bottom: 7px;
