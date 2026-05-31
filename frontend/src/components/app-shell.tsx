@@ -257,13 +257,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className="sidebar-panel ops-card">
-          <Shield size={18} />
-          <div>
-            <span>API connection</span>
-            <strong>{apiUrl}</strong>
-          </div>
-        </div>
+        <Link className="sidebar-user-card ops-card" href={sidebarProfileHref}>
+          <UserAvatar avatarUrl={profile?.avatarUrl} className="sidebar-user-avatar" size={18} />
+          <span className="sidebar-user-copy">
+            <span className="sidebar-user-kicker">
+              {hasAuthenticatedProfile ? "Signed in" : "Public session"}
+            </span>
+            <strong>{sidebarProfileLabel}</strong>
+            <span className="sidebar-user-meta">{sidebarProfileMeta}</span>
+          </span>
+          <span className="sidebar-user-badge">{sidebarProfileSyncState}</span>
+        </Link>
       </aside>
 
       <div className="main-area">
