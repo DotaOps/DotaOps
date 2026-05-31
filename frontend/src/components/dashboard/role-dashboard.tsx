@@ -1,6 +1,5 @@
 "use client";
 
-import { CaptainDashboardView } from "@/components/dashboard/captain-dashboard-view";
 import { useCurrentUserProfile } from "@/components/current-user-profile-context";
 import {
   DashboardLoadingSkeleton,
@@ -19,15 +18,11 @@ function roleFromProfile(role?: string | null): DashboardRole {
     return "organizer";
   }
 
-  if (role === "captain") {
-    return "captain";
-  }
-
   return "player";
 }
 
 function loadingRole(role?: DashboardRole): DashboardLoadingRole {
-  return role === "captain" || role === "organizer" ? role : "player";
+  return role === "organizer" ? role : "player";
 }
 
 interface DashboardViewer {
@@ -77,12 +72,13 @@ export function RoleDashboard({ role }: { role?: DashboardRole }) {
     return <DashboardLoadingSkeleton role={loadingRole(role)} />;
   }
 
-  const actualRole = viewer.role;
-  const resolvedRole = role === "organizer" && actualRole !== "organizer"
+  const actualRole = viewer.role === "captain" ? "player" : viewer.role;
+  const requestedRole = role === "captain" ? "player" : role;
+  const resolvedRole = requestedRole === "organizer" && actualRole !== "organizer"
     ? actualRole
-    : role === "public"
+    : requestedRole === "public"
       ? actualRole
-      : role ?? actualRole;
+      : requestedRole ?? actualRole;
 
   if (resolvedRole === "player") {
     return <PlayerDashboardView />;
@@ -96,5 +92,5 @@ export function RoleDashboard({ role }: { role?: DashboardRole }) {
     return <PublicDashboardGate />;
   }
 
-  return <CaptainDashboardView />;
+  return <PlayerDashboardView />;
 }

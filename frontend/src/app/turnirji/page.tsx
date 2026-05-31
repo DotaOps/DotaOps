@@ -1,6 +1,7 @@
-import { CalendarDays, GitBranch, Plus, ShieldCheck, UsersRound } from "lucide-react";
+import { AlertTriangle, CalendarDays, GitBranch, RefreshCcw, ShieldCheck, Trophy, UsersRound } from "lucide-react";
 import Link from "next/link";
 
+import { OrganizerCreateTournamentLink } from "@/components/organizer-create-tournament-link";
 import { SectionHeader } from "@/components/section-header";
 import { TournamentCommandHeader } from "@/components/tournament-command-header";
 import { TournamentCard } from "@/components/tournament-card";
@@ -10,7 +11,15 @@ import { getTournaments } from "@/lib/data";
 export const dynamic = "force-dynamic";
 
 export default async function TournamentsPage() {
-  const tournaments = await getTournaments();
+  let tournaments: Awaited<ReturnType<typeof getTournaments>> = [];
+  let hasLoadError = false;
+
+  try {
+    tournaments = await getTournaments();
+  } catch {
+    hasLoadError = true;
+  }
+
   const liveTournaments = tournaments.filter((tournament) => tournament.status === "live").length;
   const openRegistrations = tournaments.filter(
     (tournament) => tournament.status === "registration"
@@ -30,12 +39,7 @@ export default async function TournamentsPage() {
         eyebrow="Tournament operations"
         title="Tournament Command Center"
         description="Public and organizer overview of statuses, registrations, formats, and initial data for Dota 2 tournaments."
-        actions={
-          <Link className="button ops-button-primary" href="/organizator">
-            <Plus size={18} />
-            <span>New Tournament</span>
-          </Link>
-        }
+        actions={<OrganizerCreateTournamentLink />}
       >
         <TournamentMetaGrid
           items={[
@@ -77,11 +81,33 @@ export default async function TournamentsPage() {
           title="All Tournaments"
           description="Statuses, registrations, teams, and format are ready for operational review."
         />
-        <div className="tournament-card-grid">
-          {tournaments.map((tournament) => (
-            <TournamentCard key={tournament.id} tournament={tournament} />
-          ))}
-        </div>
+        {hasLoadError ? (
+          <div className="tournament-registry-state is-error">
+            <AlertTriangle size={22} />
+            <div>
+              <h3>Tournaments are currently unavailable.</h3>
+              <p>The tournament registry could not be loaded. Please try again.</p>
+              <Link className="button ops-button-secondary" href="/turnirji">
+                <RefreshCcw size={16} />
+                <span>Retry</span>
+              </Link>
+            </div>
+          </div>
+        ) : tournaments.length === 0 ? (
+          <div className="tournament-registry-state">
+            <Trophy size={22} />
+            <div>
+              <h3>No tournaments published yet.</h3>
+              <p>Published tournaments will appear here when they are available.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="tournament-card-grid">
+            {tournaments.map((tournament) => (
+              <TournamentCard key={tournament.id} tournament={tournament} />
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

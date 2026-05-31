@@ -2669,6 +2669,43 @@ textarea:focus {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.tournament-registry-state {
+  display: flex;
+  gap: var(--ops-space-3);
+  align-items: flex-start;
+  padding: var(--ops-space-5);
+  border: 1px dashed var(--ops-line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.tournament-registry-state svg {
+  flex: 0 0 auto;
+  color: var(--ops-secondary);
+}
+
+.tournament-registry-state h3 {
+  color: var(--ops-text);
+  text-transform: uppercase;
+}
+
+.tournament-registry-state p {
+  margin-top: var(--ops-space-2);
+  color: var(--ops-muted);
+}
+
+.tournament-registry-state .button {
+  margin-top: var(--ops-space-3);
+}
+
+.tournament-registry-state.is-error {
+  border-color: rgba(255, 84, 78, 0.42);
+  background: rgba(255, 84, 78, 0.08);
+}
+
+.tournament-registry-state.is-error svg {
+  color: var(--ops-error);
+}
+
 .tournament-command .tournament-card.ops-card {
   position: relative;
   min-height: 280px;
@@ -7620,7 +7657,7 @@ textarea:focus {
 
 .auth-role-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 

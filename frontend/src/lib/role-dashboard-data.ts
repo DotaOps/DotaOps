@@ -436,9 +436,9 @@ export const organizerDashboardData: OrganizerDashboardData = {
 export function normalizeDashboardRole(value?: string | string[]): DashboardRole {
   const role = Array.isArray(value) ? value[0] : value;
 
-  if (role === "player" || role === "captain" || role === "organizer" || role === "public") {
+  if (role === "player" || role === "organizer" || role === "public") {
     return role;
   }
 
-  return "captain";
+  return "player";
 }

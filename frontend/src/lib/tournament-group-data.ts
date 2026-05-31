@@ -301,7 +301,7 @@ export async function getOrganizerGroupsData(tournamentId: string): Promise<Orga
 
   try {
     standings = mapStandings(
-      await getApi<unknown>(`/public/tournaments/${tournamentId}/standings`)
+      await getApiAuthenticated<unknown>(`/organizer/tournaments/${tournamentId}/standings`)
     );
   } catch (error) {
     standingsError = error instanceof Error

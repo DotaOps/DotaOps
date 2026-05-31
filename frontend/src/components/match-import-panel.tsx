@@ -106,7 +106,7 @@ export function MatchImportPanel() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [job, setJob] = useState<MatchImportJob | null>(null);
-  const [matchId, setMatchId] = useState("7894561230");
+  const [matchId, setMatchId] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {

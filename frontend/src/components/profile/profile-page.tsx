@@ -36,15 +36,9 @@ interface ProfileFormState {
 }
 
 const roleStats: Record<
-  "player" | "captain" | "organizer",
+  "player" | "organizer",
   Array<{ label: string; value: string; accent?: boolean }>
 > = {
-  captain: [
-    { label: "Matches tracked", value: "1,248" },
-    { label: "Team members", value: "05" },
-    { label: "Tournaments joined", value: "14" },
-    { accent: true, label: "Roster status", value: "Ready" }
-  ],
   organizer: [
     { label: "Hosted tournaments", value: "14" },
     { label: "Registered teams", value: "96" },
@@ -59,19 +53,11 @@ const roleStats: Record<
   ]
 };
 
-function normalizeRole(role?: ProfileRole | null): "player" | "captain" | "organizer" {
-  if (role === "captain" || role === "organizer") {
-    return role;
-  }
-
-  return "player";
+function normalizeRole(role?: ProfileRole | null): "player" | "organizer" {
+  return role === "organizer" || role === "admin" ? "organizer" : "player";
 }
 
 function roleLabel(role: ProfileRole) {
-  if (role === "captain") {
-    return "Team Captain";
-  }
-
   if (role === "organizer") {
     return "Organizer";
   }

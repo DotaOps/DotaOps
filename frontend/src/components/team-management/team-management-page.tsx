@@ -167,6 +167,24 @@ function LoginRequired() {
   );
 }
 
+function OrganizerTeamAccessState() {
+  return (
+    <section className="team-mgmt-state ops-panel">
+      <p className="ops-label">Organizer workspace</p>
+      <h1>Team management is available for player accounts</h1>
+      <p>Organizer accounts manage tournaments. Use a player account to create or join a team.</p>
+      <div className="team-mgmt-empty-actions">
+        <Link className="button button-primary ops-button-primary" href="/organizator">
+          Open Organizer
+        </Link>
+        <Link className="button button-secondary" href="/turnirji">
+          View Tournaments
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 function readableError(caught: unknown, fallback: string) {
   if (caught instanceof ApiRequestError && caught.errors.length > 0) {
     const details = caught.errors
@@ -666,6 +684,10 @@ export function TeamManagementPage() {
         </div>
       </section>
     );
+  }
+
+  if (viewModel.currentProfile.role === "organizer") {
+    return <OrganizerTeamAccessState />;
   }
 
   if (!team) {

@@ -33,12 +33,13 @@ const navItems: Array<{
   href: string;
   icon: LucideIcon;
   label: string;
+  hideForOrganizer?: boolean;
   organizerOnly?: boolean;
 }> = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/turnirji", label: "Tournaments", icon: Trophy },
   { href: "/organizator", label: "Organizer", icon: Brackets, organizerOnly: true },
-  { href: "/ekipe", label: "My Team", icon: UsersRound },
+  { href: "/ekipe", label: "My Team", icon: UsersRound, hideForOrganizer: true },
   { href: "/analitika", label: "Analytics", icon: BarChart3 },
   { href: "/profile", label: "Profile", icon: UserRound }
 ];
@@ -58,7 +59,7 @@ function dashboardLoadingRole(role?: string | null): DashboardLoadingRole {
     return "organizer";
   }
 
-  return role === "captain" ? "captain" : "player";
+  return "player";
 }
 
 function formatRoleLabel(role?: string | null) {
@@ -165,8 +166,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       return publicContentNavItems;
     }
 
-    return navItems.filter((item) => !item.organizerOnly || canUseOrganizer);
-  }, [canUseOrganizer, isPublicContentGuest]);
+    return navItems.filter(
+      (item) =>
+        (!item.organizerOnly || canUseOrganizer) &&
+        (!item.hideForOrganizer || profile?.role !== "organizer")
+    );
+  }, [canUseOrganizer, isPublicContentGuest, profile?.role]);
   const hasAuthenticatedProfile = Boolean(profile);
   const profileDisplayName = profile?.displayName || profile?.nickname || "Profile";
   const sidebarProfileHref = hasAuthenticatedProfile ? "/profile" : "/login";
