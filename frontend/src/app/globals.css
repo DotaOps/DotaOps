@@ -5411,10 +5411,10 @@ textarea:focus {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, transparent 0 88%, rgba(123, 209, 248, 0.08)),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 86px);
+    linear-gradient(90deg, transparent 0 72%, rgba(123, 209, 248, 0.045)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 48%);
   content: "";
-  opacity: 0.55;
+  opacity: 0.6;
 }
 
 .role-hero > * {
@@ -10849,9 +10849,9 @@ textarea:focus {
   padding: 42px;
   overflow: hidden;
   background:
-    linear-gradient(90deg, rgba(211, 47, 47, 0.18), transparent 44%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 96px),
-    linear-gradient(135deg, rgba(255, 179, 172, 0.08), rgba(10, 10, 10, 0.72)),
+    linear-gradient(100deg, rgba(211, 47, 47, 0.2), rgba(35, 17, 17, 0.72) 42%, rgba(10, 10, 10, 0.86) 78%),
+    radial-gradient(circle at 82% 22%, rgba(123, 209, 248, 0.065), transparent 34%),
+    linear-gradient(135deg, rgba(255, 179, 172, 0.065), rgba(10, 10, 10, 0.78)),
     #121111;
 }
 
