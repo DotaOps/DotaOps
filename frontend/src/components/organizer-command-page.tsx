@@ -35,6 +35,7 @@ import { MatchImportPanel } from "@/components/match-import-panel";
 import { OrganizerBracketManagementPanel } from "@/components/organizer-bracket-management-panel";
 import { OrganizerGroupManagementPanel } from "@/components/organizer-group-management-panel";
 import { OrganizerMatchResultsPanel } from "@/components/organizer-match-results-panel";
+import { OrganizerWorkspaceLoading } from "@/components/organizer-workspace-loading";
 import { useTournamentLiveRefresh } from "@/hooks/use-tournament-live-refresh";
 import { ApiRequestError, type ApiFieldError } from "@/lib/api";
 import { getCurrentUserProfile, type CurrentUserProfile, type ProfileRole } from "@/lib/auth";
@@ -821,13 +822,7 @@ export function OrganizerCommandPage({
   }
 
   if (loadState === "loading") {
-    return (
-      <section aria-busy="true" className="org-tournament-state ops-panel">
-        <p className="ops-label">Organizer tournament access</p>
-        <h1>Opening organizer workspace</h1>
-        <p>Checking your session and loading tournament records.</p>
-      </section>
-    );
+    return <OrganizerWorkspaceLoading />;
   }
 
   if (loadState === "login" || loadState === "permission" || loadState === "error") {
