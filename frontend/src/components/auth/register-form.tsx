@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Gamepad2, Shield, Trophy, UsersRound } from "lucide-react";
+import { BarChart3, Gamepad2, Shield, Trophy } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -20,9 +20,18 @@ const roleOptions: Array<{
   detail: string;
   icon: LucideIcon;
 }> = [
-  { detail: "Performance Tracking", icon: Gamepad2, label: "Player", role: "player" },
-  { detail: "Manage Roster", icon: UsersRound, label: "Team Captain", role: "captain" },
-  { detail: "Host Tournaments", icon: Trophy, label: "Organizer", role: "organizer" }
+  {
+    detail: "Create or join teams. Team captain status is assigned after creating or managing a team.",
+    icon: Gamepad2,
+    label: "Player",
+    role: "player"
+  },
+  {
+    detail: "Create and manage tournaments.",
+    icon: Trophy,
+    label: "Organizer",
+    role: "organizer"
+  }
 ];
 
 type RegisterField =
@@ -104,7 +113,7 @@ export function RegisterForm() {
   const [countryCode, setCountryCode] = useState("");
   const [steamIdOrProfile, setSteamIdOrProfile] = useState("");
   const [bio, setBio] = useState("");
-  const [requestedRole, setRequestedRole] = useState<RequestedAuthRole>("captain");
+  const [requestedRole, setRequestedRole] = useState<RequestedAuthRole>("player");
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<RegisterErrors>({});
   const [notice, setNotice] = useState<string | null>(null);

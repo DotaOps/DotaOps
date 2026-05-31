@@ -4,7 +4,11 @@ export function classNames(
   return values.filter(Boolean).join(" ");
 }
 
-export function formatDateTime(value: string) {
+export function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "Date unavailable";
+  }
+
   return new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",
     timeStyle: "short"

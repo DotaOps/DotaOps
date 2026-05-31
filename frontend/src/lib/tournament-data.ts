@@ -5,7 +5,6 @@ import {
   patchApiAuthenticated,
   postApiAuthenticated
 } from "@/lib/api";
-import { tournaments as mockTournaments } from "@/lib/mock-data";
 import type { Tournament, TournamentStatus } from "@/lib/types";
 
 interface BackendTournamentDto {
@@ -55,7 +54,6 @@ export interface TournamentWriteInput {
   title?: string | null;
 }
 
-const fallbackDate = "2026-05-20T19:00:00Z";
 const validStatuses: TournamentStatus[] = [
   "draft",
   "registration",
@@ -70,45 +68,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeStatus(status?: string | null): TournamentStatus {
-  return validStatuses.includes(status as TournamentStatus)
-    ? (status as TournamentStatus)
-    : "draft";
+  if (!validStatuses.includes(status as TournamentStatus)) {
+    throw new Error("Tournament API returned an unsupported tournament status.");
+  }
+
+  return status as TournamentStatus;
 }
 
 function normalizeTeamSize(value?: number | null) {
   return value === 1 || value === 3 || value === 5 ? value : null;
 }
 
-function fallbackSlug(value: BackendTournamentDto) {
-  if (value.slug) {
-    return value.slug;
+export function mapTournamentDto(value: BackendTournamentDto): Tournament {
+  if (!value.id || !value.slug || !value.title) {
+    throw new Error("Tournament API returned an incomplete tournament record.");
   }
 
-  return (value.title ?? value.id ?? "tournament")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
-export function mapTournamentDto(value: BackendTournamentDto): Tournament {
-  const id = value.id ?? fallbackSlug(value);
-
   return {
-    description: value.description ?? "Tournament details are being prepared.",
+    description: value.description ?? "No tournament description available.",
     checkInClosesAt: value.checkInClosesAt ?? null,
     checkInOpensAt: value.checkInOpensAt ?? null,
     endsAt: value.endsAt ?? null,
-    format: value.format ?? "Dota 2",
+    format: value.format ?? "Format unavailable",
     teamSize: normalizeTeamSize(value.teamSize ?? value.settings?.teamSize),
-    id,
-    organizer: value.organizerNickname ?? value.organizer ?? "DotaOps",
-    prizePool: value.prizePool ?? "TBD",
+    id: value.id,
+    organizer: value.organizerNickname ?? value.organizer ?? "Organizer unavailable",
+    prizePool: value.prizePool ?? "Not announced",
     publicVisible: value.publicVisible ?? null,
     registrationClosesAt: value.registrationClosesAt ?? null,
     registrationOpensAt: value.registrationOpensAt ?? null,
     registrationsCount: value.registrationsCount ?? 0,
-    slug: fallbackSlug(value),
-    startsAt: value.startsAt ?? fallbackDate,
+    slug: value.slug,
+    startsAt: value.startsAt ?? null,
     status: normalizeStatus(value.status),
     teamsCount: value.maxTeams ?? 0,
     title: value.title ?? "Untitled Tournament",
@@ -127,59 +118,36 @@ function safeMapTournamentList(value: unknown): Tournament[] {
           : null;
 
   if (!items) {
-    console.warn("Tournament API returned an unexpected payload shape.", {
-      expected: "array or paginated object with content/items"
-    });
-    return mockTournaments;
+    throw new Error("Tournament API returned an unexpected list payload shape.");
   }
 
   const invalidItems = items.filter((item) => !isRecord(item));
 
   if (invalidItems.length > 0) {
-    console.warn("Tournament API returned invalid list items.", {
-      invalidItems: invalidItems.length
-    });
-    return mockTournaments;
+    throw new Error("Tournament API returned invalid list items.");
   }
 
   return items.map((item) => mapTournamentDto(item as BackendTournamentDto));
 }
 
-function safeMapTournament(value: unknown, fallback: Tournament | null): Tournament | null {
+function safeMapTournament(value: unknown): Tournament | null {
   if (!value) {
-    return fallback;
+    return null;
   }
 
   if (!isRecord(value)) {
-    console.warn("Tournament API returned an unexpected detail payload shape.");
-    return fallback;
+    throw new Error("Tournament API returned an unexpected detail payload shape.");
   }
 
   return mapTournamentDto(value as BackendTournamentDto);
 }
 
-function fallbackTournaments() {
-  return mockTournaments;
-}
-
 export async function getPublicTournaments(): Promise<Tournament[]> {
-  try {
-    return safeMapTournamentList(await getApi<unknown>("/tournaments"));
-  } catch (error) {
-    console.warn("Public tournaments API unavailable; using mock fallback.", error);
-    return fallbackTournaments();
-  }
+  return safeMapTournamentList(await getApi<unknown>("/tournaments"));
 }
 
 export async function getPublicTournamentBySlug(slug: string): Promise<Tournament | null> {
-  const fallback = mockTournaments.find((tournament) => tournament.slug === slug) ?? null;
-
-  try {
-    return safeMapTournament(await getApi<unknown>(`/tournaments/${slug}`), fallback);
-  } catch (error) {
-    console.warn("Public tournament detail API unavailable; using mock fallback.", error);
-    return fallback;
-  }
+  return safeMapTournament(await getApi<unknown>(`/tournaments/${slug}`));
 }
 
 export async function getOrganizerTournamentsForCurrentUser(): Promise<Tournament[]> {
@@ -190,8 +158,7 @@ export async function getOrganizerTournamentForCurrentUser(
   tournamentId: string
 ): Promise<Tournament> {
   const tournament = safeMapTournament(
-    await getApiAuthenticated<unknown>(`/organizer/tournaments/${tournamentId}`),
-    null
+    await getApiAuthenticated<unknown>(`/organizer/tournaments/${tournamentId}`)
   );
 
   if (!tournament) {
