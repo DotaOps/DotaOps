@@ -9,7 +9,6 @@ import {
   postApiAuthenticated
 } from "@/lib/api";
 import { getCurrentUserProfile, type CurrentUserProfile } from "@/lib/auth";
-import { teams as mockTeams } from "@/lib/mock-data";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 export type TeamMemberRole =
@@ -29,15 +28,27 @@ export type TeamInvitationStatus =
   | "expired";
 
 export interface TeamSummary {
+  bannerUrl: string | null;
   captainNickname: string | null;
   captainProfileId: string | null;
   description: string | null;
   id: string;
   logoUrl: string | null;
+  manualPlayers: TeamManualPlayer[];
   name: string;
   region: string | null;
   slug: string;
   tag: string | null;
+}
+
+export interface TeamManualPlayer {
+  createdAt: string | null;
+  displayName: string;
+  id: string;
+  nickname: string | null;
+  note: string | null;
+  teamId: string;
+  updatedAt: string | null;
 }
 
 export interface TeamMember {
@@ -88,9 +99,10 @@ export interface TeamManagementViewModel {
   activeEvents: TournamentRegistration[];
   canManageRoster: boolean;
   currentProfile: CurrentUserProfile;
-  dataSource: "api" | "mock";
+  dataSource: "api";
   incomingInvitations: TeamInvitation[];
   isCaptain: boolean;
+  manualPlayers: TeamManualPlayer[];
   members: TeamMember[];
   outgoingInvitations: TeamInvitation[];
   protectedDataError: string | null;
@@ -112,15 +124,27 @@ export interface CreateTeamInput {
 }
 
 interface BackendTeamResponse {
+  bannerUrl?: string | null;
   captainNickname?: string | null;
   captainProfileId?: string | null;
   description?: string | null;
   id: string;
   logoUrl?: string | null;
+  manualPlayers?: BackendTeamManualPlayerResponse[] | null;
   name: string;
   region?: string | null;
   slug: string;
   tag?: string | null;
+}
+
+interface BackendTeamManualPlayerResponse {
+  createdAt?: string | null;
+  displayName: string;
+  id: string;
+  nickname?: string | null;
+  note?: string | null;
+  teamId: string;
+  updatedAt?: string | null;
 }
 
 interface BackendTeamMemberResponse {
@@ -140,6 +164,7 @@ interface BackendTeamMemberResponse {
 interface BackendCurrentTeamResponse {
   canManageRoster?: boolean;
   captain?: boolean;
+  manualPlayers?: BackendTeamManualPlayerResponse[] | null;
   members?: BackendTeamMemberResponse[] | null;
   team?: BackendTeamResponse | null;
   teamResolution?: string | null;
@@ -180,7 +205,6 @@ interface BackendTeamPageResponse {
   items?: BackendTeamResponse[];
 }
 
-const fallbackRoles: TeamMemberRole[] = ["carry", "mid", "offlane", "support", "support"];
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function requireSupabaseClient() {
@@ -206,15 +230,29 @@ async function getFreshAccessToken() {
 
 function asTeam(response: BackendTeamResponse): TeamSummary {
   return {
+    bannerUrl: response.bannerUrl ?? null,
     captainNickname: response.captainNickname ?? null,
     captainProfileId: response.captainProfileId ?? null,
     description: response.description ?? null,
     id: response.id,
     logoUrl: response.logoUrl ?? null,
+    manualPlayers: (response.manualPlayers ?? []).map(asManualPlayer),
     name: response.name,
     region: response.region ?? null,
     slug: response.slug,
     tag: response.tag ?? null
+  };
+}
+
+function asManualPlayer(response: BackendTeamManualPlayerResponse): TeamManualPlayer {
+  return {
+    createdAt: response.createdAt ?? null,
+    displayName: response.displayName,
+    id: response.id,
+    nickname: response.nickname ?? null,
+    note: response.note ?? null,
+    teamId: response.teamId,
+    updatedAt: response.updatedAt ?? null
   };
 }
 
@@ -308,82 +346,8 @@ async function listTeams() {
 
     return { data: teams.map(asTeam), source: "api" as const };
   } catch {
-    return { data: [] as TeamSummary[], source: "mock" as const };
+    return { data: [] as TeamSummary[], source: "api" as const };
   }
-}
-
-function mockTeamData() {
-  const source = mockTeams[0];
-  const team: TeamSummary = {
-    captainNickname: source.captain,
-    captainProfileId: "mock-captain-profile",
-    description: "Elite European organization dominating the global circuit.",
-    id: source.id,
-    logoUrl: null,
-    name: "Team Liquid",
-    region: "EU West",
-    slug: "team-liquid",
-    tag: "TL"
-  };
-  const rosterSource = [
-    { favoriteHero: "Morphling", id: "mock-micke", nickname: "miCKe", role: "Carry" },
-    { favoriteHero: "Puck", id: "mock-nisha", nickname: "Nisha", role: "Mid" },
-    { favoriteHero: "Beastmaster", id: "mock-33", nickname: "33", role: "Offlane" },
-    { favoriteHero: "Tusk", id: "mock-boxi", nickname: "Boxi", role: "Support" },
-    { favoriteHero: "Oracle", id: "mock-insania", nickname: "iNSaNiA", role: "Hard Support" }
-  ];
-  const members: TeamMember[] = rosterSource.map((player, index) => ({
-    active: true,
-    avatarUrl: null,
-    displayName: player.nickname,
-    id: `mock-member-${index}`,
-    joinedAt: index === 2 ? "2023-11-02T10:00:00Z" : "2023-10-14T10:00:00Z",
-    leftAt: null,
-    nickname: player.nickname,
-    profileId: index === 0 ? "mock-captain-profile" : player.id,
-    role: fallbackRoles[index],
-    teamId: team.id,
-    updatedAt: null
-  }));
-
-  return { members, team };
-}
-
-function fallbackInvitations(team: TeamSummary): TeamInvitation[] {
-  return [
-    {
-      acceptedAt: null,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 28).toISOString(),
-      expiresAt: null,
-      id: "mock-invite-miracle",
-      inviteeEmail: null,
-      inviteeNickname: "Miracle-",
-      inviteeProfileId: null,
-      inviterNickname: team.captainNickname,
-      proposedRole: "carry",
-      status: "pending",
-      teamId: team.id,
-      teamName: team.name,
-      teamSlug: team.slug,
-      updatedAt: null
-    },
-    {
-      acceptedAt: null,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
-      expiresAt: null,
-      id: "mock-invite-sumail",
-      inviteeEmail: null,
-      inviteeNickname: "SumaiL",
-      inviteeProfileId: null,
-      inviterNickname: team.captainNickname,
-      proposedRole: "mid",
-      status: "declined",
-      teamId: team.id,
-      teamName: team.name,
-      teamSlug: team.slug,
-      updatedAt: null
-    }
-  ];
 }
 
 function protectedErrorMessage(error: unknown) {
@@ -404,11 +368,11 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
   try {
     currentTeamAggregate = await getApiAuthenticated<BackendCurrentTeamResponse>("/me/team", accessToken);
   } catch (error) {
-    protectedDataError = protectedErrorMessage(error);
+    throw new Error(protectedErrorMessage(error));
   }
 
   const teamsResult = await listTeams();
-  let dataSource: "api" | "mock" = teamsResult.source;
+  let dataSource: "api" = teamsResult.source;
   let teams = teamsResult.data;
   let membersByTeam = new Map<string, TeamMember[]>();
   const aggregateTeam = currentTeamAggregate?.team ? asTeam(currentTeamAggregate.team) : null;
@@ -421,13 +385,6 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
       })
     );
     membersByTeam = new Map(memberPairs);
-  }
-
-  if (teams.length === 0 && teamsResult.source === "mock") {
-    const fallback = mockTeamData();
-    dataSource = "mock";
-    teams = [fallback.team];
-    membersByTeam = new Map([[fallback.team.id, fallback.members]]);
   }
 
   if (aggregateTeam) {
@@ -445,8 +402,25 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
           (membersByTeam.get(team.id) ?? []).some((member) => member.profileId === currentProfile.profileId)
         )
       : null;
-  const selectedTeam = aggregateTeam ?? membershipTeam ?? (dataSource === "mock" ? teams[0] ?? null : null);
+  const selectedTeam = aggregateTeam ?? membershipTeam ?? null;
   const members = selectedTeam ? membersByTeam.get(selectedTeam.id) ?? [] : [];
+  let manualPlayers =
+    (currentTeamAggregate?.manualPlayers ?? currentTeamAggregate?.team?.manualPlayers ?? []).map(
+      asManualPlayer
+    );
+  const hasAggregateManualPlayers =
+    Array.isArray(currentTeamAggregate?.manualPlayers) ||
+    Array.isArray(currentTeamAggregate?.team?.manualPlayers);
+
+  if (selectedTeam && !hasAggregateManualPlayers) {
+    try {
+      manualPlayers = (
+        await getApi<BackendTeamManualPlayerResponse[]>(`/teams/${selectedTeam.id}/manual-players`)
+      ).map(asManualPlayer);
+    } catch {
+      manualPlayers = selectedTeam.manualPlayers;
+    }
+  }
   const isCaptain = aggregateTeam
     ? Boolean(currentTeamAggregate?.captain)
     : Boolean(
@@ -454,18 +428,14 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
           currentProfile.profileId &&
           selectedTeam.captainProfileId === currentProfile.profileId
       );
-  const canManageRoster = aggregateTeam
-    ? Boolean(currentTeamAggregate?.canManageRoster)
-    : isCaptain || (dataSource === "mock" && currentProfile.role === "captain");
+  const canManageRoster = aggregateTeam ? Boolean(currentTeamAggregate?.canManageRoster) : isCaptain;
   const teamResolution = aggregateTeam
     ? currentTeamAggregate?.teamResolution ?? "Resolved from GET /api/me/team."
     : membershipTeam
       ? "Resolved from current profile membership."
-      : selectedTeam
-        ? "Mock fallback selected the first available team."
-        : currentTeamAggregate
-          ? currentTeamAggregate.teamResolution ?? "No team found for the current profile."
-          : "No team found for the current profile.";
+      : currentTeamAggregate
+        ? currentTeamAggregate.teamResolution ?? "No team found for the current profile."
+        : "No team found for the current profile.";
   let outgoingInvitations: TeamInvitation[] = [];
   let incomingInvitations: TeamInvitation[] = [];
   let activeEvents: TournamentRegistration[] = [];
@@ -504,34 +474,6 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
     }
   }
 
-  if (selectedTeam && dataSource === "mock") {
-    outgoingInvitations = fallbackInvitations(selectedTeam);
-    activeEvents = [
-      {
-        checkedInAt: null,
-        contactEmail: null,
-        createdAt: new Date().toISOString(),
-        id: "mock-registration-dreamleague",
-        status: "approved",
-        teamId: selectedTeam.id,
-        tournamentId: "mock-dreamleague",
-        tournamentSlug: "dreamleague-s22",
-        tournamentTitle: "DreamLeague S22"
-      },
-      {
-        checkedInAt: null,
-        contactEmail: null,
-        createdAt: new Date().toISOString(),
-        id: "mock-registration-elite",
-        status: "pending",
-        teamId: selectedTeam.id,
-        tournamentId: "mock-elite",
-        tournamentSlug: "elite-league",
-        tournamentTitle: "Elite League"
-      }
-    ];
-  }
-
   return {
     accessToken,
     activeEvents,
@@ -540,6 +482,7 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
     dataSource,
     incomingInvitations,
     isCaptain,
+    manualPlayers,
     members,
     outgoingInvitations,
     protectedDataError,

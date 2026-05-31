@@ -137,6 +137,7 @@ public class TeamRepository {
                   ) as captain_nickname,
                   region,
                   logo_url,
+                  banner_url,
                   description,
                   created_by,
                   created_at,
@@ -179,6 +180,7 @@ public class TeamRepository {
                           ) as captain_nickname,
                           region,
                           logo_url,
+                          banner_url,
                           description,
                           created_by,
                           created_at,
@@ -202,6 +204,74 @@ public class TeamRepository {
                 .findFirst();
     }
 
+    public Optional<Team> updateLogoUrl(UUID teamId, String logoUrl) {
+        return jdbcTemplate.query(
+                        """
+                        update public.teams
+                        set
+                          logo_url = ?,
+                          updated_at = now()
+                        where id = ?
+                        returning
+                          id,
+                          name,
+                          tag,
+                          slug,
+                          captain_profile_id,
+                          (
+                            select p.nickname
+                            from public.profiles p
+                            where p.id = captain_profile_id
+                          ) as captain_nickname,
+                          region,
+                          logo_url,
+                          banner_url,
+                          description,
+                          created_by,
+                          created_at,
+                          updated_at
+                        """,
+                        this::mapTeam,
+                        logoUrl,
+                        teamId)
+                .stream()
+                .findFirst();
+    }
+
+    public Optional<Team> updateBannerUrl(UUID teamId, String bannerUrl) {
+        return jdbcTemplate.query(
+                        """
+                        update public.teams
+                        set
+                          banner_url = ?,
+                          updated_at = now()
+                        where id = ?
+                        returning
+                          id,
+                          name,
+                          tag,
+                          slug,
+                          captain_profile_id,
+                          (
+                            select p.nickname
+                            from public.profiles p
+                            where p.id = captain_profile_id
+                          ) as captain_nickname,
+                          region,
+                          logo_url,
+                          banner_url,
+                          description,
+                          created_by,
+                          created_at,
+                          updated_at
+                        """,
+                        this::mapTeam,
+                        bannerUrl,
+                        teamId)
+                .stream()
+                .findFirst();
+    }
+
     private String selectTeamSql() {
         return """
                 select
@@ -213,6 +283,7 @@ public class TeamRepository {
                   p.nickname as captain_nickname,
                   t.region,
                   t.logo_url,
+                  t.banner_url,
                   t.description,
                   t.created_by,
                   t.created_at,
@@ -232,6 +303,7 @@ public class TeamRepository {
                 resultSet.getString("captain_nickname"),
                 resultSet.getString("region"),
                 resultSet.getString("logo_url"),
+                resultSet.getString("banner_url"),
                 resultSet.getString("description"),
                 resultSet.getObject("created_by", UUID.class),
                 resultSet.getObject("created_at", OffsetDateTime.class),

@@ -21,6 +21,7 @@ public record PublicTournamentOverviewResponse(
         OffsetDateTime registrationClosesAt,
         String timezone,
         int maxTeams,
+        int teamSize,
         String organizer,
         String prizePool,
         OffsetDateTime publishedAt,
@@ -33,6 +34,58 @@ public record PublicTournamentOverviewResponse(
 ) {
 
     private static final String GAME = "Dota 2";
+
+    public PublicTournamentOverviewResponse(
+            UUID id,
+            String slug,
+            String title,
+            String description,
+            String rules,
+            String status,
+            String format,
+            String game,
+            OffsetDateTime startsAt,
+            OffsetDateTime endsAt,
+            OffsetDateTime registrationOpensAt,
+            OffsetDateTime registrationClosesAt,
+            String timezone,
+            int maxTeams,
+            String organizer,
+            String prizePool,
+            OffsetDateTime publishedAt,
+            TournamentSettingsDto settings,
+            List<PublicTeamResponse> teams,
+            List<PublicTournamentGroupResponse> groups,
+            List<PublicTournamentMatchResponse> matches,
+            PublicTournamentMetricsResponse metrics,
+            PublicTournamentLinksResponse links
+    ) {
+        this(
+                id,
+                slug,
+                title,
+                description,
+                rules,
+                status,
+                format,
+                game,
+                startsAt,
+                endsAt,
+                registrationOpensAt,
+                registrationClosesAt,
+                timezone,
+                maxTeams,
+                5,
+                organizer,
+                prizePool,
+                publishedAt,
+                settings,
+                teams,
+                groups,
+                matches,
+                metrics,
+                links);
+    }
 
     public static PublicTournamentOverviewResponse from(
             Tournament tournament,
@@ -56,6 +109,7 @@ public record PublicTournamentOverviewResponse(
                 tournament.registrationClosesAt(),
                 tournament.timezone(),
                 tournament.maxTeams(),
+                tournament.settings().teamSize(),
                 tournament.organizerNickname(),
                 tournament.prizePool(),
                 tournament.publishedAt(),

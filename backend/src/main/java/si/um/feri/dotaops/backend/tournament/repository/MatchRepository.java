@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import si.um.feri.dotaops.backend.tournament.domain.MatchStatus;
+import si.um.feri.dotaops.backend.tournament.domain.MatchTeamCaptain;
 import si.um.feri.dotaops.backend.tournament.domain.TournamentMatch;
 
 @Repository
@@ -70,6 +71,41 @@ public class MatchRepository {
                 """,
                 this::mapMatch,
                 tournamentId);
+    }
+
+    public List<MatchTeamCaptain> findTeamCaptainsByMatchId(UUID matchId) {
+        return jdbcTemplate.query(
+                """
+                select distinct
+                  team_id,
+                  team_name,
+                  captain_profile_id
+                from (
+                  select
+                    ta.id as team_id,
+                    ta.name as team_name,
+                    ta.captain_profile_id
+                  from public.matches m
+                  join public.teams ta on ta.id = m.team_a_id
+                  where m.id = ?
+                  union all
+                  select
+                    tb.id as team_id,
+                    tb.name as team_name,
+                    tb.captain_profile_id
+                  from public.matches m
+                  join public.teams tb on tb.id = m.team_b_id
+                  where m.id = ?
+                ) participants
+                where captain_profile_id is not null
+                order by team_name asc, team_id asc
+                """,
+                (resultSet, rowNumber) -> new MatchTeamCaptain(
+                        resultSet.getObject("team_id", UUID.class),
+                        resultSet.getString("team_name"),
+                        resultSet.getObject("captain_profile_id", UUID.class)),
+                matchId,
+                matchId);
     }
 
     public Optional<TournamentMatch> schedule(UUID matchId, OffsetDateTime scheduledAt) {

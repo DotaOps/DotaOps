@@ -18,6 +18,7 @@ import si.um.feri.dotaops.backend.common.error.BadRequestException;
 import si.um.feri.dotaops.backend.common.error.ConflictException;
 import si.um.feri.dotaops.backend.common.error.ResourceNotFoundException;
 import si.um.feri.dotaops.backend.common.security.DatabaseActorContext;
+import si.um.feri.dotaops.backend.notification.service.NotificationOutboxService;
 import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
@@ -41,6 +42,7 @@ public class TournamentRegistrationService {
     private final TeamMemberRepository teamMemberRepository;
     private final CurrentUserProvider currentUserProvider;
     private final DatabaseActorContext databaseActorContext;
+    private final NotificationOutboxService notificationOutboxService;
 
     public TournamentRegistrationService(
             TournamentRegistrationRepository registrationRepository,
@@ -48,7 +50,8 @@ public class TournamentRegistrationService {
             TeamRepository teamRepository,
             TeamMemberRepository teamMemberRepository,
             CurrentUserProvider currentUserProvider,
-            DatabaseActorContext databaseActorContext
+            DatabaseActorContext databaseActorContext,
+            NotificationOutboxService notificationOutboxService
     ) {
         this.registrationRepository = registrationRepository;
         this.tournamentRepository = tournamentRepository;
@@ -56,6 +59,7 @@ public class TournamentRegistrationService {
         this.teamMemberRepository = teamMemberRepository;
         this.currentUserProvider = currentUserProvider;
         this.databaseActorContext = databaseActorContext;
+        this.notificationOutboxService = notificationOutboxService;
     }
 
     @Transactional(readOnly = true)
@@ -108,6 +112,7 @@ public class TournamentRegistrationService {
                             normalizeEmail(request.contactEmail())),
                     rosterSize);
 
+            notificationOutboxService.createTeamApplicationSubmittedNotification(tournament, registration);
             return toResponse(registration);
         } catch (DataIntegrityViolationException exception) {
             throw registrationConstraintException(exception);
@@ -165,16 +170,26 @@ public class TournamentRegistrationService {
         databaseActorContext.apply(actor);
 
         try {
-            return registrationRepository.updateStatus(
+            TournamentRegistration updated = registrationRepository.updateStatus(
                             registrationId,
                             tournamentId,
                             status,
                             actor.requireProfileId(),
                             seedNumber)
-                    .map(this::toResponse)
                     .orElseThrow(() -> new ResourceNotFoundException("Tournament registration", "id", registrationId));
+
+            notifyReviewResult(status, updated);
+            return toResponse(updated);
         } catch (DataIntegrityViolationException exception) {
             throw registrationConstraintException(exception);
+        }
+    }
+
+    private void notifyReviewResult(TournamentRegistrationStatus status, TournamentRegistration registration) {
+        if (status == TournamentRegistrationStatus.APPROVED) {
+            notificationOutboxService.createTeamApplicationApprovedNotification(registration);
+        } else if (status == TournamentRegistrationStatus.REJECTED) {
+            notificationOutboxService.createTeamApplicationRejectedNotification(registration);
         }
     }
 
@@ -257,7 +272,12 @@ public class TournamentRegistrationService {
     private void ensureRosterReady(UUID teamId, int requiredRosterSize) {
         int activeRosterMembers = registrationRepository.countActiveRosterMembers(teamId);
         if (activeRosterMembers < requiredRosterSize) {
-            throw new BadRequestException("Team must have at least %d active roster members before registration."
+            throw new BadRequestException("Team must have at least %d active roster participants before registration."
+                    .formatted(requiredRosterSize));
+        }
+
+        if (activeRosterMembers > requiredRosterSize) {
+            throw new BadRequestException("Team cannot have more than %d active roster participants for this tournament."
                     .formatted(requiredRosterSize));
         }
     }
@@ -351,7 +371,7 @@ public class TournamentRegistrationService {
         }
 
         if (message != null && message.contains("tournament_registration_members_validate_starters")) {
-            return new BadRequestException("A tournament registration can have at most five starters.");
+            return new BadRequestException("A tournament registration has too many starters for the tournament team size.");
         }
 
         return new BadRequestException("Tournament registration data violates a database constraint.");

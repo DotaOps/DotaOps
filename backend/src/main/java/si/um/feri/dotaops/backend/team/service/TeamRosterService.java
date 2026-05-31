@@ -2,6 +2,7 @@ package si.um.feri.dotaops.backend.team.service;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -21,39 +22,54 @@ import si.um.feri.dotaops.backend.profile.repository.ProfileRepository;
 import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.domain.TeamInvitation;
 import si.um.feri.dotaops.backend.team.domain.TeamInvitationStatus;
+import si.um.feri.dotaops.backend.team.domain.TeamManualPlayer;
 import si.um.feri.dotaops.backend.team.domain.TeamMemberRole;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamInvitationCommand;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamMemberCommand;
+import si.um.feri.dotaops.backend.team.repository.CreateTeamManualPlayerCommand;
 import si.um.feri.dotaops.backend.team.repository.TeamInvitationRepository;
+import si.um.feri.dotaops.backend.team.repository.TeamManualPlayerRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
+import si.um.feri.dotaops.backend.team.repository.TeamRosterLimitRepository;
+import si.um.feri.dotaops.backend.team.repository.UpdateTeamManualPlayerCommand;
 import si.um.feri.dotaops.backend.team.web.AddTeamMemberRequest;
 import si.um.feri.dotaops.backend.team.web.CreateTeamInvitationRequest;
+import si.um.feri.dotaops.backend.team.web.CreateTeamManualPlayerRequest;
 import si.um.feri.dotaops.backend.team.web.CurrentTeamResponse;
 import si.um.feri.dotaops.backend.team.web.TeamInvitationResponse;
+import si.um.feri.dotaops.backend.team.web.TeamManualPlayerResponse;
 import si.um.feri.dotaops.backend.team.web.TeamMemberResponse;
 import si.um.feri.dotaops.backend.team.web.TeamResponse;
 import si.um.feri.dotaops.backend.team.web.UpdateTeamMemberRequest;
+import si.um.feri.dotaops.backend.team.web.UpdateTeamManualPlayerRequest;
+import si.um.feri.dotaops.backend.tournament.domain.TournamentSettings;
 
 @Service
 public class TeamRosterService {
 
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final TeamManualPlayerRepository teamManualPlayerRepository;
     private final TeamInvitationRepository teamInvitationRepository;
+    private final TeamRosterLimitRepository teamRosterLimitRepository;
     private final ProfileRepository profileRepository;
     private final CurrentUserProvider currentUserProvider;
 
     public TeamRosterService(
             TeamRepository teamRepository,
             TeamMemberRepository teamMemberRepository,
+            TeamManualPlayerRepository teamManualPlayerRepository,
             TeamInvitationRepository teamInvitationRepository,
+            TeamRosterLimitRepository teamRosterLimitRepository,
             ProfileRepository profileRepository,
             CurrentUserProvider currentUserProvider
     ) {
         this.teamRepository = teamRepository;
         this.teamMemberRepository = teamMemberRepository;
+        this.teamManualPlayerRepository = teamManualPlayerRepository;
         this.teamInvitationRepository = teamInvitationRepository;
+        this.teamRosterLimitRepository = teamRosterLimitRepository;
         this.profileRepository = profileRepository;
         this.currentUserProvider = currentUserProvider;
     }
@@ -89,6 +105,22 @@ public class TeamRosterService {
                 .orElseGet(CurrentTeamResponse::none);
     }
 
+    @Transactional(readOnly = true)
+    public List<TeamManualPlayerResponse> listManualPlayers(UUID teamId) {
+        ensureTeamExists(teamId);
+
+        return manualPlayersForTeam(teamId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<TeamManualPlayerResponse> listManualPlayersByTeamSlug(String slug) {
+        String normalizedSlug = normalizeSlug(slug);
+        Team team = teamRepository.findBySlug(normalizedSlug)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "slug", normalizedSlug));
+
+        return manualPlayersForTeam(team.id());
+    }
+
     @Transactional
     public TeamMemberResponse addMember(UUID teamId, AddTeamMemberRequest request) {
         Team team = ensureTeamExists(teamId);
@@ -102,6 +134,7 @@ public class TeamRosterService {
         if (teamMemberRepository.existsActive(teamId, targetProfileId)) {
             throw new BadRequestException("Profile is already an active team member.");
         }
+        ensureRosterCapacity(teamId, 1);
 
         try {
             return TeamMemberResponse.from(teamMemberRepository.create(new CreateTeamMemberCommand(
@@ -133,6 +166,71 @@ public class TeamRosterService {
         return teamMemberRepository.deactivate(teamId, memberId)
                 .map(TeamMemberResponse::from)
                 .orElseThrow(() -> new ResourceNotFoundException("Active team member", "id", memberId));
+    }
+
+    @Transactional
+    public TeamManualPlayerResponse createManualPlayer(UUID teamId, CreateTeamManualPlayerRequest request) {
+        Team team = ensureTeamExists(teamId);
+        AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
+        ensureCanManageTeam(currentProfile, team);
+        ensureRosterCapacity(teamId, 1);
+
+        try {
+            return TeamManualPlayerResponse.from(teamManualPlayerRepository.create(new CreateTeamManualPlayerCommand(
+                    teamId,
+                    normalizeRequired(request.displayName(), "Manual player display name is required."),
+                    normalizeOptional(request.nickname()),
+                    normalizeOptional(request.note()))));
+        } catch (DataIntegrityViolationException exception) {
+            throw manualPlayerConstraintException(exception);
+        }
+    }
+
+    @Transactional
+    public TeamManualPlayerResponse updateManualPlayer(
+            UUID teamId,
+            UUID manualPlayerId,
+            UpdateTeamManualPlayerRequest request
+    ) {
+        if (!request.hasChanges()) {
+            throw new BadRequestException("At least one manual player field must be provided.");
+        }
+
+        Team team = ensureTeamExists(teamId);
+        AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
+        ensureCanManageTeam(currentProfile, team);
+
+        try {
+            return teamManualPlayerRepository.update(
+                            teamId,
+                            manualPlayerId,
+                            new UpdateTeamManualPlayerCommand(
+                                    request.hasDisplayName(),
+                                    request.hasDisplayName()
+                                            ? normalizeRequired(
+                                                    request.displayName(),
+                                                    "Manual player display name is required.")
+                                            : null,
+                                    request.hasNickname(),
+                                    request.hasNickname() ? normalizeOptional(request.nickname()) : null,
+                                    request.hasNote(),
+                                    request.hasNote() ? normalizeOptional(request.note()) : null))
+                    .map(TeamManualPlayerResponse::from)
+                    .orElseThrow(() -> new ResourceNotFoundException("Manual player", "id", manualPlayerId));
+        } catch (DataIntegrityViolationException exception) {
+            throw manualPlayerConstraintException(exception);
+        }
+    }
+
+    @Transactional
+    public TeamManualPlayerResponse deleteManualPlayer(UUID teamId, UUID manualPlayerId) {
+        Team team = ensureTeamExists(teamId);
+        AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
+        ensureCanManageTeam(currentProfile, team);
+
+        return teamManualPlayerRepository.delete(teamId, manualPlayerId)
+                .map(TeamManualPlayerResponse::from)
+                .orElseThrow(() -> new ResourceNotFoundException("Manual player", "id", manualPlayerId));
     }
 
     @Transactional(readOnly = true)
@@ -278,11 +376,13 @@ public class TeamRosterService {
                 .stream()
                 .map(TeamMemberResponse::from)
                 .toList();
+        List<TeamManualPlayerResponse> manualPlayers = manualPlayersForTeam(team.id());
         boolean captain = profile.profileId().equals(team.captainProfileId());
 
         return new CurrentTeamResponse(
-                TeamResponse.from(team),
+                TeamResponse.from(team, manualPlayers),
                 members,
+                manualPlayers,
                 captain,
                 canManageTeam(profile, team),
                 captain ? "Resolved from current captain ownership." : "Resolved from active team membership.");
@@ -342,12 +442,48 @@ public class TeamRosterService {
         return role == null ? TeamMemberRole.SUPPORT : role;
     }
 
+    private List<TeamManualPlayerResponse> manualPlayersForTeam(UUID teamId) {
+        List<TeamManualPlayer> manualPlayers = teamManualPlayerRepository.findByTeamId(teamId);
+        return (manualPlayers == null ? Collections.<TeamManualPlayer>emptyList() : manualPlayers)
+                .stream()
+                .map(TeamManualPlayerResponse::from)
+                .toList();
+    }
+
+    private void ensureRosterCapacity(UUID teamId, int additionalPlayers) {
+        int rosterLimit = teamRosterLimitRepository.resolveRosterLimit(teamId);
+        if (rosterLimit <= 0) {
+            rosterLimit = TournamentSettings.DEFAULT_TEAM_SIZE;
+        }
+        int currentRosterSize = teamMemberRepository.countActiveByTeamId(teamId)
+                + teamManualPlayerRepository.countByTeamId(teamId);
+        if (currentRosterSize + additionalPlayers > rosterLimit) {
+            throw new BadRequestException("Team roster cannot exceed %d players.".formatted(rosterLimit));
+        }
+    }
+
     private String normalizeEmail(String value) {
         if (value == null || value.isBlank()) {
             return null;
         }
 
         return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeRequired(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw new BadRequestException(message);
+        }
+
+        return value.trim();
+    }
+
+    private String normalizeOptional(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        return value.trim();
     }
 
     private String normalizeSlug(String value) {
@@ -385,5 +521,14 @@ public class TeamRosterService {
         }
 
         return new BadRequestException("Team invitation data violates a database constraint.");
+    }
+
+    private BadRequestException manualPlayerConstraintException(DataIntegrityViolationException exception) {
+        String message = exception.getMostSpecificCause().getMessage();
+        if (message != null && message.contains("team_manual_players_display_name_length")) {
+            return new BadRequestException("Manual player display name must be between 1 and 80 characters.");
+        }
+
+        return new BadRequestException("Manual player data violates a database constraint.");
     }
 }

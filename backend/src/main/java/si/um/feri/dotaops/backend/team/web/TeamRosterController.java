@@ -40,6 +40,16 @@ public class TeamRosterController {
         return ApiResponse.of(teamRosterService.listActiveMembersByTeamSlug(slug));
     }
 
+    @GetMapping("/teams/{teamId}/manual-players")
+    ApiResponse<List<TeamManualPlayerResponse>> listManualPlayers(@PathVariable UUID teamId) {
+        return ApiResponse.of(teamRosterService.listManualPlayers(teamId));
+    }
+
+    @GetMapping("/teams/by-slug/{slug}/manual-players")
+    ApiResponse<List<TeamManualPlayerResponse>> listManualPlayersByTeamSlug(@PathVariable String slug) {
+        return ApiResponse.of(teamRosterService.listManualPlayersByTeamSlug(slug));
+    }
+
     @GetMapping("/me/team")
     ApiResponse<CurrentTeamResponse> getCurrentTeam() {
         return ApiResponse.of(teamRosterService.getCurrentTeam());
@@ -72,6 +82,35 @@ public class TeamRosterController {
             @PathVariable UUID memberId
     ) {
         return ApiResponse.of(teamRosterService.deactivateMember(teamId, memberId));
+    }
+
+    @PostMapping("/teams/{teamId}/manual-players")
+    ResponseEntity<ApiResponse<TeamManualPlayerResponse>> createManualPlayer(
+            @PathVariable UUID teamId,
+            @Valid @RequestBody CreateTeamManualPlayerRequest request
+    ) {
+        TeamManualPlayerResponse response = teamRosterService.createManualPlayer(teamId, request);
+
+        return ResponseEntity
+                .created(URI.create("/api/teams/" + teamId + "/manual-players/" + response.id()))
+                .body(ApiResponse.of(response));
+    }
+
+    @PatchMapping("/teams/{teamId}/manual-players/{manualPlayerId}")
+    ApiResponse<TeamManualPlayerResponse> updateManualPlayer(
+            @PathVariable UUID teamId,
+            @PathVariable UUID manualPlayerId,
+            @Valid @RequestBody UpdateTeamManualPlayerRequest request
+    ) {
+        return ApiResponse.of(teamRosterService.updateManualPlayer(teamId, manualPlayerId, request));
+    }
+
+    @DeleteMapping("/teams/{teamId}/manual-players/{manualPlayerId}")
+    ApiResponse<TeamManualPlayerResponse> deleteManualPlayer(
+            @PathVariable UUID teamId,
+            @PathVariable UUID manualPlayerId
+    ) {
+        return ApiResponse.of(teamRosterService.deleteManualPlayer(teamId, manualPlayerId));
     }
 
     @GetMapping("/teams/{teamId}/invitations")

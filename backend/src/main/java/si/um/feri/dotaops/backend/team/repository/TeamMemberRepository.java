@@ -63,6 +63,20 @@ public class TeamMemberRepository {
         return Boolean.TRUE.equals(exists);
     }
 
+    public int countActiveByTeamId(UUID teamId) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from public.team_members
+                where team_id = ?
+                  and is_active = true
+                """,
+                Integer.class,
+                teamId);
+
+        return count == null ? 0 : count;
+    }
+
     public TeamMember create(CreateTeamMemberCommand command) {
         return jdbcTemplate.queryForObject(
                 """

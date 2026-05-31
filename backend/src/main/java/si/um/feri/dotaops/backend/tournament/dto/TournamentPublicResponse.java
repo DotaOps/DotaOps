@@ -19,6 +19,7 @@ public record TournamentPublicResponse(
         OffsetDateTime checkInClosesAt,
         String timezone,
         int maxTeams,
+        int teamSize,
         int teamsCount,
         long registrationsCount,
         String organizer,
@@ -26,6 +27,50 @@ public record TournamentPublicResponse(
         String description,
         TournamentSettingsDto settings
 ) {
+
+    public TournamentPublicResponse(
+            UUID id,
+            String slug,
+            String title,
+            String status,
+            String format,
+            OffsetDateTime startsAt,
+            OffsetDateTime endsAt,
+            OffsetDateTime registrationOpensAt,
+            OffsetDateTime registrationClosesAt,
+            OffsetDateTime checkInOpensAt,
+            OffsetDateTime checkInClosesAt,
+            String timezone,
+            int maxTeams,
+            int teamsCount,
+            long registrationsCount,
+            String organizer,
+            String prizePool,
+            String description,
+            TournamentSettingsDto settings
+    ) {
+        this(
+                id,
+                slug,
+                title,
+                status,
+                format,
+                startsAt,
+                endsAt,
+                registrationOpensAt,
+                registrationClosesAt,
+                checkInOpensAt,
+                checkInClosesAt,
+                timezone,
+                maxTeams,
+                settings == null || settings.teamSize() == null ? 5 : settings.teamSize(),
+                teamsCount,
+                registrationsCount,
+                organizer,
+                prizePool,
+                description,
+                settings);
+    }
 
     public static TournamentPublicResponse from(Tournament tournament) {
         return new TournamentPublicResponse(
@@ -42,6 +87,7 @@ public record TournamentPublicResponse(
                 tournament.checkInClosesAt(),
                 tournament.timezone(),
                 tournament.maxTeams(),
+                tournament.settings().teamSize(),
                 tournament.maxTeams(),
                 tournament.registrationsCount(),
                 tournament.organizerNickname(),

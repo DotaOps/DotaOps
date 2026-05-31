@@ -64,7 +64,8 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('match_advancement_audit_logs'),
                       ('match_games'),
                       ('match_import_events'),
-                      ('match_players')
+                      ('match_players'),
+                      ('notification_outbox')
                 ) as expected(relname)
                 left join pg_class c
                   on c.relname = expected.relname
@@ -132,7 +133,11 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('match_players_match_game_id_idx'),
                       ('matches_status_idx'),
                       ('steam_login_states_expires_idx'),
-                      ('matches_tournament_stage_idx')
+                      ('matches_tournament_stage_idx'),
+                      ('notification_outbox_recipient_profile_id_idx'),
+                      ('notification_outbox_status_idx'),
+                      ('notification_outbox_type_idx'),
+                      ('notification_outbox_status_next_attempt_at_idx')
                 ) as expected(indexname)
                 left join pg_indexes i
                   on i.schemaname in ('public', 'private')

@@ -12,7 +12,10 @@ public record TournamentRegistrationMemberResponse(
         String displayName,
         String avatarUrl,
         UUID teamMemberId,
+        UUID manualPlayerId,
+        String note,
         String role,
+        boolean manual,
         boolean starter,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
@@ -26,7 +29,10 @@ public record TournamentRegistrationMemberResponse(
                 member.displayName(),
                 member.avatarUrl(),
                 member.teamMemberId(),
-                member.memberRole().databaseValue(),
+                member.manualPlayerId(),
+                member.note(),
+                member.memberRole() == null ? null : member.memberRole().databaseValue(),
+                member.manualPlayerId() != null,
                 member.starter(),
                 member.createdAt(),
                 member.updatedAt());

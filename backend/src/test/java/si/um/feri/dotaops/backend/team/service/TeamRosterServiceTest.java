@@ -20,15 +20,20 @@ import si.um.feri.dotaops.backend.profile.repository.ProfileRepository;
 import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.domain.TeamInvitation;
 import si.um.feri.dotaops.backend.team.domain.TeamInvitationStatus;
+import si.um.feri.dotaops.backend.team.domain.TeamManualPlayer;
 import si.um.feri.dotaops.backend.team.domain.TeamMember;
 import si.um.feri.dotaops.backend.team.domain.TeamMemberRole;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamInvitationCommand;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamMemberCommand;
+import si.um.feri.dotaops.backend.team.repository.CreateTeamManualPlayerCommand;
+import si.um.feri.dotaops.backend.team.repository.TeamManualPlayerRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamInvitationRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
+import si.um.feri.dotaops.backend.team.repository.TeamRosterLimitRepository;
 import si.um.feri.dotaops.backend.team.web.AddTeamMemberRequest;
 import si.um.feri.dotaops.backend.team.web.CreateTeamInvitationRequest;
+import si.um.feri.dotaops.backend.team.web.CreateTeamManualPlayerRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -52,13 +57,17 @@ class TeamRosterServiceTest {
 
     private final TeamRepository teamRepository = mock(TeamRepository.class);
     private final TeamMemberRepository teamMemberRepository = mock(TeamMemberRepository.class);
+    private final TeamManualPlayerRepository teamManualPlayerRepository = mock(TeamManualPlayerRepository.class);
     private final TeamInvitationRepository teamInvitationRepository = mock(TeamInvitationRepository.class);
+    private final TeamRosterLimitRepository teamRosterLimitRepository = mock(TeamRosterLimitRepository.class);
     private final ProfileRepository profileRepository = mock(ProfileRepository.class);
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
     private final TeamRosterService teamRosterService = new TeamRosterService(
             teamRepository,
             teamMemberRepository,
+            teamManualPlayerRepository,
             teamInvitationRepository,
+            teamRosterLimitRepository,
             profileRepository,
             currentUserProvider);
 
@@ -129,6 +138,56 @@ class TeamRosterServiceTest {
 
         assertThat(response.active()).isFalse();
         assertThat(response.leftAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void captainCanCreateManualPlayerWhenRosterHasRoom() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRosterLimitRepository.resolveRosterLimit(TEAM_ID)).thenReturn(3);
+        when(teamMemberRepository.countActiveByTeamId(TEAM_ID)).thenReturn(2);
+        when(teamManualPlayerRepository.create(any())).thenReturn(manualPlayer());
+
+        var response = teamRosterService.createManualPlayer(
+                TEAM_ID,
+                new CreateTeamManualPlayerRequest("  Guest Mid  ", " guest ", "  local player  "));
+
+        ArgumentCaptor<CreateTeamManualPlayerCommand> captor = ArgumentCaptor.forClass(CreateTeamManualPlayerCommand.class);
+        verify(teamManualPlayerRepository).create(captor.capture());
+
+        assertThat(response.displayName()).isEqualTo("Guest Mid");
+        assertThat(captor.getValue().displayName()).isEqualTo("Guest Mid");
+        assertThat(captor.getValue().nickname()).isEqualTo("guest");
+        assertThat(captor.getValue().note()).isEqualTo("local player");
+    }
+
+    @Test
+    void manualPlayerCountsAgainstRosterLimit() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRosterLimitRepository.resolveRosterLimit(TEAM_ID)).thenReturn(1);
+        when(teamMemberRepository.countActiveByTeamId(TEAM_ID)).thenReturn(1);
+
+        assertThatThrownBy(() -> teamRosterService.createManualPlayer(
+                TEAM_ID,
+                new CreateTeamManualPlayerRequest("Guest", null, null)))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Team roster cannot exceed 1 players.");
+
+        verify(teamManualPlayerRepository, never()).create(any());
+    }
+
+    @Test
+    void nonCaptainCannotCreateManualPlayer() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(OTHER_PROFILE_ID, ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> teamRosterService.createManualPlayer(
+                TEAM_ID,
+                new CreateTeamManualPlayerRequest("Guest", null, null)))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verify(teamManualPlayerRepository, never()).create(any());
     }
 
     @Test
@@ -329,6 +388,17 @@ class TeamRosterServiceTest {
                 status,
                 expiresAt,
                 acceptedAt,
+                NOW,
+                NOW);
+    }
+
+    private static TeamManualPlayer manualPlayer() {
+        return new TeamManualPlayer(
+                UUID.fromString("88888888-8888-4888-8888-888888888888"),
+                TEAM_ID,
+                "Guest Mid",
+                "guest",
+                "local player",
                 NOW,
                 NOW);
     }

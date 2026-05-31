@@ -17,6 +17,7 @@ public record TournamentResponse(
         String rules,
         String prizePool,
         int maxTeams,
+        int teamSize,
         int teamsCount,
         long registrationsCount,
         OffsetDateTime startsAt,
@@ -33,6 +34,62 @@ public record TournamentResponse(
         OffsetDateTime updatedAt
 ) {
 
+    public TournamentResponse(
+            UUID id,
+            String slug,
+            String title,
+            String status,
+            String format,
+            UUID organizerProfileId,
+            String organizerNickname,
+            String description,
+            String rules,
+            String prizePool,
+            int maxTeams,
+            int teamsCount,
+            long registrationsCount,
+            OffsetDateTime startsAt,
+            OffsetDateTime endsAt,
+            OffsetDateTime registrationOpensAt,
+            OffsetDateTime registrationClosesAt,
+            OffsetDateTime checkInOpensAt,
+            OffsetDateTime checkInClosesAt,
+            String timezone,
+            boolean publicVisible,
+            OffsetDateTime publishedAt,
+            TournamentSettingsDto settings,
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt
+    ) {
+        this(
+                id,
+                slug,
+                title,
+                status,
+                format,
+                organizerProfileId,
+                organizerNickname,
+                description,
+                rules,
+                prizePool,
+                maxTeams,
+                settings == null || settings.teamSize() == null ? 5 : settings.teamSize(),
+                teamsCount,
+                registrationsCount,
+                startsAt,
+                endsAt,
+                registrationOpensAt,
+                registrationClosesAt,
+                checkInOpensAt,
+                checkInClosesAt,
+                timezone,
+                publicVisible,
+                publishedAt,
+                settings,
+                createdAt,
+                updatedAt);
+    }
+
     public static TournamentResponse from(Tournament tournament) {
         return new TournamentResponse(
                 tournament.id(),
@@ -46,6 +103,7 @@ public record TournamentResponse(
                 tournament.rules(),
                 tournament.prizePool(),
                 tournament.maxTeams(),
+                tournament.settings().teamSize(),
                 tournament.maxTeams(),
                 tournament.registrationsCount(),
                 tournament.startsAt(),

@@ -308,7 +308,38 @@ class TournamentServiceTest {
                 null,
                 new TournamentSettingsDto(8, 2, 4, 1, TournamentFormat.SINGLE_ELIMINATION, false, true))))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessage("Tournament settings teamSize must be 5 for Dota 2.");
+                .hasMessage("Tournament settings teamSize must be 1, 3, or 5.");
+    }
+
+    @Test
+    void createAllowsSupportedCasualTeamSizes() {
+        AuthenticatedActor actor = actor(ORGANIZER_PROFILE_ID, ProfileRole.ORGANIZER);
+        when(currentUserProvider.requireActor()).thenReturn(actor);
+        when(tournamentRepository.create(any())).thenReturn(tournament(
+                TournamentStatus.DRAFT,
+                new TournamentSettings(8, 2, 3, 1, TournamentFormat.SINGLE_ELIMINATION, false, true),
+                STARTS_AT));
+
+        tournamentService.createTournament(new CreateTournamentRequest(
+                "Tri Lane Cup",
+                null,
+                TournamentFormat.SINGLE_ELIMINATION,
+                null,
+                null,
+                null,
+                null,
+                STARTS_AT,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                new TournamentSettingsDto(8, 2, 3, 1, TournamentFormat.SINGLE_ELIMINATION, false, true)));
+
+        ArgumentCaptor<CreateTournamentCommand> captor = ArgumentCaptor.forClass(CreateTournamentCommand.class);
+        verify(tournamentRepository).create(captor.capture());
+        assertThat(captor.getValue().settingsJson()).contains("\"teamSize\":3");
     }
 
     @Test

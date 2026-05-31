@@ -160,11 +160,18 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
     () => data?.members.filter((member) => member.active) ?? [],
     [data?.members]
   );
+  const manualPlayers = data?.manualPlayers ?? [];
+  const rosterParticipantCount = activeMembers.length + manualPlayers.length;
+  const requiredTeamSize = tournament.teamSize ?? null;
+  const rosterReady =
+    requiredTeamSize === null ? null : rosterParticipantCount === requiredTeamSize;
   const hasRealTournamentId = uuidPattern.test(tournament.id);
   const hasBackendTeam = Boolean(data?.team && data.dataSource === "api");
   const isCaptain = Boolean(data?.isCaptain && hasBackendTeam);
   const isOrganizer = isOrganizerRole(data?.currentProfile.role);
-  const canSubmit = Boolean(isCaptain && !registration && hasRealTournamentId);
+  const canSubmit = Boolean(
+    isCaptain && !registration && hasRealTournamentId && rosterReady !== false
+  );
   const organizerHref = `/organizator?tournamentId=${encodeURIComponent(manageableTournamentId ?? tournament.id)}&slug=${encodeURIComponent(tournament.slug)}&view=registrations`;
   const validationItems = [
     {
@@ -176,11 +183,13 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
       text: isCaptain ? "Captain permission confirmed." : "Only the team captain can submit."
     },
     {
-      ok: activeMembers.length >= 5,
+      ok: rosterReady,
       text:
-        activeMembers.length >= 5
-          ? "Roster has enough active members."
-          : "Backend may reject incomplete rosters."
+        requiredTeamSize === null
+          ? `Roster readiness will be validated by backend (${rosterParticipantCount} participants loaded).`
+          : rosterReady
+            ? `Roster matches required team size (${rosterParticipantCount}/${requiredTeamSize}).`
+            : `Tournament requires exactly ${requiredTeamSize} roster participants; ${rosterParticipantCount} loaded.`
     },
     {
       ok: tournament.status === "registration" || tournament.status === "published",
@@ -445,7 +454,12 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
           </div>
 
           <aside className="tournament-registration-side">
-            <TeamReadinessCard data={data} activeMembers={activeMembers} />
+            <TeamReadinessCard
+              activeMembers={activeMembers}
+              data={data}
+              manualPlayers={manualPlayers}
+              requiredTeamSize={requiredTeamSize}
+            />
             <ValidationPanel items={validationItems} />
           </aside>
         </section>
@@ -484,11 +498,17 @@ function RegistrationInfoCard({
 
 function TeamReadinessCard({
   activeMembers,
-  data
+  data,
+  manualPlayers,
+  requiredTeamSize
 }: {
   activeMembers: TeamManagementViewModel["members"];
   data: TeamManagementViewModel | null;
+  manualPlayers: TeamManagementViewModel["manualPlayers"];
+  requiredTeamSize: number | null;
 }) {
+  const rosterParticipantCount = activeMembers.length + manualPlayers.length;
+
   return (
     <section className="tournament-registration-card ops-panel">
       <div className="tournament-registration-card-title">
@@ -499,11 +519,17 @@ function TeamReadinessCard({
         <>
           <strong>{data.team.name}</strong>
           <p>
-            Captain: {data.team.captainNickname ?? "Unknown"} / Roster {activeMembers.length}/5
+            Captain: {data.team.captainNickname ?? "Unknown"} / Roster {rosterParticipantCount}
+            {requiredTeamSize === null ? " participants" : `/${requiredTeamSize}`}
           </p>
           <div className="tournament-registration-roster">
-            {activeMembers.slice(0, 5).map((member) => (
+            {activeMembers.map((member) => (
               <span key={member.id}>{member.nickname}</span>
+            ))}
+            {manualPlayers.map((player) => (
+              <span key={player.id}>
+                {player.nickname ?? player.displayName} <small>Manual player</small>
+              </span>
             ))}
           </div>
         </>
@@ -517,7 +543,7 @@ function TeamReadinessCard({
 function ValidationPanel({
   items
 }: {
-  items: Array<{ ok: boolean; text: string }>;
+  items: Array<{ ok: boolean | null; text: string }>;
 }) {
   return (
     <section className="tournament-registration-card ops-panel">
@@ -527,8 +553,17 @@ function ValidationPanel({
       </div>
       <div className="tournament-registration-checks">
         {items.map((item) => (
-          <p className={classNames(item.ok ? "is-ok" : "is-blocked")} key={item.text}>
-            {item.ok ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
+          <p
+            className={classNames(item.ok === true ? "is-ok" : item.ok === false ? "is-blocked" : "is-pending")}
+            key={item.text}
+          >
+            {item.ok === true ? (
+              <CheckCircle2 size={15} />
+            ) : item.ok === false ? (
+              <XCircle size={15} />
+            ) : (
+              <Clock3 size={15} />
+            )}
             {item.text}
           </p>
         ))}
