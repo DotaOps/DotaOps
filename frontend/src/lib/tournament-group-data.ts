@@ -6,12 +6,21 @@ import {
 } from "@/lib/api";
 
 export interface PublicTournamentTeam {
+  bannerUrl: string | null;
   id: string;
   logoUrl: string | null;
+  manualPlayers: PublicTournamentManualPlayer[];
   name: string;
   seedNumber: number | null;
   slug: string | null;
   tag: string | null;
+}
+
+export interface PublicTournamentManualPlayer {
+  displayName: string;
+  id: string;
+  nickname: string | null;
+  note: string | null;
 }
 
 export interface PublicTournamentGroup {
@@ -123,8 +132,10 @@ function nullableNumber(value: unknown) {
 function mapPublicTeam(value: unknown): PublicTournamentTeam {
   if (!isRecord(value)) {
     return {
+      bannerUrl: null,
       id: "unknown-team",
       logoUrl: null,
+      manualPlayers: [],
       name: "Unknown team",
       seedNumber: null,
       slug: null,
@@ -133,8 +144,17 @@ function mapPublicTeam(value: unknown): PublicTournamentTeam {
   }
 
   return {
+    bannerUrl: nullableText(value.bannerUrl),
     id: text(value.id, "unknown-team"),
     logoUrl: nullableText(value.logoUrl),
+    manualPlayers: arrayPayload(value.manualPlayers)
+      .filter(isRecord)
+      .map((player) => ({
+        displayName: text(player.displayName, "Manual player"),
+        id: text(player.id),
+        nickname: nullableText(player.nickname),
+        note: nullableText(player.note)
+      })),
     name: text(value.name, "Unknown team"),
     seedNumber: nullableNumber(value.seedNumber),
     slug: nullableText(value.slug),
@@ -281,7 +301,7 @@ export async function getOrganizerGroupsData(tournamentId: string): Promise<Orga
 
   try {
     standings = mapStandings(
-      await getApi<unknown>(`/public/tournaments/${tournamentId}/standings`)
+      await getApiAuthenticated<unknown>(`/organizer/tournaments/${tournamentId}/standings`)
     );
   } catch (error) {
     standingsError = error instanceof Error

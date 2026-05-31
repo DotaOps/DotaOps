@@ -25,9 +25,12 @@ export interface TournamentRegistrationMember {
   createdAt: string | null;
   displayName: string | null;
   id: string;
+  manual: boolean;
+  manualPlayerId: string | null;
   nickname: string;
-  profileId: string;
-  role: string;
+  note: string | null;
+  profileId: string | null;
+  role: string | null;
   starter: boolean;
   teamMemberId: string | null;
   updatedAt: string | null;
@@ -87,8 +90,11 @@ interface TournamentRegistrationMemberDto {
   createdAt?: string | null;
   displayName?: string | null;
   id: string;
+  manual?: boolean | null;
+  manualPlayerId?: string | null;
   nickname?: string | null;
-  profileId: string;
+  note?: string | null;
+  profileId?: string | null;
   role?: string | null;
   starter?: boolean | null;
   teamMemberId?: string | null;
@@ -119,9 +125,12 @@ function mapMember(value: TournamentRegistrationMemberDto): TournamentRegistrati
     createdAt: value.createdAt ?? null,
     displayName: value.displayName ?? null,
     id: value.id,
+    manual: value.manual ?? Boolean(value.manualPlayerId),
+    manualPlayerId: value.manualPlayerId ?? null,
     nickname: value.nickname ?? "Unknown player",
-    profileId: value.profileId,
-    role: value.role ?? "member",
+    note: value.note ?? null,
+    profileId: value.profileId ?? null,
+    role: value.role ?? null,
     starter: value.starter ?? false,
     teamMemberId: value.teamMemberId ?? null,
     updatedAt: value.updatedAt ?? null

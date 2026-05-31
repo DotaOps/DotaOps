@@ -200,7 +200,8 @@ export function AnalyticsDashboard() {
           <p className="ops-label">DOTAOPS ANALYTICS ENGINE</p>
           <h1>Analytics Terminal</h1>
           <p className="ops-mono">
-            Backend-calculated public analytics from imported OpenDota match data.
+            Aggregated metrics from public tournament data. Role-specific player and organizer
+            analytics will appear after backend endpoints are connected.
           </p>
         </div>
 
@@ -212,8 +213,8 @@ export function AnalyticsDashboard() {
           </div>
           <div>
             <ShieldCheck size={18} />
-            <span className="ops-label">Visibility</span>
-            <strong className="ops-data">PUBLIC</strong>
+            <span className="ops-label">Access</span>
+            <strong className="ops-data">AUTHENTICATED</strong>
           </div>
           <div>
             <Activity size={18} />
@@ -225,7 +226,7 @@ export function AnalyticsDashboard() {
         <div className="analytics-terminal-strip">
           <article>
             <span className="ops-label">Analytics mode</span>
-            <strong>Read-only public metrics</strong>
+            <strong>Authenticated analytics overview</strong>
           </article>
           <article>
             <span className="ops-label">Top hero</span>
@@ -248,7 +249,7 @@ export function AnalyticsDashboard() {
         </section>
       ) : null}
 
-      {allEmpty(snapshot) ? (
+      {!error && allEmpty(snapshot) ? (
         <section className="analytics-state-panel analytics-empty-state ops-panel">
           <div>
             <FileWarning size={22} />
@@ -259,7 +260,7 @@ export function AnalyticsDashboard() {
           <div className="analytics-empty-steps">
             <span>OpenDota import required</span>
             <span>Backend processing required</span>
-            <span>Public metrics unlock after data is ready</span>
+            <span>Role-specific views pending backend endpoints</span>
           </div>
         </section>
       ) : null}
@@ -276,7 +277,7 @@ export function AnalyticsDashboard() {
           icon={Clock3}
           label="Avg duration"
           value={secondsToDuration(summary.avgDuration)}
-          delta="public tournaments"
+          delta="public tournament aggregate"
           tone="green"
         />
         <TelemetryCard
@@ -384,7 +385,7 @@ function HeroMatrix({ heroes }: { heroes: HeroAnalyticsMetric[] }) {
             <tr key={`${hero.heroId}-${hero.tournamentId ?? "global"}`}>
               <td>
                 <strong>{hero.localizedName}</strong>
-                <span>{hero.tournamentName ?? "Public analytics"}</span>
+                <span>{hero.tournamentName ?? "Tournament aggregate"}</span>
               </td>
               <td>{hero.gamesPlayed}</td>
               <td>{hero.wins}-{hero.losses}</td>
@@ -414,7 +415,7 @@ function TeamMatrix({ teams }: { teams: TeamAnalyticsMetric[] }) {
             <span className="ops-mono">#{String(index + 1).padStart(2, "0")}</span>
             <div>
               <strong>{team.teamName}</strong>
-              <p>{team.tournamentName ?? "Public analytics"}</p>
+              <p>{team.tournamentName ?? "Tournament aggregate"}</p>
             </div>
             <div>
               <span>{formatPercent(team.winRate)}</span>
@@ -438,7 +439,7 @@ function PlayerMatrix({ players }: { players: PlayerAnalyticsMetric[] }) {
           <span className="ops-mono">{player.displayName.slice(0, 2).toUpperCase()}</span>
           <div>
             <strong>{player.displayName}</strong>
-            <p>{player.teamName ?? "No team"} / {player.tournamentName ?? "Public analytics"}</p>
+            <p>{player.teamName ?? "No team"} / {player.tournamentName ?? "Tournament aggregate"}</p>
           </div>
           <div>
             <span>{player.kda.toFixed(2)}</span>

@@ -5,6 +5,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,7 +17,9 @@ import si.um.feri.dotaops.backend.common.error.BadRequestException;
 import si.um.feri.dotaops.backend.common.error.ConflictException;
 import si.um.feri.dotaops.backend.common.error.ResourceNotFoundException;
 import si.um.feri.dotaops.backend.common.security.DatabaseActorContext;
+import si.um.feri.dotaops.backend.notification.service.NotificationOutboxService;
 import si.um.feri.dotaops.backend.tournament.domain.MatchStatus;
+import si.um.feri.dotaops.backend.tournament.domain.Tournament;
 import si.um.feri.dotaops.backend.tournament.domain.TournamentMatch;
 import si.um.feri.dotaops.backend.tournament.dto.CancelMatchRequest;
 import si.um.feri.dotaops.backend.tournament.dto.MatchResponse;
@@ -27,24 +31,29 @@ import si.um.feri.dotaops.backend.tournament.repository.TournamentRepository;
 @Service
 public class MatchManagementService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(MatchManagementService.class);
+
     private final MatchRepository matchRepository;
     private final TournamentRepository tournamentRepository;
     private final CurrentUserProvider currentUserProvider;
     private final DatabaseActorContext databaseActorContext;
     private final MatchAdvancementService matchAdvancementService;
+    private final NotificationOutboxService notificationOutboxService;
 
     public MatchManagementService(
             MatchRepository matchRepository,
             TournamentRepository tournamentRepository,
             CurrentUserProvider currentUserProvider,
             DatabaseActorContext databaseActorContext,
-            MatchAdvancementService matchAdvancementService
+            MatchAdvancementService matchAdvancementService,
+            NotificationOutboxService notificationOutboxService
     ) {
         this.matchRepository = matchRepository;
         this.tournamentRepository = tournamentRepository;
         this.currentUserProvider = currentUserProvider;
         this.databaseActorContext = databaseActorContext;
         this.matchAdvancementService = matchAdvancementService;
+        this.notificationOutboxService = notificationOutboxService;
     }
 
     @Transactional(readOnly = true)
@@ -87,9 +96,10 @@ public class MatchManagementService {
         ensureCanSchedule(match);
         databaseActorContext.apply(actor);
 
-        return matchRepository.schedule(match.id(), request.scheduledAt())
-                .map(MatchResponse::from)
+        TournamentMatch updated = matchRepository.schedule(match.id(), request.scheduledAt())
                 .orElseThrow(() -> new ResourceNotFoundException("Match", "id", matchId));
+        notifyMatchScheduled(updated);
+        return MatchResponse.from(updated);
     }
 
     @Transactional
@@ -297,5 +307,20 @@ public class MatchManagementService {
 
     private OffsetDateTime now() {
         return OffsetDateTime.now(ZoneOffset.UTC);
+    }
+
+    private void notifyMatchScheduled(TournamentMatch match) {
+        try {
+            String tournamentTitle = tournamentRepository.findById(match.tournamentId())
+                    .map(Tournament::title)
+                    .orElse("DotaOps turnir");
+            matchRepository.findTeamCaptainsByMatchId(match.id())
+                    .forEach(recipient -> notificationOutboxService.createMatchScheduledNotification(
+                            match,
+                            tournamentTitle,
+                            recipient));
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Match scheduled notification enqueue failed for match {}.", match.id(), exception);
+        }
     }
 }

@@ -16,6 +16,7 @@ import si.um.feri.dotaops.backend.tournament.domain.MatchSlotName;
 import si.um.feri.dotaops.backend.tournament.domain.MatchSlotSourceType;
 import si.um.feri.dotaops.backend.tournament.domain.MatchStatus;
 import si.um.feri.dotaops.backend.tournament.domain.PublicGroupStanding;
+import si.um.feri.dotaops.backend.tournament.domain.PublicManualPlayer;
 import si.um.feri.dotaops.backend.tournament.domain.PublicTournamentGroup;
 import si.um.feri.dotaops.backend.tournament.domain.PublicTournamentListItem;
 import si.um.feri.dotaops.backend.tournament.domain.PublicTournamentMatch;
@@ -53,6 +54,7 @@ public class PublicTournamentRepository {
                   t.registration_closes_at,
                   t.timezone,
                   t.max_teams,
+                  coalesce(nullif(t.settings->>'teamSize', '')::integer, 5)::integer as team_size,
                   coalesce(approved_teams.team_count, 0)::integer as team_count,
                   coalesce(groups.group_count, 0)::integer as group_count,
                   coalesce(matches.match_count, 0)::integer as match_count,
@@ -137,6 +139,7 @@ public class PublicTournamentRepository {
                   tm.tag,
                   tm.slug,
                   tm.logo_url,
+                  tm.banner_url,
                   tr.seed_number
                 from public.tournament_registrations tr
                 join public.teams tm on tm.id = tr.team_id
@@ -145,7 +148,10 @@ public class PublicTournamentRepository {
                 order by tr.seed_number nulls last, tr.created_at asc, tm.name asc, tr.id asc
                 """,
                 this::mapTeam,
-                tournamentId);
+                tournamentId)
+                .stream()
+                .map(this::withManualPlayers)
+                .toList();
     }
 
     public List<PublicTournamentGroup> findGroups(UUID tournamentId) {
@@ -208,12 +214,14 @@ public class PublicTournamentRepository {
                   ta.tag as team_a_tag,
                   ta.slug as team_a_slug,
                   ta.logo_url as team_a_logo_url,
+                  ta.banner_url as team_a_banner_url,
                   tra.seed_number as team_a_seed_number,
                   m.team_b_id,
                   tb.name as team_b_name,
                   tb.tag as team_b_tag,
                   tb.slug as team_b_slug,
                   tb.logo_url as team_b_logo_url,
+                  tb.banner_url as team_b_banner_url,
                   trb.seed_number as team_b_seed_number,
                   m.score_a,
                   m.score_b,
@@ -222,6 +230,7 @@ public class PublicTournamentRepository {
                   tw.tag as winner_team_tag,
                   tw.slug as winner_team_slug,
                   tw.logo_url as winner_team_logo_url,
+                  tw.banner_url as winner_team_banner_url,
                   trw.seed_number as winner_team_seed_number,
                   m.scheduled_at,
                   m.started_at,
@@ -387,6 +396,7 @@ public class PublicTournamentRepository {
                   tm.tag,
                   tm.slug,
                   tm.logo_url,
+                  tm.banner_url,
                   tgt.seed_number
                 from public.tournament_group_teams tgt
                 join public.tournament_groups tg on tg.id = tgt.group_id
@@ -396,7 +406,7 @@ public class PublicTournamentRepository {
                 """,
                 (resultSet, rowNumber) -> new GroupTeamRow(
                         resultSet.getObject("group_id", UUID.class),
-                        mapTeam(resultSet, rowNumber)),
+                        withManualPlayers(mapTeam(resultSet, rowNumber))),
                 tournamentId);
     }
 
@@ -413,6 +423,7 @@ public class PublicTournamentRepository {
                   tm.tag as team_tag,
                   tm.slug as team_slug,
                   tm.logo_url as team_logo_url,
+                  tm.banner_url as team_banner_url,
                   ms.seed_number,
                   ms.seed_number as team_seed_number,
                   ms.source_match_id
@@ -444,6 +455,7 @@ public class PublicTournamentRepository {
                 resultSet.getObject("registration_closes_at", OffsetDateTime.class),
                 resultSet.getString("timezone"),
                 resultSet.getInt("max_teams"),
+                resultSet.getInt("team_size"),
                 resultSet.getInt("team_count"),
                 resultSet.getInt("group_count"),
                 resultSet.getInt("match_count"),
@@ -460,7 +472,9 @@ public class PublicTournamentRepository {
                 resultSet.getString("tag"),
                 resultSet.getString("slug"),
                 resultSet.getString("logo_url"),
-                resultSet.getObject("seed_number", Integer.class));
+                resultSet.getString("banner_url"),
+                resultSet.getObject("seed_number", Integer.class),
+                List.of());
     }
 
     private PublicTournamentMatch mapMatchWithoutSlots(ResultSet resultSet, int rowNumber) throws SQLException {
@@ -550,7 +564,45 @@ public class PublicTournamentRepository {
                 resultSet.getString(prefix + "_tag"),
                 resultSet.getString(prefix + "_slug"),
                 resultSet.getString(prefix + "_logo_url"),
-                resultSet.getObject(prefix + "_seed_number", Integer.class));
+                resultSet.getString(prefix + "_banner_url"),
+                resultSet.getObject(prefix + "_seed_number", Integer.class),
+                List.of());
+    }
+
+    private PublicTournamentTeam withManualPlayers(PublicTournamentTeam team) {
+        if (team == null) {
+            return null;
+        }
+
+        return new PublicTournamentTeam(
+                team.id(),
+                team.name(),
+                team.tag(),
+                team.slug(),
+                team.logoUrl(),
+                team.bannerUrl(),
+                team.seedNumber(),
+                findManualPlayers(team.id()));
+    }
+
+    private List<PublicManualPlayer> findManualPlayers(UUID teamId) {
+        return jdbcTemplate.query(
+                """
+                select
+                  tmp.id,
+                  tmp.display_name,
+                  tmp.nickname,
+                  tmp.note
+                from public.team_manual_players tmp
+                where tmp.team_id = ?
+                order by tmp.created_at asc, tmp.id asc
+                """,
+                (resultSet, rowNumber) -> new PublicManualPlayer(
+                        resultSet.getObject("id", UUID.class),
+                        resultSet.getString("display_name"),
+                        resultSet.getString("nickname"),
+                        resultSet.getString("note")),
+                teamId);
     }
 
     private String normalizeSearch(String search) {

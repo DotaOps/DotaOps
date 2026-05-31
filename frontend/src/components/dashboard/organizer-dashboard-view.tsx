@@ -2,35 +2,26 @@ import Link from "next/link";
 
 import {
   AlertsPanel,
-  DashboardTopbar,
   PlayerAvatar,
   RoleActionButton,
+  RoleEmptyState,
   RoleKpiGrid,
   RolePanel,
   StatusChip
 } from "@/components/dashboard/role-dashboard-primitives";
-import { organizerDashboardData as data } from "@/lib/role-dashboard-data";
+import { getOperationsDashboardData } from "@/lib/dashboard-production-data";
 
-export function OrganizerDashboardView({
-  avatarUrl,
-  displayName
-}: {
-  avatarUrl?: string | null;
-  displayName: string;
-}) {
+export function OrganizerDashboardView({ role = "organizer" }: { role?: "admin" | "organizer" }) {
+  const data = getOperationsDashboardData(role);
+
   return (
     <div className="role-dashboard role-dashboard-organizer">
-      <DashboardTopbar
-        avatarUrl={avatarUrl}
-        displayName={displayName}
-      />
-
       <div className="role-dashboard-content">
         <section className="role-hero role-organizer-hero">
           <div className="role-organizer-hero-copy">
             <div className="role-hero-label-row">
-              <span className="role-hero-kicker">Pro Series</span>
-              <span>Live Feed: Arena A-01</span>
+              <span className="role-hero-kicker">{data.hero.stage}</span>
+              <span>Workspace overview</span>
             </div>
             <h1>{data.hero.title}</h1>
             <p>{data.hero.description}</p>
@@ -51,11 +42,11 @@ export function OrganizerDashboardView({
             </div>
 
             <div className="role-organizer-actions">
-              <Link className="role-action-button role-action-primary" href="/turnirji/ancient-cup-ljubljana">
-                Open Control Panel
+              <Link className="role-action-button role-action-primary" href="/organizator">
+                Open Organizer Panel
               </Link>
-              <Link className="role-action-button role-action-secondary" href="/turnirji/ancient-cup-ljubljana">
-                View Live Bracket
+              <Link className="role-action-button role-action-secondary" href="/turnirji">
+                View Tournaments
               </Link>
             </div>
           </div>
@@ -68,7 +59,6 @@ export function OrganizerDashboardView({
             <RolePanel
               title="Operational Matrix"
               eyebrow="Live telemetry and match control center."
-              action={<span className="role-view-all">View all</span>}
             >
               <div className="role-table-wrap">
                 <table className="role-data-table">
@@ -82,7 +72,16 @@ export function OrganizerDashboardView({
                     </tr>
                   </thead>
                   <tbody>
-                    {data.matrix.map((row) => (
+                    {data.matrix.length === 0 ? (
+                      <tr>
+                        <td colSpan={5}>
+                          <RoleEmptyState
+                            detail="Match activity will appear after tournaments and match imports are active."
+                            title="No live match operations yet."
+                          />
+                        </td>
+                      </tr>
+                    ) : data.matrix.map((row) => (
                       <tr key={row.matchId}>
                         <td>{row.matchId}</td>
                         <td>{row.series}</td>
@@ -104,7 +103,13 @@ export function OrganizerDashboardView({
 
             <RolePanel title="Participating Squads">
               <div className="role-squad-grid">
-                {data.squads.map((squad) => (
+                {data.squads.length === 0 ? (
+                  <RoleEmptyState
+                    className="role-empty-state-wide"
+                    detail="Registered teams will appear when tournament data is available."
+                    title="No participating squads to show yet."
+                  />
+                ) : data.squads.map((squad) => (
                   <article key={squad.name}>
                     <PlayerAvatar
                       player={{
@@ -147,7 +152,12 @@ export function OrganizerDashboardView({
 
             <RolePanel title="Pipeline Status">
               <div className="role-pipeline-list">
-                {data.pipeline.map((item) => (
+                {data.pipeline.length === 0 ? (
+                  <RoleEmptyState
+                    detail="Import and analytics processing status will appear when data is available."
+                    title="No pipeline status available."
+                  />
+                ) : data.pipeline.map((item) => (
                   <article key={item.label}>
                     <span>{item.label}</span>
                     <strong className={`role-tone-text-${item.tone}`}>{item.value}</strong>

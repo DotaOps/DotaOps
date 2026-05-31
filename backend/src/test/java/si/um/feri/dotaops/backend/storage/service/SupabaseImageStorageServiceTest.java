@@ -28,6 +28,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class SupabaseImageStorageServiceTest {
 
     private static final UUID PROFILE_ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
+    private static final UUID TEAM_ID = UUID.fromString("33333333-3333-4333-8333-333333333333");
 
     @Test
     void storeProfileAvatarUploadsImageToSupabaseBucket() {
@@ -77,6 +78,52 @@ class SupabaseImageStorageServiceTest {
         assertThatThrownBy(() -> service.storeProfileAvatar(PROFILE_ID, avatar))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Avatar must be a png, jpeg, webp or gif image.");
+    }
+
+    @Test
+    void storeTeamLogoUploadsImageToTeamFolder() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        SupabaseImageStorageService service = new SupabaseImageStorageService(properties(), builder);
+        MockMultipartFile logo = new MockMultipartFile(
+                "logo",
+                "logo.webp",
+                "image/webp",
+                new byte[] {4, 5, 6});
+
+        server.expect(requestTo(allOf(
+                        startsWith("https://project.supabase.co/storage/v1/object/dotaops-images/teams/"
+                                + TEAM_ID + "/logo/"),
+                        endsWith(".webp"))))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().contentType(MediaType.parseMediaType("image/webp")))
+                .andExpect(content().bytes(new byte[] {4, 5, 6}))
+                .andRespond(withSuccess());
+
+        StoredImage stored = service.storeTeamLogo(TEAM_ID, logo);
+
+        assertThat(stored.path())
+                .startsWith("teams/" + TEAM_ID + "/logo/")
+                .endsWith(".webp");
+        assertThat(stored.publicUrl())
+                .startsWith("https://project.supabase.co/storage/v1/object/public/dotaops-images/teams/"
+                        + TEAM_ID + "/logo/")
+                .endsWith(".webp");
+        server.verify();
+    }
+
+    @Test
+    void storeTeamBannerRejectsNonImageFile() {
+        SupabaseImageStorageService service = new SupabaseImageStorageService(properties(), RestClient.builder());
+        MockMultipartFile banner = new MockMultipartFile(
+                "banner",
+                "banner.txt",
+                "text/plain",
+                "not an image".getBytes());
+
+        assertThatThrownBy(() -> service.storeTeamBanner(TEAM_ID, banner))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Team banner must be a png, jpeg or webp image.");
     }
 
     @Test

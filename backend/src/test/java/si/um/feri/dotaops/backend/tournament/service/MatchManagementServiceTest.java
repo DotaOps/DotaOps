@@ -1,6 +1,7 @@
 package si.um.feri.dotaops.backend.tournament.service;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,7 +17,9 @@ import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
 import si.um.feri.dotaops.backend.common.error.ConflictException;
 import si.um.feri.dotaops.backend.common.security.DatabaseActorContext;
+import si.um.feri.dotaops.backend.notification.service.NotificationOutboxService;
 import si.um.feri.dotaops.backend.tournament.domain.MatchStatus;
+import si.um.feri.dotaops.backend.tournament.domain.MatchTeamCaptain;
 import si.um.feri.dotaops.backend.tournament.domain.TournamentMatch;
 import si.um.feri.dotaops.backend.tournament.dto.CancelMatchRequest;
 import si.um.feri.dotaops.backend.tournament.dto.ScheduleMatchRequest;
@@ -52,17 +55,20 @@ class MatchManagementServiceTest {
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
     private final DatabaseActorContext databaseActorContext = mock(DatabaseActorContext.class);
     private final MatchAdvancementService matchAdvancementService = mock(MatchAdvancementService.class);
+    private final NotificationOutboxService notificationOutboxService = mock(NotificationOutboxService.class);
     private final MatchManagementService service = new MatchManagementService(
             matchRepository,
             tournamentRepository,
             currentUserProvider,
             databaseActorContext,
-            matchAdvancementService);
+            matchAdvancementService,
+            notificationOutboxService);
 
     @BeforeEach
     void setUp() {
         when(currentUserProvider.requireActor()).thenReturn(actor(ORGANIZER_PROFILE_ID, ProfileRole.ORGANIZER));
         when(tournamentRepository.canManage(TOURNAMENT_ID, ORGANIZER_PROFILE_ID, false)).thenReturn(true);
+        when(tournamentRepository.findById(TOURNAMENT_ID)).thenReturn(Optional.empty());
     }
 
     @Test
@@ -71,12 +77,18 @@ class MatchManagementServiceTest {
         TournamentMatch updated = match(MatchStatus.SCHEDULED, 1, 0, 0, null, SCHEDULED_AT, null, null, null, null);
         when(matchRepository.findById(MATCH_ID)).thenReturn(Optional.of(existing));
         when(matchRepository.schedule(MATCH_ID, SCHEDULED_AT)).thenReturn(Optional.of(updated));
+        when(matchRepository.findTeamCaptainsByMatchId(MATCH_ID)).thenReturn(List.of(
+                new MatchTeamCaptain(TEAM_A_ID, "Team A", PLAYER_PROFILE_ID)));
 
         var response = service.scheduleMatch(MATCH_ID, new ScheduleMatchRequest(SCHEDULED_AT));
 
         assertThat(response.status()).isEqualTo("scheduled");
         assertThat(response.scheduledAt()).isEqualTo(SCHEDULED_AT);
         verify(databaseActorContext).apply(actor(ORGANIZER_PROFILE_ID, ProfileRole.ORGANIZER));
+        verify(notificationOutboxService).createMatchScheduledNotification(
+                eq(updated),
+                eq("DotaOps turnir"),
+                eq(new MatchTeamCaptain(TEAM_A_ID, "Team A", PLAYER_PROFILE_ID)));
     }
 
     @Test

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { HeaderProfileLink } from "@/components/header-profile-link";
 import type {
   DashboardAction,
   DashboardAlert,
@@ -10,24 +9,6 @@ import type {
   RosterPlayer
 } from "@/lib/role-dashboard-data";
 import { classNames } from "@/lib/utils";
-
-interface DashboardTopbarProps {
-  avatarUrl?: string | null;
-  displayName: string;
-}
-
-export function DashboardTopbar({
-  avatarUrl,
-  displayName
-}: DashboardTopbarProps) {
-  return (
-    <header className="role-dashboard-topbar">
-      <div className="role-topbar-actions">
-        <HeaderProfileLink avatarUrl={avatarUrl} displayName={displayName} />
-      </div>
-    </header>
-  );
-}
 
 export function RoleActionButton({
   action,
@@ -104,6 +85,10 @@ export function RoleKpiCard({ item }: { item: DashboardKpi }) {
 }
 
 export function FormChips({ values }: { values: Array<"W" | "L"> }) {
+  if (values.length === 0) {
+    return <span className="role-inline-empty-state">No form data yet.</span>;
+  }
+
   return (
     <div className="role-form-chips" aria-label="Recent form">
       {values.map((value, index) => (
@@ -156,7 +141,12 @@ export function AlertsPanel({ alerts }: { alerts: DashboardAlert[] }) {
   return (
     <RolePanel title="Tactical Alerts" className="role-alert-panel">
       <div className="role-alert-list">
-        {alerts.map((alert) => (
+        {alerts.length === 0 ? (
+          <RoleEmptyState
+            detail="Tournament and match alerts will appear when available."
+            title="No active alerts."
+          />
+        ) : alerts.map((alert) => (
           <article className={classNames("role-alert", `role-tone-${alert.tone}`)} key={alert.title}>
             <strong>{alert.title}</strong>
             <p>{alert.detail}</p>
@@ -164,6 +154,23 @@ export function AlertsPanel({ alerts }: { alerts: DashboardAlert[] }) {
         ))}
       </div>
     </RolePanel>
+  );
+}
+
+export function RoleEmptyState({
+  className,
+  detail,
+  title
+}: {
+  className?: string;
+  detail: string;
+  title: string;
+}) {
+  return (
+    <div className={classNames("role-empty-state", className)}>
+      <strong>{title}</strong>
+      <p>{detail}</p>
+    </div>
   );
 }
 

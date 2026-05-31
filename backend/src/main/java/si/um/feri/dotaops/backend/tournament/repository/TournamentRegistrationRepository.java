@@ -98,12 +98,22 @@ public class TournamentRegistrationRepository {
     public int countActiveRosterMembers(UUID teamId) {
         Integer count = jdbcTemplate.queryForObject(
                 """
-                select count(*)
-                from public.team_members
-                where team_id = ?
-                  and is_active = true
+                select
+                  (
+                    select count(*)
+                    from public.team_members
+                    where team_id = ?
+                      and is_active = true
+                  )
+                  +
+                  (
+                    select count(*)
+                    from public.team_manual_players
+                    where team_id = ?
+                  )
                 """,
                 Integer.class,
+                teamId,
                 teamId);
 
         return count == null ? 0 : count;
@@ -207,16 +217,18 @@ public class TournamentRegistrationRepository {
                   trm.id,
                   trm.registration_id,
                   trm.profile_id,
-                  p.nickname,
-                  p.display_name,
+                  coalesce(p.nickname, trm.manual_nickname) as nickname,
+                  coalesce(p.display_name, trm.manual_display_name) as display_name,
                   p.avatar_url,
                   trm.team_member_id,
+                  trm.manual_player_id,
+                  trm.manual_note,
                   trm.member_role::text as member_role,
                   trm.is_starter,
                   trm.created_at,
                   trm.updated_at
                 from public.tournament_registration_members trm
-                join public.profiles p on p.id = trm.profile_id
+                left join public.profiles p on p.id = trm.profile_id
                 where trm.registration_id = ?
                 order by trm.is_starter desc, trm.created_at asc, trm.id asc
                 """,
@@ -259,6 +271,53 @@ public class TournamentRegistrationRepository {
                 teamId,
                 captainProfileId,
                 rosterSnapshotSize);
+
+        Integer activeProfileCount = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from public.team_members tm
+                where tm.team_id = ?
+                  and tm.is_active = true
+                """,
+                Integer.class,
+                teamId);
+        int remainingRosterSlots = Math.max(0, rosterSnapshotSize - (activeProfileCount == null ? 0 : activeProfileCount));
+        if (remainingRosterSlots == 0) {
+            return;
+        }
+
+        jdbcTemplate.update(
+                """
+                insert into public.tournament_registration_members (
+                  registration_id,
+                  profile_id,
+                  team_member_id,
+                  manual_player_id,
+                  manual_display_name,
+                  manual_nickname,
+                  manual_note,
+                  member_role,
+                  is_starter
+                )
+                select
+                  ?,
+                  null,
+                  null,
+                  tmp.id,
+                  tmp.display_name,
+                  tmp.nickname,
+                  tmp.note,
+                  null,
+                  true
+                from public.team_manual_players tmp
+                where tmp.team_id = ?
+                order by tmp.created_at asc, tmp.id asc
+                limit ?
+                on conflict do nothing
+                """,
+                registrationId,
+                teamId,
+                remainingRosterSlots);
     }
 
     private String selectRegistrationSql() {
@@ -379,7 +438,11 @@ public class TournamentRegistrationRepository {
                 resultSet.getString("display_name"),
                 resultSet.getString("avatar_url"),
                 resultSet.getObject("team_member_id", UUID.class),
-                TeamMemberRole.fromDatabaseValue(resultSet.getString("member_role")),
+                resultSet.getObject("manual_player_id", UUID.class),
+                resultSet.getString("manual_note"),
+                resultSet.getString("member_role") == null
+                        ? null
+                        : TeamMemberRole.fromDatabaseValue(resultSet.getString("member_role")),
                 resultSet.getBoolean("is_starter"),
                 resultSet.getObject("created_at", OffsetDateTime.class),
                 resultSet.getObject("updated_at", OffsetDateTime.class));

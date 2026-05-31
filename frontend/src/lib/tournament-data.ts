@@ -6,7 +6,6 @@ import {
   patchApiAuthenticated,
   postApiAuthenticated
 } from "@/lib/api";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { Tournament, TournamentStatus } from "@/lib/types";
 
 interface BackendTournamentDto {
@@ -15,6 +14,10 @@ interface BackendTournamentDto {
   title?: string | null;
   status?: string | null;
   format?: string | null;
+  teamSize?: number | null;
+  settings?: {
+    teamSize?: number | null;
+  } | null;
   organizer?: string | null;
   organizerNickname?: string | null;
   description?: string | null;
@@ -74,7 +77,6 @@ export interface TournamentWriteInput {
   title?: string | null;
 }
 
-const fallbackDate = "2026-05-20T19:00:00Z";
 const validStatuses: TournamentStatus[] = [
   "draft",
   "registration",
@@ -117,40 +119,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeStatus(status?: string | null): TournamentStatus {
-  return validStatuses.includes(status as TournamentStatus)
-    ? (status as TournamentStatus)
-    : "draft";
-}
-
-function fallbackSlug(value: BackendTournamentDto) {
-  if (value.slug) {
-    return value.slug;
+  if (!validStatuses.includes(status as TournamentStatus)) {
+    throw new Error("Tournament API returned an unsupported tournament status.");
   }
 
-  return (value.title ?? value.id ?? "tournament")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+  return status as TournamentStatus;
+}
+
+function normalizeTeamSize(value?: number | null) {
+  return value === 1 || value === 3 || value === 5 ? value : null;
 }
 
 export function mapTournamentDto(value: BackendTournamentDto): Tournament {
-  const id = value.id ?? fallbackSlug(value);
+  if (!value.id || !value.slug || !value.title) {
+    throw new Error("Tournament API returned an incomplete tournament record.");
+  }
 
   return {
-    description: value.description ?? "Tournament details are being prepared.",
+    description: value.description ?? "No tournament description available.",
     checkInClosesAt: value.checkInClosesAt ?? null,
     checkInOpensAt: value.checkInOpensAt ?? null,
     endsAt: value.endsAt ?? null,
-    format: value.format ?? "Dota 2",
-    id,
-    organizer: value.organizerNickname ?? value.organizer ?? "DotaOps",
-    prizePool: value.prizePool ?? "TBD",
+    format: value.format ?? "Format unavailable",
+    teamSize: normalizeTeamSize(value.teamSize ?? value.settings?.teamSize),
+    id: value.id,
+    organizer: value.organizerNickname ?? value.organizer ?? "Organizer unavailable",
+    prizePool: value.prizePool ?? "Not announced",
     publicVisible: value.publicVisible ?? null,
     registrationClosesAt: value.registrationClosesAt ?? null,
     registrationOpensAt: value.registrationOpensAt ?? null,
     registrationsCount: value.registrationsCount ?? 0,
-    slug: fallbackSlug(value),
-    startsAt: value.startsAt ?? fallbackDate,
+    slug: value.slug,
+    startsAt: value.startsAt ?? null,
     status: normalizeStatus(value.status),
     teamsCount: value.maxTeams ?? 0,
     title: value.title ?? "Untitled Tournament",
@@ -211,126 +211,24 @@ function safeMapTournamentList(value: unknown): Tournament[] {
   return items.map((item) => mapTournamentDto(item as BackendTournamentDto));
 }
 
-function safeMapTournament(value: unknown, fallback: Tournament | null): Tournament | null {
+function safeMapTournament(value: unknown): Tournament | null {
   if (!value) {
-    return fallback;
+    return null;
   }
 
   if (!isRecord(value)) {
-    console.warn("Tournament API returned an unexpected detail payload shape.");
-    return fallback;
+    throw new Error("Tournament API returned an unexpected detail payload shape.");
   }
 
   return mapTournamentDto(value as BackendTournamentDto);
 }
 
-function hasNextTournamentPage(value: unknown) {
-  return (
-    isRecord(value) &&
-    isRecord(value.page) &&
-    value.page.hasNext === true
-  );
-}
-
-async function listPublicTournamentsFromApi(): Promise<Tournament[]> {
-  const tournaments: Tournament[] = [];
-  let page = 0;
-  let payload: unknown;
-
-  do {
-    payload = await getPagedApi<unknown>(
-      `/tournaments?page=${page}&size=${publicTournamentPageSize}`
-    );
-    tournaments.push(...safeMapTournamentList(payload));
-    page += 1;
-  } while (hasNextTournamentPage(payload));
-
-  return tournaments;
-}
-
-async function listPublicTournamentsFromSupabase(): Promise<Tournament[]> {
-  const supabase = await getSupabaseServerClient();
-
-  if (!supabase) {
-    return [];
-  }
-
-  const tournaments: Tournament[] = [];
-
-  for (let from = 0; ; from += publicTournamentPageSize) {
-    const { data, error } = await supabase
-      .from("tournaments")
-      .select(supabaseTournamentSelect)
-      .eq("is_public", true)
-      .in("status", publicStatuses)
-      .order("starts_at", { ascending: true })
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, from + publicTournamentPageSize - 1);
-
-    if (error) {
-      throw error;
-    }
-
-    const page = (data as SupabaseTournamentRow[]).map(mapSupabaseTournamentRow);
-    tournaments.push(...page);
-
-    if (page.length < publicTournamentPageSize) {
-      return tournaments;
-    }
-  }
-}
-
-async function getPublicTournamentBySlugFromSupabase(slug: string): Promise<Tournament | null> {
-  const supabase = await getSupabaseServerClient();
-
-  if (!supabase) {
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("tournaments")
-    .select(supabaseTournamentSelect)
-    .eq("slug", slug)
-    .eq("is_public", true)
-    .in("status", publicStatuses)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return data ? mapSupabaseTournamentRow(data as SupabaseTournamentRow) : null;
-}
-
 export async function getPublicTournaments(): Promise<Tournament[]> {
-  try {
-    return await listPublicTournamentsFromApi();
-  } catch (error) {
-    console.warn("Public tournaments API unavailable; trying Supabase.", error);
-  }
-
-  try {
-    return await listPublicTournamentsFromSupabase();
-  } catch (error) {
-    console.error("Public tournaments database query failed.", error);
-    return [];
-  }
+  return safeMapTournamentList(await getApi<unknown>("/tournaments"));
 }
 
 export async function getPublicTournamentBySlug(slug: string): Promise<Tournament | null> {
-  try {
-    return safeMapTournament(await getApi<unknown>(`/tournaments/${slug}`), null);
-  } catch (error) {
-    console.warn("Public tournament detail API unavailable; trying Supabase.", error);
-  }
-
-  try {
-    return await getPublicTournamentBySlugFromSupabase(slug);
-  } catch (error) {
-    console.error("Public tournament database detail query failed.", error);
-    return null;
-  }
+  return safeMapTournament(await getApi<unknown>(`/tournaments/${slug}`));
 }
 
 export async function getOrganizerTournamentsForCurrentUser(): Promise<Tournament[]> {
@@ -341,8 +239,7 @@ export async function getOrganizerTournamentForCurrentUser(
   tournamentId: string
 ): Promise<Tournament> {
   const tournament = safeMapTournament(
-    await getApiAuthenticated<unknown>(`/organizer/tournaments/${tournamentId}`),
-    null
+    await getApiAuthenticated<unknown>(`/organizer/tournaments/${tournamentId}`)
   );
 
   if (!tournament) {

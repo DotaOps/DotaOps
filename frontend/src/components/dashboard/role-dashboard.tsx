@@ -1,6 +1,5 @@
 "use client";
 
-import { CaptainDashboardView } from "@/components/dashboard/captain-dashboard-view";
 import { useCurrentUserProfile } from "@/components/current-user-profile-context";
 import {
   DashboardLoadingSkeleton,
@@ -10,30 +9,29 @@ import { OrganizerDashboardView } from "@/components/dashboard/organizer-dashboa
 import { PlayerDashboardView } from "@/components/dashboard/player-dashboard-view";
 import { PublicDashboardGate } from "@/components/dashboard/public-dashboard-gate";
 import { getCurrentUserProfile, type CurrentUserProfile } from "@/lib/auth";
-import type { DashboardRole } from "@/lib/role-dashboard-data";
-import { isOrganizerRole } from "@/lib/route-access";
+import type { ProductionDashboardRole } from "@/lib/dashboard-production-data";
 import { useEffect, useState } from "react";
 
-function roleFromProfile(role?: string | null): DashboardRole {
-  if (isOrganizerRole(role)) {
-    return "organizer";
+function roleFromProfile(role?: string | null): ProductionDashboardRole {
+  if (role === "admin") {
+    return "admin";
   }
 
-  if (role === "captain") {
-    return "captain";
+  if (role === "organizer") {
+    return "organizer";
   }
 
   return "player";
 }
 
-function loadingRole(role?: DashboardRole): DashboardLoadingRole {
-  return role === "captain" || role === "organizer" ? role : "player";
+function loadingRole(role?: ProductionDashboardRole): DashboardLoadingRole {
+  return role === "admin" || role === "organizer" ? "organizer" : "player";
 }
 
 interface DashboardViewer {
   avatarUrl: string | null;
   displayName: string;
-  role: DashboardRole;
+  role: ProductionDashboardRole;
 }
 
 function viewerFromProfile(profile: CurrentUserProfile | null): DashboardViewer {
@@ -44,7 +42,7 @@ function viewerFromProfile(profile: CurrentUserProfile | null): DashboardViewer 
   };
 }
 
-export function RoleDashboard({ role }: { role?: DashboardRole }) {
+export function RoleDashboard({ role }: { role?: ProductionDashboardRole }) {
   const shellProfile = useCurrentUserProfile();
   const [loadedViewer, setLoadedViewer] = useState<DashboardViewer | null>(null);
   const viewer = shellProfile !== undefined ? viewerFromProfile(shellProfile) : loadedViewer;
@@ -78,23 +76,19 @@ export function RoleDashboard({ role }: { role?: DashboardRole }) {
   }
 
   const actualRole = viewer.role;
-  const resolvedRole = role === "organizer" && actualRole !== "organizer"
-    ? actualRole
-    : role === "public"
-      ? actualRole
-      : role ?? actualRole;
+  const resolvedRole = actualRole;
 
   if (resolvedRole === "player") {
-    return <PlayerDashboardView avatarUrl={viewer.avatarUrl} displayName={viewer.displayName} />;
+    return <PlayerDashboardView />;
   }
 
-  if (resolvedRole === "organizer") {
-    return <OrganizerDashboardView avatarUrl={viewer.avatarUrl} displayName={viewer.displayName} />;
+  if (resolvedRole === "admin" || resolvedRole === "organizer") {
+    return <OrganizerDashboardView role={resolvedRole} />;
   }
 
   if (resolvedRole === "public") {
     return <PublicDashboardGate />;
   }
 
-  return <CaptainDashboardView avatarUrl={viewer.avatarUrl} displayName={viewer.displayName} />;
+  return <PlayerDashboardView />;
 }

@@ -134,7 +134,17 @@ function arrayPayload(value: unknown) {
     return value.items;
   }
 
-  return [];
+  return null;
+}
+
+function analyticsArrayPayload(value: unknown, label: string) {
+  const payload = arrayPayload(value);
+
+  if (!payload) {
+    throw new Error(`Analytics ${label} response has an invalid format.`);
+  }
+
+  return payload;
 }
 
 function text(value: unknown, fallback = "No data") {
@@ -302,7 +312,7 @@ function mapTournament(value: unknown): TournamentAnalyticsMetric {
     gamesPlayed: numberValue(item.gamesPlayed),
     heroesPickedCount: numberValue(item.heroesPickedCount),
     kills: numberValue(item.totalKills),
-    mostPickedHeroes: arrayPayload(item.mostPickedHeroes).map(mapPickedHero),
+    mostPickedHeroes: (arrayPayload(item.mostPickedHeroes) ?? []).map(mapPickedHero),
     playersCount: numberValue(item.playersCount),
     teamsCount: numberValue(item.teamsCount),
     tournamentId: text(item.tournamentId, "unknown-tournament"),
@@ -324,26 +334,30 @@ function mapRefresh(value: unknown): AnalyticsRefreshResult {
 }
 
 export async function getPublicPlayerMetrics(filters?: AnalyticsFilters) {
-  return arrayPayload(
-    await getApi<unknown>(`/public/analytics/players${queryString(filters)}`)
+  return analyticsArrayPayload(
+    await getApi<unknown>(`/public/analytics/players${queryString(filters)}`),
+    "players"
   ).map(mapPlayer);
 }
 
 export async function getPublicTeamMetrics(filters?: AnalyticsFilters) {
-  return arrayPayload(
-    await getApi<unknown>(`/public/analytics/teams${queryString(filters)}`)
+  return analyticsArrayPayload(
+    await getApi<unknown>(`/public/analytics/teams${queryString(filters)}`),
+    "teams"
   ).map(mapTeam);
 }
 
 export async function getPublicHeroMetrics(filters?: AnalyticsFilters) {
-  return arrayPayload(
-    await getApi<unknown>(`/public/analytics/heroes${queryString(filters)}`)
+  return analyticsArrayPayload(
+    await getApi<unknown>(`/public/analytics/heroes${queryString(filters)}`),
+    "heroes"
   ).map(mapHero);
 }
 
 export async function getPublicTournamentMetrics(filters?: AnalyticsFilters) {
-  return arrayPayload(
-    await getApi<unknown>(`/public/analytics/tournaments${queryString(filters)}`)
+  return analyticsArrayPayload(
+    await getApi<unknown>(`/public/analytics/tournaments${queryString(filters)}`),
+    "tournaments"
   ).map(mapTournament);
 }
 

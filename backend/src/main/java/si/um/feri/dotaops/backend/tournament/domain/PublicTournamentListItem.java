@@ -17,6 +17,7 @@ public record PublicTournamentListItem(
         OffsetDateTime registrationClosesAt,
         String timezone,
         int maxTeams,
+        int teamSize,
         int teamCount,
         int groupCount,
         int matchCount,

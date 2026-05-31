@@ -34,6 +34,10 @@ public class SupabaseImageStorageService {
             "image/jpeg",
             "image/png",
             "image/webp");
+    private static final Set<String> ALLOWED_TEAM_IMAGE_CONTENT_TYPES = Set.of(
+            "image/jpeg",
+            "image/png",
+            "image/webp");
 
     private final SupabaseStorageProperties properties;
     private final RestClient restClient;
@@ -50,12 +54,40 @@ public class SupabaseImageStorageService {
         return storeImage("profiles/%s/avatars".formatted(profileId), "Avatar", avatar);
     }
 
+    public StoredImage storeTeamLogo(UUID teamId, MultipartFile logo) {
+        return storeImage(
+                "teams/%s/logo".formatted(teamId),
+                "Team logo",
+                logo,
+                ALLOWED_TEAM_IMAGE_CONTENT_TYPES,
+                "png, jpeg or webp");
+    }
+
+    public StoredImage storeTeamBanner(UUID teamId, MultipartFile banner) {
+        return storeImage(
+                "teams/%s/banner".formatted(teamId),
+                "Team banner",
+                banner,
+                ALLOWED_TEAM_IMAGE_CONTENT_TYPES,
+                "png, jpeg or webp");
+    }
+
     public StoredImage storeImage(String folderPath, MultipartFile image) {
         return storeImage(folderPath, "Image", image);
     }
 
     private StoredImage storeImage(String folderPath, String label, MultipartFile image) {
-        String contentType = validateImage(label, image);
+        return storeImage(folderPath, label, image, ALLOWED_CONTENT_TYPES, "png, jpeg, webp or gif");
+    }
+
+    private StoredImage storeImage(
+            String folderPath,
+            String label,
+            MultipartFile image,
+            Set<String> allowedContentTypes,
+            String allowedDescription
+    ) {
+        String contentType = validateImage(label, image, allowedContentTypes, allowedDescription);
         String path = "%s/%s%s".formatted(
                 normalizeObjectPath(folderPath),
                 UUID.randomUUID(),
@@ -88,7 +120,12 @@ public class SupabaseImageStorageService {
         return new StoredImage(normalizedPath, publicUrl(target, normalizedPath), contentType);
     }
 
-    private String validateImage(String label, MultipartFile image) {
+    private String validateImage(
+            String label,
+            MultipartFile image,
+            Set<String> allowedContentTypes,
+            String allowedDescription
+    ) {
         if (image == null || image.isEmpty()) {
             throw new BadRequestException(label + " file is required.");
         }
@@ -98,8 +135,8 @@ public class SupabaseImageStorageService {
         }
 
         String contentType = normalizeContentType(label, image.getContentType());
-        if (!ALLOWED_CONTENT_TYPES.contains(contentType)) {
-            throw new BadRequestException(label + " must be a png, jpeg, webp or gif image.");
+        if (!allowedContentTypes.contains(contentType)) {
+            throw new BadRequestException(label + " must be a " + allowedDescription + " image.");
         }
 
         return contentType;

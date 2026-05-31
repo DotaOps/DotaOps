@@ -15,6 +15,7 @@ import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
 import si.um.feri.dotaops.backend.common.error.ConflictException;
 import si.um.feri.dotaops.backend.common.security.DatabaseActorContext;
+import si.um.feri.dotaops.backend.notification.service.NotificationOutboxService;
 import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.domain.TeamMemberRole;
 import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
@@ -58,13 +59,15 @@ class TournamentRegistrationServiceTest {
     private final TeamMemberRepository teamMemberRepository = mock(TeamMemberRepository.class);
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
     private final DatabaseActorContext databaseActorContext = mock(DatabaseActorContext.class);
+    private final NotificationOutboxService notificationOutboxService = mock(NotificationOutboxService.class);
     private final TournamentRegistrationService service = new TournamentRegistrationService(
             registrationRepository,
             tournamentRepository,
             teamRepository,
             teamMemberRepository,
             currentUserProvider,
-            databaseActorContext);
+            databaseActorContext,
+            notificationOutboxService);
 
     @Test
     void captainCanRegisterTeamAndRosterSnapshotUsesTournamentTeamSize() {
@@ -86,6 +89,9 @@ class TournamentRegistrationServiceTest {
         assertThat(response.status()).isEqualTo("pending");
         verify(databaseActorContext).apply(actor);
         verify(registrationRepository).create(any(CreateTournamentRegistrationCommand.class), eq(5));
+        verify(notificationOutboxService).createTeamApplicationSubmittedNotification(
+                any(Tournament.class),
+                any(TournamentRegistration.class));
     }
 
     @Test
@@ -150,7 +156,90 @@ class TournamentRegistrationServiceTest {
                 null,
                 null)))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessage("Team must have at least 5 active roster members before registration.");
+                .hasMessage("Team must have at least 5 active roster participants before registration.");
+    }
+
+    @Test
+    void oneVsOneTournamentAllowsSingleRosterParticipant() {
+        TournamentSettings settings = new TournamentSettings(
+                8,
+                2,
+                1,
+                1,
+                TournamentFormat.SINGLE_ELIMINATION,
+                false,
+                true);
+        when(currentUserProvider.requireActor()).thenReturn(actor(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(tournamentRepository.findById(TOURNAMENT_ID)).thenReturn(Optional.of(tournament(
+                TournamentStatus.PUBLISHED,
+                settings,
+                NOW.minusDays(1),
+                NOW.plusDays(1))));
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team(CAPTAIN_PROFILE_ID)));
+        when(registrationRepository.countActiveRosterMembers(TEAM_ID)).thenReturn(1);
+        when(registrationRepository.create(any(CreateTournamentRegistrationCommand.class), eq(1)))
+                .thenReturn(registration(TournamentRegistrationStatus.PENDING));
+        when(registrationRepository.findMembers(REGISTRATION_ID)).thenReturn(List.of());
+
+        service.registerTeam(TOURNAMENT_ID, new CreateTournamentRegistrationRequest(TEAM_ID, null, null));
+
+        verify(registrationRepository).create(any(CreateTournamentRegistrationCommand.class), eq(1));
+    }
+
+    @Test
+    void threeVsThreeTournamentRejectsRosterAboveTeamSize() {
+        TournamentSettings settings = new TournamentSettings(
+                8,
+                2,
+                3,
+                1,
+                TournamentFormat.SINGLE_ELIMINATION,
+                false,
+                true);
+        when(currentUserProvider.requireActor()).thenReturn(actor(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(tournamentRepository.findById(TOURNAMENT_ID)).thenReturn(Optional.of(tournament(
+                TournamentStatus.PUBLISHED,
+                settings,
+                NOW.minusDays(1),
+                NOW.plusDays(1))));
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team(CAPTAIN_PROFILE_ID)));
+        when(registrationRepository.countActiveRosterMembers(TEAM_ID)).thenReturn(4);
+
+        assertThatThrownBy(() -> service.registerTeam(TOURNAMENT_ID, new CreateTournamentRegistrationRequest(
+                TEAM_ID,
+                null,
+                null)))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Team cannot have more than 3 active roster participants for this tournament.");
+
+        verify(registrationRepository, never()).create(any(CreateTournamentRegistrationCommand.class), eq(3));
+    }
+
+    @Test
+    void manualPlayersAreIncludedInRosterSizeValidation() {
+        TournamentSettings settings = new TournamentSettings(
+                8,
+                2,
+                1,
+                1,
+                TournamentFormat.SINGLE_ELIMINATION,
+                false,
+                true);
+        when(currentUserProvider.requireActor()).thenReturn(actor(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(tournamentRepository.findById(TOURNAMENT_ID)).thenReturn(Optional.of(tournament(
+                TournamentStatus.PUBLISHED,
+                settings,
+                NOW.minusDays(1),
+                NOW.plusDays(1))));
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team(CAPTAIN_PROFILE_ID)));
+        when(registrationRepository.countActiveRosterMembers(TEAM_ID)).thenReturn(2);
+
+        assertThatThrownBy(() -> service.registerTeam(TOURNAMENT_ID, new CreateTournamentRegistrationRequest(
+                TEAM_ID,
+                null,
+                null)))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Team cannot have more than 1 active roster participants for this tournament.");
     }
 
     @Test
@@ -190,6 +279,7 @@ class TournamentRegistrationServiceTest {
 
         assertThat(response.status()).isEqualTo("approved");
         verify(databaseActorContext).apply(actor(ORGANIZER_PROFILE_ID, ProfileRole.ORGANIZER));
+        verify(notificationOutboxService).createTeamApplicationApprovedNotification(any(TournamentRegistration.class));
     }
 
     @Test
@@ -207,6 +297,7 @@ class TournamentRegistrationServiceTest {
         var response = service.rejectRegistration(TOURNAMENT_ID, REGISTRATION_ID);
 
         assertThat(response.status()).isEqualTo("rejected");
+        verify(notificationOutboxService).createTeamApplicationRejectedNotification(any(TournamentRegistration.class));
     }
 
     @Test

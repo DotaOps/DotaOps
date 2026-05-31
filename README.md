@@ -230,6 +230,33 @@ API vraca osnovne agregate, kot so `gamesPlayed`, `wins`, `losses`, `winRate`, K
 
 Vsi javni analytics queryji filtrirajo samo turnirje z `tournaments.is_public = true`. Ce filter kaze na privaten ali neobjavljen turnir, public endpoint ne vrne njegovih podatkov.
 
+### Notification outbox
+
+Backend uporablja `notification_outbox` kot durable outbox za in-app obvestila in kot izolirano pripravo za poznejsi email/Discord transport. Tournament in match servisi v outbox zapisujejo samo poslovne dogodke; dejanska dostava je locena prek `NotificationDeliveryProvider` implementacij.
+
+Outbox zapis trenutno nastane za:
+
+- prijavo ekipe na turnir (`TEAM_APPLICATION_SUBMITTED`) za organizatorja,
+- odobritev ekipe (`TEAM_APPLICATION_APPROVED`) za captaina,
+- zavrnitev ekipe (`TEAM_APPLICATION_REJECTED`) za captaina,
+- razpored tekme (`MATCH_SCHEDULED`) za captaina relevantnih ekip.
+
+Prijavljen uporabnik bere svoja in-app obvestila:
+
+```http
+GET /api/me/notifications
+POST /api/me/notifications/{id}/read
+POST /api/me/notifications/read-all
+```
+
+Admin lahko rocno sprozi procesiranje queued outbox zapisov:
+
+```http
+POST /api/admin/notifications/outbox/process
+```
+
+Endpoint je pod `/api/admin/**` in zahteva backend admin vlogo. `IN_APP` provider queued zapis oznaci kot delivered, ker je obvestilo ze shranjeno v bazi. `EMAIL` in `DISCORD` providerja sta locena placeholderja; pozneje se zamenjata z dejanskim transportom brez sprememb tournament/team servisov. Retry logika uporablja `attempt_count`, `last_error`, `next_attempt_at` in po treh neuspesnih poskusih status nastavi na `failed`.
+
 ## Zagon Backenda
 
 Backend se zazene na `http://localhost:8080`.

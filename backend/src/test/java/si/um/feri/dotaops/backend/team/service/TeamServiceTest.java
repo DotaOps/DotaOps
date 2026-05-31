@@ -7,14 +7,18 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.access.AccessDeniedException;
 
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedProfile;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
+import si.um.feri.dotaops.backend.storage.service.StoredImage;
+import si.um.feri.dotaops.backend.storage.service.SupabaseImageStorageService;
 import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamCommand;
+import si.um.feri.dotaops.backend.team.repository.TeamManualPlayerRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
 import si.um.feri.dotaops.backend.team.repository.UpdateTeamCommand;
 import si.um.feri.dotaops.backend.team.web.CreateTeamRequest;
@@ -25,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,8 +41,14 @@ class TeamServiceTest {
     private static final UUID TEAM_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
 
     private final TeamRepository teamRepository = mock(TeamRepository.class);
+    private final TeamManualPlayerRepository teamManualPlayerRepository = mock(TeamManualPlayerRepository.class);
+    private final SupabaseImageStorageService imageStorageService = mock(SupabaseImageStorageService.class);
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
-    private final TeamService teamService = new TeamService(teamRepository, currentUserProvider);
+    private final TeamService teamService = new TeamService(
+            teamRepository,
+            teamManualPlayerRepository,
+            imageStorageService,
+            currentUserProvider);
 
     @Test
     void createTeamSetsAuthenticatedUserAsCaptainAndGeneratesSlug() {
@@ -247,6 +258,37 @@ class TeamServiceTest {
         assertThatThrownBy(() -> teamService.updateTeam(TEAM_ID, request))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Required team field is blank.");
+    }
+
+    @Test
+    void captainCanUploadTeamLogo() {
+        MockMultipartFile logo = new MockMultipartFile("logo", "logo.png", "image/png", new byte[] {1});
+        when(currentUserProvider.requireProfile()).thenReturn(profile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team("Ancient Stack", "ancient-stack", CAPTAIN_PROFILE_ID)));
+        when(imageStorageService.storeTeamLogo(TEAM_ID, logo))
+                .thenReturn(new StoredImage("teams/" + TEAM_ID + "/logo/logo.png", "https://cdn.example.test/logo.png", "image/png"));
+        when(teamRepository.updateLogoUrl(TEAM_ID, "https://cdn.example.test/logo.png"))
+                .thenReturn(Optional.of(team("Ancient Stack", "ancient-stack", CAPTAIN_PROFILE_ID)));
+
+        var response = teamService.uploadTeamLogo(TEAM_ID, logo);
+
+        verify(imageStorageService).storeTeamLogo(TEAM_ID, logo);
+        verify(teamRepository).updateLogoUrl(TEAM_ID, "https://cdn.example.test/logo.png");
+        assertThat(response.logoUrl()).isEqualTo("https://cdn.example.test/logo.png");
+    }
+
+    @Test
+    void nonCaptainCannotUploadTeamBanner() {
+        MockMultipartFile banner = new MockMultipartFile("banner", "banner.png", "image/png", new byte[] {1});
+        when(currentUserProvider.requireProfile()).thenReturn(profile(OTHER_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team("Ancient Stack", "ancient-stack", CAPTAIN_PROFILE_ID)));
+
+        assertThatThrownBy(() -> teamService.uploadTeamBanner(TEAM_ID, banner))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the team captain or an organizer can update this team.");
+
+        verify(imageStorageService, never()).storeTeamBanner(TEAM_ID, banner);
+        verify(teamRepository, never()).updateBannerUrl(eq(TEAM_ID), any());
     }
 
     private static AuthenticatedProfile profile(UUID profileId, ProfileRole role) {
