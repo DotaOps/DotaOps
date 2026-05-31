@@ -28,15 +28,27 @@ export type TeamInvitationStatus =
   | "expired";
 
 export interface TeamSummary {
+  bannerUrl: string | null;
   captainNickname: string | null;
   captainProfileId: string | null;
   description: string | null;
   id: string;
   logoUrl: string | null;
+  manualPlayers: TeamManualPlayer[];
   name: string;
   region: string | null;
   slug: string;
   tag: string | null;
+}
+
+export interface TeamManualPlayer {
+  createdAt: string | null;
+  displayName: string;
+  id: string;
+  nickname: string | null;
+  note: string | null;
+  teamId: string;
+  updatedAt: string | null;
 }
 
 export interface TeamMember {
@@ -87,9 +99,10 @@ export interface TeamManagementViewModel {
   activeEvents: TournamentRegistration[];
   canManageRoster: boolean;
   currentProfile: CurrentUserProfile;
-  dataSource: "api" | "mock";
+  dataSource: "api";
   incomingInvitations: TeamInvitation[];
   isCaptain: boolean;
+  manualPlayers: TeamManualPlayer[];
   members: TeamMember[];
   outgoingInvitations: TeamInvitation[];
   protectedDataError: string | null;
@@ -111,15 +124,27 @@ export interface CreateTeamInput {
 }
 
 interface BackendTeamResponse {
+  bannerUrl?: string | null;
   captainNickname?: string | null;
   captainProfileId?: string | null;
   description?: string | null;
   id: string;
   logoUrl?: string | null;
+  manualPlayers?: BackendTeamManualPlayerResponse[] | null;
   name: string;
   region?: string | null;
   slug: string;
   tag?: string | null;
+}
+
+interface BackendTeamManualPlayerResponse {
+  createdAt?: string | null;
+  displayName: string;
+  id: string;
+  nickname?: string | null;
+  note?: string | null;
+  teamId: string;
+  updatedAt?: string | null;
 }
 
 interface BackendTeamMemberResponse {
@@ -139,6 +164,7 @@ interface BackendTeamMemberResponse {
 interface BackendCurrentTeamResponse {
   canManageRoster?: boolean;
   captain?: boolean;
+  manualPlayers?: BackendTeamManualPlayerResponse[] | null;
   members?: BackendTeamMemberResponse[] | null;
   team?: BackendTeamResponse | null;
   teamResolution?: string | null;
@@ -204,15 +230,29 @@ async function getFreshAccessToken() {
 
 function asTeam(response: BackendTeamResponse): TeamSummary {
   return {
+    bannerUrl: response.bannerUrl ?? null,
     captainNickname: response.captainNickname ?? null,
     captainProfileId: response.captainProfileId ?? null,
     description: response.description ?? null,
     id: response.id,
     logoUrl: response.logoUrl ?? null,
+    manualPlayers: (response.manualPlayers ?? []).map(asManualPlayer),
     name: response.name,
     region: response.region ?? null,
     slug: response.slug,
     tag: response.tag ?? null
+  };
+}
+
+function asManualPlayer(response: BackendTeamManualPlayerResponse): TeamManualPlayer {
+  return {
+    createdAt: response.createdAt ?? null,
+    displayName: response.displayName,
+    id: response.id,
+    nickname: response.nickname ?? null,
+    note: response.note ?? null,
+    teamId: response.teamId,
+    updatedAt: response.updatedAt ?? null
   };
 }
 
@@ -332,7 +372,7 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
   }
 
   const teamsResult = await listTeams();
-  let dataSource: "api" | "mock" = teamsResult.source;
+  let dataSource: "api" = teamsResult.source;
   let teams = teamsResult.data;
   let membersByTeam = new Map<string, TeamMember[]>();
   const aggregateTeam = currentTeamAggregate?.team ? asTeam(currentTeamAggregate.team) : null;
@@ -364,6 +404,23 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
       : null;
   const selectedTeam = aggregateTeam ?? membershipTeam ?? null;
   const members = selectedTeam ? membersByTeam.get(selectedTeam.id) ?? [] : [];
+  let manualPlayers =
+    (currentTeamAggregate?.manualPlayers ?? currentTeamAggregate?.team?.manualPlayers ?? []).map(
+      asManualPlayer
+    );
+  const hasAggregateManualPlayers =
+    Array.isArray(currentTeamAggregate?.manualPlayers) ||
+    Array.isArray(currentTeamAggregate?.team?.manualPlayers);
+
+  if (selectedTeam && !hasAggregateManualPlayers) {
+    try {
+      manualPlayers = (
+        await getApi<BackendTeamManualPlayerResponse[]>(`/teams/${selectedTeam.id}/manual-players`)
+      ).map(asManualPlayer);
+    } catch {
+      manualPlayers = selectedTeam.manualPlayers;
+    }
+  }
   const isCaptain = aggregateTeam
     ? Boolean(currentTeamAggregate?.captain)
     : Boolean(
@@ -425,6 +482,7 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
     dataSource,
     incomingInvitations,
     isCaptain,
+    manualPlayers,
     members,
     outgoingInvitations,
     protectedDataError,

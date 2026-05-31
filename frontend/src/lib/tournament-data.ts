@@ -14,6 +14,10 @@ interface BackendTournamentDto {
   title?: string | null;
   status?: string | null;
   format?: string | null;
+  teamSize?: number | null;
+  settings?: {
+    teamSize?: number | null;
+  } | null;
   organizer?: string | null;
   organizerNickname?: string | null;
   description?: string | null;
@@ -71,6 +75,10 @@ function normalizeStatus(status?: string | null): TournamentStatus {
     : "draft";
 }
 
+function normalizeTeamSize(value?: number | null) {
+  return value === 1 || value === 3 || value === 5 ? value : null;
+}
+
 function fallbackSlug(value: BackendTournamentDto) {
   if (value.slug) {
     return value.slug;
@@ -91,6 +99,7 @@ export function mapTournamentDto(value: BackendTournamentDto): Tournament {
     checkInOpensAt: value.checkInOpensAt ?? null,
     endsAt: value.endsAt ?? null,
     format: value.format ?? "Dota 2",
+    teamSize: normalizeTeamSize(value.teamSize ?? value.settings?.teamSize),
     id,
     organizer: value.organizerNickname ?? value.organizer ?? "DotaOps",
     prizePool: value.prizePool ?? "TBD",

@@ -3147,6 +3147,18 @@ textarea:focus {
   color: var(--ops-error);
 }
 
+.tournament-registration-checks .is-pending svg {
+  color: var(--ops-secondary);
+}
+
+.tournament-registration-roster small {
+  margin-left: 4px;
+  color: var(--ops-secondary);
+  font-family: var(--ops-font-mono);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
 .tournament-registration-message {
   padding: 12px 14px;
   border: 1px solid rgba(171, 137, 133, 0.22);
@@ -9656,6 +9668,21 @@ textarea:focus {
   text-transform: uppercase;
 }
 
+.team-mgmt-manual-badge {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  padding: 6px 10px;
+  border: 1px solid rgba(0, 221, 221, 0.34);
+  border-radius: var(--ops-radius-sm);
+  background: rgba(0, 221, 221, 0.1);
+  color: var(--ops-cyan);
+  font-family: var(--ops-font-mono);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .team-mgmt-member-head {
   display: flex;
   align-items: center;
@@ -10562,6 +10589,129 @@ textarea:focus {
   .team-mgmt-join-placeholder button,
   .team-mgmt-join-placeholder article > p {
     grid-column: 1 / -1;
+  }
+}
+
+/* My Team stability and connected-state polish */
+.team-mgmt-page {
+  min-height: 0;
+  align-content: start;
+  grid-auto-rows: max-content;
+}
+
+.team-mgmt-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  align-self: start;
+  width: min(100%, 390px);
+  min-height: 46px;
+  margin: 0;
+}
+
+.team-mgmt-tab {
+  width: 100%;
+  height: 44px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 16px;
+}
+
+.team-mgmt-hero,
+.team-mgmt-hero-compact {
+  grid-template-columns: 168px minmax(0, 1fr);
+}
+
+.team-mgmt-hero-compact {
+  grid-template-columns: 116px minmax(0, 1fr);
+}
+
+.team-mgmt-roster-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.team-mgmt-invite-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.team-mgmt-roster-note {
+  margin: -10px 0 0;
+  color: var(--ops-muted);
+  font-size: 0.86rem;
+}
+
+.team-mgmt-roster-empty {
+  display: grid;
+  gap: 8px;
+  min-height: 112px;
+  padding: 22px;
+  border-style: dashed;
+  border-color: rgba(171, 137, 133, 0.28);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.team-mgmt-roster-empty strong {
+  color: var(--ops-text);
+}
+
+.team-mgmt-roster-empty p {
+  margin: 0;
+  color: var(--ops-muted);
+}
+
+.team-mgmt-side-card .team-mgmt-later-action,
+.team-mgmt-later-action {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--ops-muted);
+  opacity: 0.72;
+}
+
+.team-mgmt-later-action span {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.team-mgmt-later-action small,
+.team-mgmt-inline-note {
+  color: var(--ops-secondary);
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.62rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.team-mgmt-alert,
+.team-mgmt-alert-gold {
+  border-color: rgba(233, 195, 73, 0.26);
+  border-left-color: var(--ops-secondary);
+  background: rgba(233, 195, 73, 0.055);
+}
+
+.team-mgmt-alert h2,
+.team-mgmt-alert strong {
+  color: var(--ops-secondary);
+}
+
+.team-mgmt-metric strong {
+  overflow-wrap: anywhere;
+  font-size: clamp(1.8rem, 2.8vw, 3.5rem);
+}
+
+@media (max-width: 720px) {
+  .team-mgmt-tabs {
+    width: 100%;
+  }
+
+  .team-mgmt-roster-metrics,
+  .team-mgmt-invite-metrics {
+    grid-template-columns: 1fr;
   }
 }
 

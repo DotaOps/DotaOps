@@ -45,6 +45,7 @@ export interface Tournament {
   title: string;
   status: TournamentStatus;
   format: string;
+  teamSize?: number | null;
   startsAt: string;
   endsAt?: string | null;
   registrationOpensAt?: string | null;
