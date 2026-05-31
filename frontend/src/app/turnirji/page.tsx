@@ -78,9 +78,13 @@ export default async function TournamentsPage() {
           description="Statuses, registrations, teams, and format are ready for operational review."
         />
         <div className="tournament-card-grid">
-          {tournaments.map((tournament) => (
-            <TournamentCard key={tournament.id} tournament={tournament} />
-          ))}
+          {tournaments.length === 0 ? (
+            <p>No public tournaments are currently available.</p>
+          ) : (
+            tournaments.map((tournament) => (
+              <TournamentCard key={tournament.id} tournament={tournament} />
+            ))
+          )}
         </div>
       </section>
     </div>

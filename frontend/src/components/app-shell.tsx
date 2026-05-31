@@ -65,7 +65,9 @@ function dashboardLoadingRole(role?: string | null): DashboardLoadingRole {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "mock data";
+  const dataConnection =
+    process.env.NEXT_PUBLIC_API_URL ??
+    (process.env.NEXT_PUBLIC_SUPABASE_URL ? "Supabase database" : "Not configured");
   const isRoleDashboard = pathname.startsWith("/dashboard");
   const access = routeAccessForPath(pathname);
   const [profile, setProfile] = useState<CurrentUserProfile | null>(null);
@@ -236,8 +238,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="sidebar-panel ops-card">
           <Shield size={18} />
           <div>
-            <span>API connection</span>
-            <strong>{apiUrl}</strong>
+            <span>Data connection</span>
+            <strong>{dataConnection}</strong>
           </div>
         </div>
       </aside>

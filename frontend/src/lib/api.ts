@@ -40,21 +40,13 @@ function resolveApiUrl() {
 }
 
 function unwrapBackendPayload(value: unknown) {
-  if (isRecord(value) && "data" in value) {
-    const data = value.data;
+  const data = isRecord(value) && "data" in value ? value.data : value;
 
-    if (isRecord(data) && "items" in data) {
-      return data.items;
-    }
-
-    return data;
+  if (isRecord(data) && "items" in data) {
+    return data.items;
   }
 
-  if (isRecord(value) && "items" in value) {
-    return value.items;
-  }
-
-  return value;
+  return data;
 }
 
 async function readJson(response: Response) {
@@ -171,7 +163,7 @@ function hasCompatibleShape<T>(value: unknown, fallback: T): value is T {
   return typeof value === typeof fallback;
 }
 
-export async function getApi<T>(path: string, init?: ApiRequestInit): Promise<T> {
+async function requestApi(path: string, init?: ApiRequestInit) {
   const apiUrl = resolveApiUrl();
 
   if (!apiUrl) {
@@ -197,7 +189,17 @@ export async function getApi<T>(path: string, init?: ApiRequestInit): Promise<T>
     );
   }
 
-  return unwrapBackendPayload(rawPayload) as T;
+  return rawPayload;
+}
+
+export async function getApi<T>(path: string, init?: ApiRequestInit): Promise<T> {
+  return unwrapBackendPayload(await requestApi(path, init)) as T;
+}
+
+export async function getPagedApi<T>(path: string, init?: ApiRequestInit): Promise<T> {
+  const payload = await requestApi(path, init);
+
+  return (isRecord(payload) && "data" in payload ? payload.data : payload) as T;
 }
 
 export async function postApi<T>(path: string, body: unknown): Promise<T> {
