@@ -1,5 +1,5 @@
 import { RoleDashboard } from "@/components/dashboard/role-dashboard";
-import { normalizeDashboardRole } from "@/lib/role-dashboard-data";
+import { normalizeProductionDashboardRole } from "@/lib/dashboard-production-data";
 
 interface DashboardPageProps {
   searchParams?: Promise<{
@@ -9,7 +9,7 @@ interface DashboardPageProps {
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const params = await searchParams;
-  const role = params?.role ? normalizeDashboardRole(params.role) : undefined;
+  const role = params?.role ? normalizeProductionDashboardRole(params.role) : undefined;
 
   return <RoleDashboard role={role} />;
 }

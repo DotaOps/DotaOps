@@ -1,13 +1,15 @@
 import { Gamepad2 } from "lucide-react";
+import Link from "next/link";
 
 import {
   FormChips,
   PlayerAvatar,
   RoleActionButton,
+  RoleEmptyState,
   RolePanel,
   StatusChip
 } from "@/components/dashboard/role-dashboard-primitives";
-import { playerDashboardData as data } from "@/lib/role-dashboard-data";
+import { playerProductionDashboardData as data } from "@/lib/dashboard-production-data";
 import { classNames } from "@/lib/utils";
 
 export function PlayerDashboardView() {
@@ -17,19 +19,19 @@ export function PlayerDashboardView() {
         <section className="role-hero role-player-hero">
           <div className="role-player-hero-copy">
             <div className="role-hero-label-row">
-              <span className="role-hero-kicker">Pro Series</span>
-              <span>Live Event</span>
+              <span className="role-hero-kicker">{data.hero.label}</span>
+              <span>Workspace overview</span>
             </div>
             <h1>{data.hero.name}</h1>
             <p>{data.hero.description}</p>
             <div className="role-player-hero-actions">
-              <button className="role-action-button role-action-primary" type="button">
+              <Link className="role-action-button role-action-primary" href="/ekipe">
                 <Gamepad2 size={18} />
-                <span>Recap Replay</span>
-              </button>
-              <button className="role-action-button role-action-secondary" type="button">
-                Event Specs
-              </button>
+                <span>Open My Team</span>
+              </Link>
+              <Link className="role-action-button role-action-secondary" href="/turnirji">
+                Browse Tournaments
+              </Link>
             </div>
           </div>
 
@@ -43,7 +45,7 @@ export function PlayerDashboardView() {
           <div className="role-player-main">
             <div className="role-section-heading">
               <h2>Personal Performance</h2>
-              <span>Last 20 Matches</span>
+              <span>Backend metrics</span>
             </div>
 
             <div className="role-performance-grid">
@@ -64,9 +66,14 @@ export function PlayerDashboardView() {
             </div>
           </div>
 
-          <RolePanel title="Team Liquid Roster" className="role-player-roster-panel">
+          <RolePanel title="Team Roster" className="role-player-roster-panel">
             <div className="role-player-roster">
-              {data.roster.map((player) => (
+              {data.roster.length === 0 ? (
+                <RoleEmptyState
+                  detail="Open My Team to create or join a roster."
+                  title="No team roster to show yet."
+                />
+              ) : data.roster.map((player) => (
                 <article key={player.id}>
                   <PlayerAvatar player={player} />
                   <div>
@@ -98,8 +105,8 @@ export function PlayerDashboardView() {
           title="Recent Match Log"
           action={
             <div className="role-table-actions">
-              <button type="button">All Roles</button>
-              <button type="button">Win Only</button>
+              <button disabled type="button">All Roles</button>
+              <button disabled type="button">Win Only</button>
             </div>
           }
         >
@@ -117,7 +124,16 @@ export function PlayerDashboardView() {
                 </tr>
               </thead>
               <tbody>
-                {data.matchLog.map((match) => (
+                {data.matchLog.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>
+                      <RoleEmptyState
+                        detail="Imported player match analytics will appear here when available."
+                        title="No analyzed matches yet."
+                      />
+                    </td>
+                  </tr>
+                ) : data.matchLog.map((match) => (
                   <tr key={`${match.hero}-${match.duration}`}>
                     <td>
                       <span className="role-hero-cell">
@@ -146,8 +162,8 @@ export function PlayerDashboardView() {
               </tbody>
             </table>
           </div>
-          <button className="role-load-more" type="button">
-            Load More Battle Records
+          <button className="role-load-more" disabled type="button">
+            No battle records yet
           </button>
         </RolePanel>
       </div>
