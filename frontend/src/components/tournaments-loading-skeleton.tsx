@@ -1,6 +1,5 @@
 import { classNames } from "@/lib/utils";
 
-const metricSlots = ["tournaments", "live", "registrations", "schedule"];
 const cardSlots = ["ancient-cup", "mid-wars", "radiant-finals"];
 
 export function TournamentsLoadingSkeleton() {
@@ -26,19 +25,6 @@ export function TournamentsLoadingSkeleton() {
         <div className="tournament-command-actions">
           <SkeletonItem className="tournament-skeleton-header-action" />
         </div>
-
-        <div className="tournament-command-header-grid">
-          <div className="tournament-meta-grid">
-            {metricSlots.map((slot) => (
-              <article className="tournament-meta-card tournament-skeleton-meta-card" key={slot}>
-                <SkeletonItem className="tournament-skeleton-meta-icon" />
-                <SkeletonItem className="tournament-skeleton-meta-label" />
-                <SkeletonItem className="tournament-skeleton-meta-value" />
-                <SkeletonItem className="tournament-skeleton-meta-detail" />
-              </article>
-            ))}
-          </div>
-        </div>
       </section>
 
       <section aria-hidden="true" className="tournament-command-panel ops-panel">
@@ -55,26 +41,38 @@ export function TournamentsLoadingSkeleton() {
         <div className="tournament-card-grid">
           {cardSlots.map((slot) => (
             <article className="tournament-card ops-card tournament-skeleton-card" key={slot}>
-              <div className="card-title-row">
-                <div className="tournament-skeleton-card-heading">
-                  <SkeletonItem className="tournament-skeleton-card-title" />
-                  <SkeletonItem className="tournament-skeleton-card-format" />
+              <div className="tournament-card-media tournament-skeleton-card-media">
+                <SkeletonItem className="tournament-skeleton-card-image" />
+                <div className="tournament-card-media-badges">
+                  <SkeletonItem className="tournament-skeleton-status" />
+                  <SkeletonItem className="tournament-skeleton-team-size" />
                 </div>
-                <SkeletonItem className="tournament-skeleton-status" />
               </div>
 
-              <div className="tournament-skeleton-card-description">
-                <SkeletonItem className="tournament-skeleton-copy-line" />
-                <SkeletonItem className="tournament-skeleton-copy-line" />
-                <SkeletonItem className="tournament-skeleton-copy-line tournament-skeleton-copy-short" />
-              </div>
+              <div className="tournament-card-body">
+                <div className="card-title-row">
+                  <div className="tournament-skeleton-card-heading">
+                    <SkeletonItem className="tournament-skeleton-card-title" />
+                    <SkeletonItem className="tournament-skeleton-card-format" />
+                  </div>
+                </div>
 
-              <div className="card-meta-grid">
-                <SkeletonItem className="tournament-skeleton-card-meta" />
-                <SkeletonItem className="tournament-skeleton-card-meta tournament-skeleton-card-meta-short" />
-              </div>
+                <div className="tournament-skeleton-card-description">
+                  <SkeletonItem className="tournament-skeleton-copy-line" />
+                  <SkeletonItem className="tournament-skeleton-copy-line" />
+                  <SkeletonItem className="tournament-skeleton-copy-line tournament-skeleton-copy-short" />
+                </div>
 
-              <SkeletonItem className="tournament-skeleton-link" />
+                <div className="card-meta-grid">
+                  <SkeletonItem className="tournament-skeleton-card-meta" />
+                  <SkeletonItem className="tournament-skeleton-card-meta" />
+                  <SkeletonItem className="tournament-skeleton-card-meta tournament-skeleton-card-meta-short" />
+                </div>
+
+                <SkeletonItem className="tournament-skeleton-card-capacity" />
+
+                <SkeletonItem className="tournament-skeleton-link" />
+              </div>
             </article>
           ))}
         </div>
