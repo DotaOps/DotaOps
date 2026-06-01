@@ -13638,13 +13638,57 @@ button.schedule-results-match:hover,
   gap: var(--ops-space-5);
 }
 
+.public-tournament-shortcuts {
+  align-items: center;
+}
+
+.public-tournament-shortcuts button {
+  gap: 8px;
+  min-height: 40px;
+}
+
+.public-tournament-shortcuts button svg {
+  flex: 0 0 auto;
+}
+
 .public-tournament-live-panels > .live-sync-indicator {
   margin-bottom: calc(var(--ops-space-5) * -0.4);
+}
+
+.public-tournament-tab-body,
+.public-tournament-overview {
+  display: grid;
+  gap: var(--ops-space-5);
+  min-width: 0;
+}
+
+.public-tournament-tab-panel[hidden] {
+  display: none;
+}
+
+.public-tournament-overview-panel {
+  display: grid;
+  gap: var(--ops-space-4);
+  min-width: 0;
+  padding: var(--ops-space-5);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    rgba(18, 18, 18, 0.74);
 }
 
 @media (max-width: 720px) {
   .live-sync-indicator {
     max-width: 100%;
+  }
+
+  .public-tournament-shortcuts {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .public-tournament-shortcuts button {
+    justify-content: flex-start;
+    width: 100%;
   }
 }
 
