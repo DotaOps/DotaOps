@@ -5,6 +5,7 @@ import {
   Brackets,
   LayoutDashboard,
   LogIn,
+  ScrollText,
   Swords,
   Trophy,
   UserPlus,
@@ -20,7 +21,7 @@ import type { ReactNode } from "react";
 import { CurrentUserProfileProvider } from "@/components/current-user-profile-context";
 import { UserAvatar } from "@/components/user-avatar";
 import { getCurrentUserProfile, type CurrentUserProfile } from "@/lib/auth";
-import { isOrganizerRole, routeAccessForPath } from "@/lib/route-access";
+import { isAdminRole, isOrganizerRole, routeAccessForPath } from "@/lib/route-access";
 import { classNames } from "@/lib/utils";
 import {
   DashboardLoadingSkeleton,
@@ -34,6 +35,7 @@ const navItems: Array<{
   icon: LucideIcon;
   label: string;
   hideForOrganizer?: boolean;
+  adminOnly?: boolean;
   organizerOnly?: boolean;
 }> = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -41,7 +43,8 @@ const navItems: Array<{
   { href: "/organizator", label: "Organizer", icon: Brackets, organizerOnly: true },
   { href: "/ekipe", label: "My Team", icon: UsersRound, hideForOrganizer: true },
   { href: "/analitika", label: "Analytics", icon: BarChart3 },
-  { href: "/profile", label: "Profile", icon: UserRound }
+  { href: "/profile", label: "Profile", icon: UserRound },
+  { href: "/admin/audit", label: "Audit Log", icon: ScrollText, adminOnly: true }
 ];
 
 const publicContentNavItems: Array<{
@@ -82,6 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     access === "public" ? pathname : null
   );
   const canUseOrganizer = isOrganizerRole(profile?.role);
+  const canUseAdmin = isAdminRole(profile?.role);
   const isPublicContentGuest = access === "public-content" && !profile;
   const isPrivateAuthCheckPending =
     access !== "public" &&
@@ -171,9 +175,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     return navItems.filter(
       (item) =>
         (!item.organizerOnly || canUseOrganizer || shouldUseOrganizerLoader) &&
-        (!item.hideForOrganizer || profile?.role !== "organizer")
+        (!item.hideForOrganizer || profile?.role !== "organizer") &&
+        (!item.adminOnly || canUseAdmin)
     );
-  }, [canUseOrganizer, isPublicContentGuest, profile?.role, shouldUseOrganizerLoader]);
+  }, [canUseAdmin, canUseOrganizer, isPublicContentGuest, profile?.role, shouldUseOrganizerLoader]);
   const hasAuthenticatedProfile = Boolean(profile);
   const profileDisplayName = profile?.displayName || profile?.nickname || "Profile";
   const sidebarProfileHref = hasAuthenticatedProfile ? "/profile" : "/login";
@@ -218,6 +223,21 @@ export function AppShell({ children }: { children: ReactNode }) {
         }
         detail="This section is only available to tournament organizers and admins."
         title="Organizer access required"
+      />
+    );
+  }
+
+  if (access === "admin" && !canUseAdmin) {
+    return (
+      <RouteState
+        action={
+          <>
+            <Link className="button ops-button-primary" href="/dashboard">Back to Dashboard</Link>
+            <Link className="button ops-button-secondary" href="/turnirji">View Tournaments</Link>
+          </>
+        }
+        detail="This section is only available to DotaOps administrators."
+        title="Admin access required"
       />
     );
   }

@@ -1,4 +1,4 @@
-export type RouteAccess = "auth" | "organizer" | "public" | "public-content";
+export type RouteAccess = "admin" | "auth" | "organizer" | "public" | "public-content";
 
 export function routeAccessForPath(pathname: string): RouteAccess {
   if (pathname === "/" || pathname === "/login" || pathname === "/register") {
@@ -13,7 +13,15 @@ export function routeAccessForPath(pathname: string): RouteAccess {
     return "organizer";
   }
 
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    return "admin";
+  }
+
   return "auth";
+}
+
+export function isAdminRole(role?: string | null) {
+  return role === "admin";
 }
 
 export function isOrganizerRole(role?: string | null) {
