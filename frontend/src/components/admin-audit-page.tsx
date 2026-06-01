@@ -94,6 +94,14 @@ function actionLabel(action: AdminAuditAction) {
   return action.toUpperCase();
 }
 
+function abbreviatedRecordId(recordId: string | null) {
+  if (!recordId || recordId.length <= 17) {
+    return recordId ?? "N/A";
+  }
+
+  return `${recordId.slice(0, 8)}...${recordId.slice(-6)}`;
+}
+
 function displayPage(page: AdminAuditPage | null) {
   if (!page || page.page.totalPages === 0) {
     return "Page 0 / 0";
@@ -386,9 +394,12 @@ function AuditTable({
 }
 
 function AuditRow({ item }: { item: AdminAuditLogItem }) {
+  const visibleChangedFields = item.changedFields.slice(0, 4);
+  const hiddenChangedFieldsCount = item.changedFields.length - visibleChangedFields.length;
+
   return (
     <tr>
-      <td className="ops-mono">{formatDateTime(item.createdAt)}</td>
+      <td className="ops-mono admin-audit-time">{formatDateTime(item.createdAt)}</td>
       <td>
         <strong>{item.actor.nickname ?? "System"}</strong>
       </td>
@@ -398,12 +409,19 @@ function AuditRow({ item }: { item: AdminAuditLogItem }) {
         </span>
       </td>
       <td className="ops-mono">{item.table}</td>
-      <td className="ops-mono admin-audit-record-id">{item.recordId ?? "N/A"}</td>
+      <td className="ops-mono admin-audit-record-id" title={item.recordId ?? undefined}>
+        {abbreviatedRecordId(item.recordId)}
+      </td>
       <td>{item.summary}</td>
       <td>
         <div className="admin-audit-field-list">
           {item.changedFields.length > 0 ? (
-            item.changedFields.map((field) => <span key={field}>{field}</span>)
+            <>
+              {visibleChangedFields.map((field) => <span key={field}>{field}</span>)}
+              {hiddenChangedFieldsCount > 0 ? (
+                <span className="admin-audit-field-more">+{hiddenChangedFieldsCount} more</span>
+              ) : null}
+            </>
           ) : (
             <em>No safe field changes</em>
           )}

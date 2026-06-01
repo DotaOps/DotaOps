@@ -13550,9 +13550,12 @@ button.schedule-results-match:hover,
   color: var(--ops-text);
 }
 
+.admin-audit-time {
+  white-space: nowrap;
+}
+
 .admin-audit-record-id {
-  max-width: 190px;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .admin-audit-action {
@@ -13591,6 +13594,11 @@ button.schedule-results-match:hover,
   color: var(--ops-muted-strong);
   font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.65rem;
+}
+
+.admin-audit-field-list .admin-audit-field-more {
+  border-color: rgba(222, 185, 88, 0.45);
+  color: var(--ops-secondary);
 }
 
 .admin-audit-field-list em {
