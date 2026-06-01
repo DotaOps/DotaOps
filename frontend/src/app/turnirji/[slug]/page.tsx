@@ -1,18 +1,8 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import {
-  CalendarDays,
-  DatabaseZap,
-  Trophy,
-  UsersRound
-} from "lucide-react";
 
-import { PublicTournamentManageLink } from "@/components/public-tournament-manage-link";
 import { PublicTournamentLivePanels } from "@/components/public-tournament-live-panels";
 import { TournamentCommandHeader } from "@/components/tournament-command-header";
-import { TournamentAnalyticsPanel } from "@/components/tournament-analytics-panel";
-import { TournamentMetaGrid } from "@/components/tournament-meta-grid";
-import { TournamentRegistrationPanel } from "@/components/tournament-registration-panel";
 import { getTournamentBySlug } from "@/lib/data";
 import {
   getPublicTournamentAnalytics,
@@ -31,7 +21,6 @@ import {
   getPublicTournamentMatches,
   type TournamentMatch
 } from "@/lib/tournament-match-data";
-import { formatDateTime } from "@/lib/utils";
 
 interface TournamentDetailPageProps {
   params: Promise<{
@@ -105,55 +94,15 @@ export default async function TournamentDetailPage({
         description={tournament.description}
         status={tournament.status}
         actions={
-          <>
-            <Link className="button ops-button-secondary" href="/turnirji">
-              All Tournaments
-            </Link>
-            <PublicTournamentManageLink
-              label="Manage Groups"
-              slug={tournament.slug}
-              tournamentId={tournament.id}
-            />
-          </>
+          <Link className="button ops-button-secondary" href="/turnirji">
+            All Tournaments
+          </Link>
         }
-      >
-        <TournamentMetaGrid
-          items={[
-            {
-              detail: "format",
-              icon: Trophy,
-              label: "System",
-              tone: "red",
-              value: tournament.format
-            },
-            {
-              detail: "start",
-              icon: CalendarDays,
-              label: "Schedule",
-              tone: "gold",
-              value: formatDateTime(tournament.startsAt)
-            },
-            {
-              detail: "registrations",
-              icon: UsersRound,
-              label: "Teams",
-              tone: "cyan",
-              value: `${tournament.registrationsCount}/${tournament.teamsCount}`
-            },
-            {
-              detail: "official records",
-              icon: DatabaseZap,
-              label: "Matches",
-              tone: "green",
-              value: String(publicMatches.length)
-            }
-          ]}
-        />
-      </TournamentCommandHeader>
-
-      <TournamentRegistrationPanel tournament={tournament} />
+      />
 
       <PublicTournamentLivePanels
+        analyticsError={tournamentAnalyticsError}
+        analyticsMetrics={tournamentAnalytics}
         initialBracket={bracket}
         initialBracketError={bracketError}
         initialGroupsStandings={groupsStandings}
@@ -161,12 +110,8 @@ export default async function TournamentDetailPage({
         initialMatches={publicMatches}
         initialMatchesError={publicMatchesError}
         slug={tournament.slug}
+        tournament={tournament}
         tournamentId={tournament.id}
-      />
-
-      <TournamentAnalyticsPanel
-        error={tournamentAnalyticsError}
-        metrics={tournamentAnalytics}
       />
     </div>
   );
