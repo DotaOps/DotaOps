@@ -1,8 +1,12 @@
-export type RouteAccess = "admin" | "auth" | "organizer" | "public" | "public-content";
+export type RouteAccess = "admin" | "auth" | "organizer" | "public" | "public-content" | "transition";
 
 export function routeAccessForPath(pathname: string): RouteAccess {
   if (pathname === "/" || pathname === "/login" || pathname === "/register") {
     return "public";
+  }
+
+  if (pathname === "/portal-entry") {
+    return "transition";
   }
 
   if (pathname === "/turnirji" || pathname.startsWith("/turnirji/")) {
@@ -48,7 +52,13 @@ export function safeLocalRedirectPath(value: string | null | undefined, fallback
 
     const target = `${url.pathname}${url.search}${url.hash}`;
 
-    if (target === "/login" || target.startsWith("/login?") || target === "/register") {
+    if (
+      target === "/login" ||
+      target.startsWith("/login?") ||
+      target === "/register" ||
+      url.pathname === "/portal-entry" ||
+      url.pathname.startsWith("/portal-entry/")
+    ) {
       return fallback;
     }
 

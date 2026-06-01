@@ -80,9 +80,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const access = routeAccessForPath(pathname);
   const isOrganizerWorkspace = access === "organizer";
   const [profile, setProfile] = useState<CurrentUserProfile | null>(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(access !== "public");
+  const [isCheckingAuth, setIsCheckingAuth] = useState(
+    access !== "public" && access !== "transition"
+  );
   const [checkedAuthPathname, setCheckedAuthPathname] = useState<string | null>(
-    access === "public" ? pathname : null
+    access === "public" || access === "transition" ? pathname : null
   );
   const canUseOrganizer = isOrganizerRole(profile?.role);
   const canUseAdmin = isAdminRole(profile?.role);
@@ -90,13 +92,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isPrivateAuthCheckPending =
     access !== "public" &&
     access !== "public-content" &&
+    access !== "transition" &&
     (isCheckingAuth || checkedAuthPathname !== pathname);
   const shouldUseOrganizerLoader = isOrganizerWorkspace && isPrivateAuthCheckPending;
 
   useEffect(() => {
     let isMounted = true;
 
-    if (access === "public") {
+    if (access === "public" || access === "transition") {
       const timeout = window.setTimeout(() => {
         if (isMounted) {
           setCheckedAuthPathname(pathname);
@@ -142,7 +145,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [access, pathname]);
 
   useEffect(() => {
-    if (isPrivateAuthCheckPending || profile || access === "public" || access === "public-content") {
+    if (
+      isPrivateAuthCheckPending ||
+      profile ||
+      access === "public" ||
+      access === "public-content" ||
+      access === "transition"
+    ) {
       return;
     }
 
@@ -194,7 +203,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const shouldShowPageSkeleton = isPrivateAuthCheckPending && Boolean(profile) && !shouldUseOrganizerLoader;
   const pageDashboardLoadingRole = dashboardLoadingRole(profile?.role);
 
-  if (access === "public") {
+  if (access === "public" || access === "transition") {
     return <>{children}</>;
   }
 
