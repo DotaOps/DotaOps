@@ -9,6 +9,10 @@ type ApiRequestInit = RequestInit & {
   };
 };
 
+interface AuthenticatedGetOptions {
+  unwrap?: boolean;
+}
+
 export interface ApiFieldError {
   code?: string | null;
   field?: string | null;
@@ -265,7 +269,8 @@ export async function patchApiAuthenticated<T>(
 
 export async function getApiAuthenticated<T>(
   path: string,
-  accessToken?: string
+  accessToken?: string,
+  options?: AuthenticatedGetOptions
 ): Promise<T> {
   const apiUrl = resolveApiUrl();
 
@@ -294,7 +299,7 @@ export async function getApiAuthenticated<T>(
     );
   }
 
-  return unwrapBackendPayload(rawPayload) as T;
+  return (options?.unwrap === false ? rawPayload : unwrapBackendPayload(rawPayload)) as T;
 }
 
 export async function postApiAuthenticated<T>(
