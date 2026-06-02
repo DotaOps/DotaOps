@@ -105,6 +105,8 @@ public class DashboardService {
                 currentTeam.canManageRoster(),
                 currentTeam.canInvitePlayers(),
                 currentTeam.canTransferOwnership(),
+                currentTeam.canLeaveTeam(),
+                currentTeam.canDisbandTeam(),
                 true,
                 false,
                 false);
@@ -119,6 +121,8 @@ public class DashboardService {
                 false,
                 false,
                 false,
+                false,
+                false,
                 true,
                 true,
                 true);
@@ -129,6 +133,8 @@ public class DashboardService {
                 false,
                 false,
                 null,
+                false,
+                false,
                 false,
                 false,
                 false,

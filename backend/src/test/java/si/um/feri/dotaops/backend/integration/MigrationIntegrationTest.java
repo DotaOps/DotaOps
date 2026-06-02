@@ -138,6 +138,7 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('matches_status_idx'),
                       ('steam_login_states_expires_idx'),
                       ('matches_tournament_stage_idx'),
+                      ('teams_active_created_at_idx'),
                       ('audit_log_created_at_idx'),
                       ('notification_outbox_recipient_profile_id_idx'),
                       ('notification_outbox_status_idx'),
@@ -220,6 +221,7 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                 from (
                     values
                       ('audit_teams', 'teams'),
+                      ('audit_team_members', 'team_members'),
                       ('audit_tournaments', 'tournaments'),
                       ('audit_tournament_registrations', 'tournament_registrations'),
                       ('audit_matches', 'matches'),

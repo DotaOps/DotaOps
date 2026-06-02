@@ -14,6 +14,8 @@ public record CurrentTeamResponse(
         boolean canManageRoster,
         boolean canInvitePlayers,
         boolean canTransferOwnership,
+        boolean canLeaveTeam,
+        boolean canDisbandTeam,
         boolean canViewAnalytics,
         int participantsCount,
         int capacity,
@@ -41,6 +43,11 @@ public record CurrentTeamResponse(
                 canManageRoster,
                 canManageRoster,
                 canManageRoster,
+                captain
+                        && team != null
+                        && members != null
+                        && members.stream().anyMatch(member -> !member.profileId().equals(team.captainProfileId())),
+                !captain && team != null,
                 captain,
                 team != null,
                 members == null ? 0 : members.size(),
@@ -64,6 +71,8 @@ public record CurrentTeamResponse(
                 false,
                 null,
                 canCreateTeam,
+                false,
+                false,
                 false,
                 false,
                 false,

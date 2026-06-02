@@ -12,6 +12,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
+import si.um.feri.dotaops.backend.analytics.service.AnalyticsQueryService;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedProfile;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
@@ -30,6 +32,7 @@ import si.um.feri.dotaops.backend.team.repository.CreateTeamInvitationCommand;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamMemberCommand;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamManualPlayerCommand;
 import si.um.feri.dotaops.backend.team.repository.TeamInvitationRepository;
+import si.um.feri.dotaops.backend.team.repository.TeamJoinRequestRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamManualPlayerRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
@@ -38,10 +41,13 @@ import si.um.feri.dotaops.backend.team.web.AddTeamMemberRequest;
 import si.um.feri.dotaops.backend.team.web.CreateTeamInvitationRequest;
 import si.um.feri.dotaops.backend.team.web.CreateTeamManualPlayerRequest;
 import si.um.feri.dotaops.backend.team.web.CurrentTeamResponse;
+import si.um.feri.dotaops.backend.team.web.DisbandTeamResponse;
 import si.um.feri.dotaops.backend.team.web.TeamInvitationResponse;
 import si.um.feri.dotaops.backend.team.web.TeamManualPlayerResponse;
 import si.um.feri.dotaops.backend.team.web.TeamMemberResponse;
 import si.um.feri.dotaops.backend.team.web.TeamResponse;
+import si.um.feri.dotaops.backend.team.web.TeamRosterPlayerStatsResponse;
+import si.um.feri.dotaops.backend.team.web.TeamRosterProfileResponse;
 import si.um.feri.dotaops.backend.team.web.TransferTeamOwnershipRequest;
 import si.um.feri.dotaops.backend.team.web.UpdateTeamMemberRequest;
 import si.um.feri.dotaops.backend.team.web.UpdateTeamManualPlayerRequest;
@@ -53,7 +59,9 @@ public class TeamRosterService {
     private final TeamMemberRepository teamMemberRepository;
     private final TeamManualPlayerRepository teamManualPlayerRepository;
     private final TeamInvitationRepository teamInvitationRepository;
+    private final TeamJoinRequestRepository teamJoinRequestRepository;
     private final TeamRosterCapacityService teamRosterCapacityService;
+    private final AnalyticsQueryService analyticsQueryService;
     private final ProfileRepository profileRepository;
     private final CurrentUserProvider currentUserProvider;
     private final DatabaseActorContext databaseActorContext;
@@ -63,7 +71,9 @@ public class TeamRosterService {
             TeamMemberRepository teamMemberRepository,
             TeamManualPlayerRepository teamManualPlayerRepository,
             TeamInvitationRepository teamInvitationRepository,
+            TeamJoinRequestRepository teamJoinRequestRepository,
             TeamRosterCapacityService teamRosterCapacityService,
+            AnalyticsQueryService analyticsQueryService,
             ProfileRepository profileRepository,
             CurrentUserProvider currentUserProvider,
             DatabaseActorContext databaseActorContext
@@ -72,7 +82,9 @@ public class TeamRosterService {
         this.teamMemberRepository = teamMemberRepository;
         this.teamManualPlayerRepository = teamManualPlayerRepository;
         this.teamInvitationRepository = teamInvitationRepository;
+        this.teamJoinRequestRepository = teamJoinRequestRepository;
         this.teamRosterCapacityService = teamRosterCapacityService;
+        this.analyticsQueryService = analyticsQueryService;
         this.profileRepository = profileRepository;
         this.currentUserProvider = currentUserProvider;
         this.databaseActorContext = databaseActorContext;
@@ -107,6 +119,76 @@ public class TeamRosterService {
         return teamRepository.findCurrentTeamForProfile(currentProfile.profileId())
                 .map(team -> currentTeamResponse(currentProfile, team))
                 .orElseGet(() -> CurrentTeamResponse.none(currentProfile.role() == ProfileRole.PLAYER));
+    }
+
+    @Transactional(readOnly = true)
+    public TeamRosterProfileResponse getRosterProfile(UUID teamId, UUID profileId) {
+        Team team = ensureTeamExists(teamId);
+        AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
+        ensurePlayerTeamFlow(currentProfile);
+        if (!currentProfile.profileId().equals(team.captainProfileId())
+                && !teamMemberRepository.existsActive(teamId, currentProfile.profileId())) {
+            throw new AccessDeniedException("Only active team members can view private roster profiles.");
+        }
+
+        var member = teamMemberRepository.findActiveByTeamAndProfile(teamId, profileId)
+                .orElseThrow(() -> new ResourceNotFoundException("Active team member", "profileId", profileId));
+        AnalyticsFilters filters = new AnalyticsFilters(null, teamId, profileId, null, 100);
+        var playerMetrics = analyticsQueryService.protectedPlayerMetrics(filters);
+
+        return new TeamRosterProfileResponse(
+                member.profileId(),
+                member.nickname(),
+                member.displayName(),
+                member.avatarUrl(),
+                member.role(),
+                member.profileId().equals(team.captainProfileId()),
+                member.joinedAt(),
+                TeamRosterPlayerStatsResponse.from(playerMetrics),
+                analyticsQueryService.protectedHeroMetrics(new AnalyticsFilters(null, teamId, profileId, null, 5)),
+                List.of());
+    }
+
+    @Transactional
+    public CurrentTeamResponse leaveCurrentTeam() {
+        AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
+        ensurePlayerTeamFlow(currentProfile);
+        Team currentTeam = teamRepository.findCurrentTeamForProfile(currentProfile.profileId())
+                .orElseThrow(() -> new ResourceNotFoundException("Active team membership", "profileId",
+                        currentProfile.profileId()));
+        Team lockedTeam = ensureTeamExistsForUpdate(currentTeam.id());
+        if (currentProfile.profileId().equals(lockedTeam.captainProfileId())) {
+            throw new BadRequestException("Team owner must transfer ownership or disband the team before leaving.");
+        }
+
+        var membership = teamMemberRepository.findActiveByTeamAndProfile(lockedTeam.id(), currentProfile.profileId())
+                .orElseThrow(() -> new ResourceNotFoundException("Active team membership", "profileId",
+                        currentProfile.profileId()));
+        applyDatabaseActor(currentProfile);
+        teamMemberRepository.deactivate(lockedTeam.id(), membership.id())
+                .orElseThrow(() -> new ResourceNotFoundException("Active team membership", "profileId",
+                        currentProfile.profileId()));
+
+        return CurrentTeamResponse.none(true);
+    }
+
+    @Transactional
+    public DisbandTeamResponse disbandTeam(UUID teamId) {
+        AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
+        ensurePlayerTeamFlow(currentProfile);
+        Team team = ensureTeamExistsForUpdate(teamId);
+        if (!currentProfile.profileId().equals(team.captainProfileId())) {
+            throw new AccessDeniedException("Only the current team owner can disband this team.");
+        }
+
+        applyDatabaseActor(currentProfile);
+        teamMemberRepository.deactivateAllActiveByTeamId(teamId);
+        teamInvitationRepository.cancelPendingByTeamId(teamId);
+        teamJoinRequestRepository.cancelPendingByTeamId(teamId, currentProfile.profileId());
+        OffsetDateTime disbandedAt = teamRepository.disband(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
+
+        return new DisbandTeamResponse(teamId, "disbanded", disbandedAt);
     }
 
     @Transactional(readOnly = true)
@@ -441,6 +523,10 @@ public class TeamRosterService {
         var rosterCapacity = teamRosterCapacityService.resolve(team);
         boolean captain = profile.profileId().equals(team.captainProfileId());
         boolean canManageTeam = canManageTeam(profile, team);
+        boolean player = profile.role() == ProfileRole.PLAYER;
+        boolean canTransferOwnership = captain
+                && player
+                && members.stream().anyMatch(member -> !member.profileId().equals(profile.profileId()));
 
         return new CurrentTeamResponse(
                 TeamResponse.from(team, manualPlayers),
@@ -453,8 +539,10 @@ public class TeamRosterService {
                 canManageTeam,
                 canManageTeam,
                 canManageTeam,
-                captain && profile.role() == ProfileRole.PLAYER,
-                profile.role() == ProfileRole.PLAYER,
+                canTransferOwnership,
+                !captain && player,
+                captain && player,
+                player,
                 rosterCapacity.participantsCount(),
                 rosterCapacity.capacity(),
                 rosterCapacity.slotsFilled(),
@@ -477,6 +565,21 @@ public class TeamRosterService {
         if (profile.role() != ProfileRole.PLAYER) {
             throw new AccessDeniedException("Only players can respond to team invitations.");
         }
+    }
+
+    private void ensurePlayerTeamFlow(AuthenticatedProfile profile) {
+        if (profile.role() != ProfileRole.PLAYER) {
+            throw new AccessDeniedException("Only players can use this team flow.");
+        }
+    }
+
+    private void applyDatabaseActor(AuthenticatedProfile profile) {
+        databaseActorContext.apply(new AuthenticatedActor(
+                profile.authUserId(),
+                profile.profileId(),
+                null,
+                null,
+                profile.role()));
     }
 
     private void ensureNoOtherActiveTeam(UUID profileId, UUID targetTeamId) {

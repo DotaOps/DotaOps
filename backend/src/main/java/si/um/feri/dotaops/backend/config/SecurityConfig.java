@@ -67,7 +67,11 @@ public class SecurityConfig {
                                 "/api/tournament-groups/*/standings",
                                 "/api/public/tournament-groups/*/standings").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/teams").hasRole("PLAYER")
-                        .requestMatchers(HttpMethod.POST, "/api/teams/*/transfer-ownership").hasRole("PLAYER")
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/me/team/leave",
+                                "/api/teams/*/disband",
+                                "/api/teams/*/transfer-ownership").hasRole("PLAYER")
+                        .requestMatchers(HttpMethod.GET, "/api/teams/*/members/*/profile").hasRole("PLAYER")
                         .requestMatchers(HttpMethod.POST,
                                 "/api/teams/*/join-requests",
                                 "/api/team-invitations/*/accept",

@@ -31,7 +31,10 @@ public class AdminAuditLogService {
 
     private static final Map<String, Set<String>> SAFE_CHANGED_FIELDS = Map.of(
             "public.teams", Set.of(
-                    "name", "slug", "tag", "region", "description", "captain_profile_id", "updated_at"),
+                    "name", "slug", "tag", "region", "description", "captain_profile_id", "disbanded_at",
+                    "updated_at"),
+            "public.team_members", Set.of(
+                    "team_id", "profile_id", "member_role", "is_active", "joined_at", "left_at", "updated_at"),
             "public.tournaments", Set.of(
                     "slug", "title", "description", "rules", "format", "status", "is_public",
                     "max_teams", "registration_opens_at", "registration_closes_at", "starts_at", "ends_at",
@@ -55,6 +58,7 @@ public class AdminAuditLogService {
 
     private static final Map<String, String> TABLE_LABELS = Map.of(
             "public.teams", "Team",
+            "public.team_members", "Team member",
             "public.tournaments", "Tournament",
             "public.tournament_registrations", "Tournament registration",
             "public.matches", "Match",

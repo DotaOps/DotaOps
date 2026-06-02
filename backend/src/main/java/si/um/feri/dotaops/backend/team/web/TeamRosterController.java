@@ -55,6 +55,24 @@ public class TeamRosterController {
         return ApiResponse.of(teamRosterService.getCurrentTeam());
     }
 
+    @GetMapping("/teams/{teamId}/members/{profileId}/profile")
+    ApiResponse<TeamRosterProfileResponse> getRosterProfile(
+            @PathVariable UUID teamId,
+            @PathVariable UUID profileId
+    ) {
+        return ApiResponse.of(teamRosterService.getRosterProfile(teamId, profileId));
+    }
+
+    @PostMapping("/me/team/leave")
+    ApiResponse<CurrentTeamResponse> leaveCurrentTeam() {
+        return ApiResponse.of(teamRosterService.leaveCurrentTeam());
+    }
+
+    @PostMapping("/teams/{teamId}/disband")
+    ApiResponse<DisbandTeamResponse> disbandTeam(@PathVariable UUID teamId) {
+        return ApiResponse.of(teamRosterService.disbandTeam(teamId));
+    }
+
     @PostMapping("/teams/{teamId}/transfer-ownership")
     ApiResponse<CurrentTeamResponse> transferOwnership(
             @PathVariable UUID teamId,

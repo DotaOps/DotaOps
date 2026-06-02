@@ -204,6 +204,19 @@ public class TeamInvitationRepository {
                 .findFirst();
     }
 
+    public int cancelPendingByTeamId(UUID teamId) {
+        return jdbcTemplate.update(
+                """
+                update public.team_invitations
+                set
+                  status = 'cancelled',
+                  updated_at = now()
+                where team_id = ?
+                  and status = 'pending'
+                """,
+                teamId);
+    }
+
     private Optional<TeamInvitation> updateStatus(
             UUID invitationId,
             TeamInvitationStatus status,

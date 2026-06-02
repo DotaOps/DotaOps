@@ -1,5 +1,6 @@
 package si.um.feri.dotaops.backend.team.web;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -158,7 +159,85 @@ class TeamRosterControllerTest {
                 .andExpect(jsonPath("$.data.canManageTeam").value(true))
                 .andExpect(jsonPath("$.data.canManageRoster").value(true))
                 .andExpect(jsonPath("$.data.canInvitePlayers").value(true))
+                .andExpect(jsonPath("$.data.canLeaveTeam").value(false))
+                .andExpect(jsonPath("$.data.canDisbandTeam").value(true))
                 .andExpect(jsonPath("$.data.canViewAnalytics").value(true));
+    }
+
+    @Test
+    void leaveTeamRequiresPlayerJwt() throws Exception {
+        mockMvc.perform(post("/api/me/team/leave"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(post("/api/me/team/leave")
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void leaveTeamReturnsEmptyCurrentTeamState() throws Exception {
+        when(teamRosterService.leaveCurrentTeam()).thenReturn(CurrentTeamResponse.none(true));
+
+        mockMvc.perform(post("/api/me/team/leave")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.team").doesNotExist())
+                .andExpect(jsonPath("$.data.canCreateTeam").value(true))
+                .andExpect(jsonPath("$.data.canLeaveTeam").value(false));
+    }
+
+    @Test
+    void disbandTeamRequiresPlayerJwt() throws Exception {
+        mockMvc.perform(post("/api/teams/" + TEAM_ID + "/disband"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(post("/api/teams/" + TEAM_ID + "/disband")
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void disbandTeamReturnsSoftDeleteMarker() throws Exception {
+        when(teamRosterService.disbandTeam(TEAM_ID)).thenReturn(new DisbandTeamResponse(TEAM_ID, "disbanded", NOW));
+
+        mockMvc.perform(post("/api/teams/" + TEAM_ID + "/disband")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.teamId").value(TEAM_ID.toString()))
+                .andExpect(jsonPath("$.data.status").value("disbanded"))
+                .andExpect(jsonPath("$.data.disbandedAt").exists());
+    }
+
+    @Test
+    void rosterProfileRequiresPlayerJwtAndReturnsStableStatsContract() throws Exception {
+        when(teamRosterService.getRosterProfile(TEAM_ID, PROFILE_ID)).thenReturn(new TeamRosterProfileResponse(
+                PROFILE_ID,
+                "MidPulse",
+                "Mid Pulse",
+                null,
+                TeamMemberRole.SUPPORT,
+                false,
+                NOW,
+                new TeamRosterPlayerStatsResponse(0, 0, 0, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO),
+                List.of(),
+                List.of()));
+
+        mockMvc.perform(get("/api/teams/" + TEAM_ID + "/members/" + PROFILE_ID + "/profile"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(get("/api/teams/" + TEAM_ID + "/members/" + PROFILE_ID + "/profile")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.profileId").value(PROFILE_ID.toString()))
+                .andExpect(jsonPath("$.data.stats.gamesPlayed").value(0))
+                .andExpect(jsonPath("$.data.mostPlayedHeroes").isArray())
+                .andExpect(jsonPath("$.data.recentMatches").isArray());
     }
 
     @Test

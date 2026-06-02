@@ -253,8 +253,9 @@ Obstajajo tudi starejsi ali delno prekrivajoci adapterji: `data.ts`, `organizer-
 | `V28` | persisted profile role allowlist in team permission hardening: player-only create, captain/admin team RLS |
 | `V29` | `audit_log(created_at desc, id desc)` indeks za newest-first admin paginacijo in casovne filtre |
 | `V30` | reaktivacija ali backfill manjkajocih captain roster zapisov; owner/captain je tudi aktiven `team_members` participant |
+| `V31` | soft disband ekip prek `teams.disbanded_at`, active-team RLS in `audit_team_members` trigger |
 
-Integracijski test je na cisti PostgreSQL 16 bazi uspesno izvedel vseh 30 migracij.
+Integracijski test preverja, da Flyway na cisti PostgreSQL 16 bazi izvede vseh 31 migracij.
 
 ### Pomembne tabele
 
@@ -264,7 +265,7 @@ Integracijski test je na cisti PostgreSQL 16 bazi uspesno izvedel vseh 30 migrac
 | `profiles` | javni profil, vloga, Steam mirror, OpenDota account in sync casi | `auth.users`, vec poslovnih tabel | `ProfileRepository`, auth authorities |
 | `profile_external_accounts` | zunanji racuni; Steam je source of truth za povezave | `profiles` | Steam private SQL helperji |
 | `private.steam_login_states` | kratkozivi hashani OpenID state zapisi | opcijsko profil in auth user | `SteamLoginStateRepository` |
-| `teams` | ime, slug, captain, slike, regija | `profiles`, `auth.users` | `TeamRepository` |
+| `teams` | ime, slug, captain, slike, regija, soft-disband marker `disbanded_at` | `profiles`, `auth.users` | `TeamRepository` |
 | `team_members` | aktivni roster in vloga | `teams`, `profiles` | `TeamMemberRepository` |
 | `team_manual_players` | rocni roster brez DotaOps profila; display name, nickname, note | `teams` | `TeamManualPlayerRepository` |
 | `team_invitations` | povabila po profilu ali emailu | `teams`, `profiles` | `TeamInvitationRepository` |
@@ -317,7 +318,9 @@ Captain oziroma owner je team-level koncept prek `teams.captain_profile_id`. `Te
 
 `TeamRosterCapacityService` centralizira capacity logiko za direct member add, manual player add, invitations in join requests. Steje aktivne `team_members`, rocne igralce in captain fallback samo, ce captain se nima aktivnega roster zapisa. S tem owner steje kot participant in se ne steje dvakrat. Roster write tokovi pred preverjanjem capacityja zaklenejo team vrstico z `FOR UPDATE`, zato dva socasna accepta ne moreta porabiti istega zadnjega mesta.
 
-`GET /api/me/team` zaradi frontend odlocanja poleg starega `captain` vraca se `isTeamOwner`, `currentUserTeamRole`, `canCreateTeam`, `canManageTeam`, `canManageRoster`, `canInvitePlayers`, `canTransferOwnership`, `canViewAnalytics`, `participantsCount`, `capacity`, `slotsFilled`, `slotsRemaining` in `isFull`. Vsak roster member DTO vraca tudi `teamOwner`. Frontend zato ne rabi sklepati team pravic iz globalne profilne vloge.
+`GET /api/me/team` zaradi frontend odlocanja poleg starega `captain` vraca se `isTeamOwner`, `currentUserTeamRole`, `canCreateTeam`, `canManageTeam`, `canManageRoster`, `canInvitePlayers`, `canTransferOwnership`, `canLeaveTeam`, `canDisbandTeam`, `canViewAnalytics`, `participantsCount`, `capacity`, `slotsFilled`, `slotsRemaining` in `isFull`. Vsak roster member DTO vraca tudi `teamOwner`. Frontend zato ne rabi sklepati team pravic iz globalne profilne vloge.
+
+`POST /api/me/team/leave` deaktivira clanov `team_members` zapis in ohrani zgodovino. Owner mora pred odhodom prenesti lastnistvo ali uporabiti `POST /api/teams/{teamId}/disband`. Disband je soft delete: nastavi `teams.disbanded_at`, deaktivira aktivna clansta ter preklice pending invitations in join requests. `GET /api/teams/{teamId}/members/{profileId}/profile` vrne zasebni roster modal DTO z varnimi profilnimi polji, realnimi `match_players` agregati ter stabilnimi empty state vrednostmi.
 
 ### RLS, grants in view-i
 
@@ -482,7 +485,7 @@ Outbox je trajen DB zapis. Trenutni dogodki so submission, approval, rejection i
 
 Endpoint je `ROLE_PLAYER` protected. Servis dodatno preveri, da je actor trenutni captain, novi owner obstaja, ima persisted vlogo `player` in je aktiven clan iste ekipe. Stari owner ostane clan ekipe, globalne profilne vloge se ne spremenijo. Sprememba `teams.captain_profile_id` sprozi obstojeci `audit_teams` trigger; `DatabaseActorContext` zagotovi actor profil v `audit_log`.
 
-Planned oziroma se neimplementirane My Team funkcije ostajajo: Lock Roster, Leave Team, Disband Team, team-specific Audit Logs in player Profile/Stats pogled.
+Planned oziroma se neimplementirane My Team funkcije ostajajo: Lock Roster in team-specific Audit Logs UI. Leave Team, soft Disband Team in player Profile/Stats backend pogodbe so dokumentirane v `docs/backend-my-team-api.md`.
 
 ### Admin audit API
 
@@ -490,7 +493,7 @@ Planned oziroma se neimplementirane My Team funkcije ostajajo: Lock Roster, Leav
 
 Podprti filtri:
 
-- `tableName`: allowlist filter za `teams`, `tournaments`, `tournament_registrations`, `matches`, `match_games`, `match_imports` in `match_players`; sprejme tudi polno obliko `public.<table>`;
+- `tableName`: allowlist filter za `teams`, `team_members`, `tournaments`, `tournament_registrations`, `matches`, `match_games`, `match_imports` in `match_players`; sprejme tudi polno obliko `public.<table>`;
 - `recordId`: natancen UUID zapisa;
 - `actorProfileId`: natancen UUID profila akterja;
 - `from` in `to`: ISO datetime meji, obe vkljucujoci;

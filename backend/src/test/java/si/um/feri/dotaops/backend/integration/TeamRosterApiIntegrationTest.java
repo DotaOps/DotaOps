@@ -83,7 +83,9 @@ class TeamRosterApiIntegrationTest extends PostgresIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.team.id").value(teamId.toString()))
                 .andExpect(jsonPath("$.data.captain").value(true))
                 .andExpect(jsonPath("$.data.canManageRoster").value(true))
-                .andExpect(jsonPath("$.data.canTransferOwnership").value(true))
+                .andExpect(jsonPath("$.data.canTransferOwnership").value(false))
+                .andExpect(jsonPath("$.data.canLeaveTeam").value(false))
+                .andExpect(jsonPath("$.data.canDisbandTeam").value(true))
                 .andExpect(jsonPath("$.data.participantsCount").value(1))
                 .andExpect(jsonPath("$.data.slotsFilled").value(1))
                 .andExpect(jsonPath("$.data.slotsRemaining").value(4));
@@ -154,6 +156,148 @@ class TeamRosterApiIntegrationTest extends PostgresIntegrationTestSupport {
                 .andExpect(jsonPath("$.data[*].profileId").value(hasItem(inviteeProfileId.toString())))
                 .andExpect(jsonPath("$.data[*].role").value(hasItem("support")))
                 .andExpect(jsonPath("$.data[*].active").value(hasItem(true)));
+    }
+
+    @Test
+    void memberCanReadPrivateRosterProfileLeaveTeamAndCreateAuditHistory() throws Exception {
+        String suffix = uniqueSuffix();
+        UUID teamId = extractDataId(mockMvc.perform(post("/api/teams")
+                        .header("Authorization", bearerToken(captainAuthUserId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Leave Smoke %s",
+                                  "slug": "leave-smoke-%s",
+                                  "region": "EU"
+                                }
+                                """.formatted(suffix, suffix)))
+                .andExpect(status().isCreated())
+                .andReturn());
+        UUID memberId = extractDataId(mockMvc.perform(post("/api/teams/" + teamId + "/members")
+                        .header("Authorization", bearerToken(captainAuthUserId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "profileId": "%s",
+                                  "role": "mid"
+                                }
+                                """.formatted(inviteeProfileId)))
+                .andExpect(status().isCreated())
+                .andReturn());
+
+        mockMvc.perform(get("/api/teams/" + teamId + "/members/" + inviteeProfileId + "/profile")
+                        .header("Authorization", bearerToken(inviteeAuthUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.profileId").value(inviteeProfileId.toString()))
+                .andExpect(jsonPath("$.data.role").value("mid"))
+                .andExpect(jsonPath("$.data.stats.gamesPlayed").value(0))
+                .andExpect(jsonPath("$.data.mostPlayedHeroes").isArray())
+                .andExpect(jsonPath("$.data.recentMatches").isArray());
+
+        mockMvc.perform(post("/api/me/team/leave")
+                        .header("Authorization", bearerToken(inviteeAuthUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.team").doesNotExist())
+                .andExpect(jsonPath("$.data.canCreateTeam").value(true))
+                .andExpect(jsonPath("$.data.canLeaveTeam").value(false));
+
+        Boolean membershipInactive = jdbcTemplate.queryForObject(
+                "select not is_active and left_at is not null from public.team_members where id = ?",
+                Boolean.class,
+                memberId);
+        UUID auditActor = jdbcTemplate.queryForObject(
+                """
+                select actor_profile_id
+                from public.audit_log
+                where table_name = 'public.team_members'
+                  and record_id = ?
+                  and action = 'update'::public.dotaops_audit_action
+                order by created_at desc, id desc
+                limit 1
+                """,
+                UUID.class,
+                memberId);
+
+        assertThat(membershipInactive).isTrue();
+        assertThat(auditActor).isEqualTo(inviteeProfileId);
+    }
+
+    @Test
+    void ownerCanSoftDisbandTeamWithoutDeletingTournamentHistory() throws Exception {
+        String suffix = uniqueSuffix();
+        UUID teamId = extractDataId(mockMvc.perform(post("/api/teams")
+                        .header("Authorization", bearerToken(captainAuthUserId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Disband Smoke %s",
+                                  "slug": "disband-smoke-%s",
+                                  "region": "EU"
+                                }
+                                """.formatted(suffix, suffix)))
+                .andExpect(status().isCreated())
+                .andReturn());
+
+        jdbcTemplate.update(
+                """
+                insert into public.team_invitations (team_id, inviter_profile_id, invitee_profile_id, proposed_role)
+                values (?, ?, ?, 'support'::public.dotaops_team_member_role)
+                """,
+                teamId,
+                captainProfileId,
+                inviteeProfileId);
+        jdbcTemplate.update(
+                """
+                insert into public.team_join_requests (team_id, requester_profile_id, message)
+                values (?, ?, 'please add me')
+                """,
+                teamId,
+                inviteeProfileId);
+
+        mockMvc.perform(post("/api/teams/" + teamId + "/disband")
+                        .header("Authorization", bearerToken(captainAuthUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.teamId").value(teamId.toString()))
+                .andExpect(jsonPath("$.data.status").value("disbanded"))
+                .andExpect(jsonPath("$.data.disbandedAt").exists());
+
+        Integer retainedTeams = jdbcTemplate.queryForObject(
+                "select count(*) from public.teams where id = ? and disbanded_at is not null",
+                Integer.class,
+                teamId);
+        Integer activeMembers = jdbcTemplate.queryForObject(
+                "select count(*) from public.team_members where team_id = ? and is_active",
+                Integer.class,
+                teamId);
+        String invitationStatus = jdbcTemplate.queryForObject(
+                "select status::text from public.team_invitations where team_id = ?",
+                String.class,
+                teamId);
+        String joinRequestStatus = jdbcTemplate.queryForObject(
+                "select status::text from public.team_join_requests where team_id = ?",
+                String.class,
+                teamId);
+        UUID auditActor = jdbcTemplate.queryForObject(
+                """
+                select actor_profile_id
+                from public.audit_log
+                where table_name = 'public.teams'
+                  and record_id = ?
+                  and action = 'update'::public.dotaops_audit_action
+                order by created_at desc, id desc
+                limit 1
+                """,
+                UUID.class,
+                teamId);
+
+        assertThat(retainedTeams).isOne();
+        assertThat(activeMembers).isZero();
+        assertThat(invitationStatus).isEqualTo("cancelled");
+        assertThat(joinRequestStatus).isEqualTo("cancelled");
+        assertThat(auditActor).isEqualTo(captainProfileId);
+
+        mockMvc.perform(get("/api/teams/" + teamId))
+                .andExpect(status().isNotFound());
     }
 
     @Test

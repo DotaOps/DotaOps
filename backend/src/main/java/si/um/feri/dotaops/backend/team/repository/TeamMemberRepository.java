@@ -45,6 +45,21 @@ public class TeamMemberRepository {
                 .findFirst();
     }
 
+    public Optional<TeamMember> findActiveByTeamAndProfile(UUID teamId, UUID profileId) {
+        return jdbcTemplate.query(
+                        selectTeamMemberSql() + """
+                        where tm.team_id = ?
+                          and tm.profile_id = ?
+                          and tm.is_active = true
+                        limit 1
+                        """,
+                        this::mapTeamMember,
+                        teamId,
+                        profileId)
+                .stream()
+                .findFirst();
+    }
+
     public boolean existsActive(UUID teamId, UUID profileId) {
         Boolean exists = jdbcTemplate.queryForObject(
                 """
@@ -201,6 +216,20 @@ public class TeamMemberRepository {
                         teamId)
                 .stream()
                 .findFirst();
+    }
+
+    public int deactivateAllActiveByTeamId(UUID teamId) {
+        return jdbcTemplate.update(
+                """
+                update public.team_members
+                set
+                  is_active = false,
+                  left_at = coalesce(left_at, now()),
+                  updated_at = now()
+                where team_id = ?
+                  and is_active = true
+                """,
+                teamId);
     }
 
     private String selectTeamMemberSql() {
