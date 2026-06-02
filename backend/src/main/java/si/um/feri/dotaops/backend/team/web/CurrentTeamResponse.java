@@ -7,7 +7,13 @@ public record CurrentTeamResponse(
         List<TeamMemberResponse> members,
         List<TeamManualPlayerResponse> manualPlayers,
         boolean captain,
+        boolean isTeamOwner,
+        String currentUserTeamRole,
+        boolean canCreateTeam,
+        boolean canManageTeam,
         boolean canManageRoster,
+        boolean canInvitePlayers,
+        boolean canViewAnalytics,
         String teamResolution
 ) {
 
@@ -18,14 +24,36 @@ public record CurrentTeamResponse(
             boolean canManageRoster,
             String teamResolution
     ) {
-        this(team, members, List.of(), captain, canManageRoster, teamResolution);
+        this(
+                team,
+                members,
+                List.of(),
+                captain,
+                captain,
+                captain ? "owner" : "member",
+                false,
+                canManageRoster,
+                canManageRoster,
+                canManageRoster,
+                team != null,
+                teamResolution);
     }
 
     public static CurrentTeamResponse none() {
+        return none(false);
+    }
+
+    public static CurrentTeamResponse none(boolean canCreateTeam) {
         return new CurrentTeamResponse(
                 null,
                 List.of(),
                 List.of(),
+                false,
+                false,
+                null,
+                canCreateTeam,
+                false,
+                false,
                 false,
                 false,
                 "No active team found for the current profile.");

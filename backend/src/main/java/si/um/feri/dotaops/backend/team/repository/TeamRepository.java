@@ -110,6 +110,34 @@ public class TeamRepository {
                 .findFirst();
     }
 
+    public boolean existsCurrentTeamForProfileExcluding(UUID profileId, UUID excludedTeamId) {
+        Boolean exists = jdbcTemplate.queryForObject(
+                """
+                select exists (
+                  select 1
+                  from public.teams t
+                  where (cast(? as uuid) is null or t.id <> ?)
+                    and (
+                      t.captain_profile_id = ?
+                      or exists (
+                        select 1
+                        from public.team_members tm
+                        where tm.team_id = t.id
+                          and tm.profile_id = ?
+                          and tm.is_active = true
+                      )
+                    )
+                )
+                """,
+                Boolean.class,
+                excludedTeamId,
+                excludedTeamId,
+                profileId,
+                profileId);
+
+        return Boolean.TRUE.equals(exists);
+    }
+
     public Team create(CreateTeamCommand command) {
         return jdbcTemplate.queryForObject(
                 """

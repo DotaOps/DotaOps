@@ -82,7 +82,12 @@ class TeamRosterServiceTest {
         assertThat(response.team().id()).isEqualTo(TEAM_ID);
         assertThat(response.members()).hasSize(1);
         assertThat(response.captain()).isTrue();
+        assertThat(response.isTeamOwner()).isTrue();
+        assertThat(response.currentUserTeamRole()).isEqualTo("owner");
+        assertThat(response.canManageTeam()).isTrue();
         assertThat(response.canManageRoster()).isTrue();
+        assertThat(response.canInvitePlayers()).isTrue();
+        assertThat(response.canViewAnalytics()).isTrue();
     }
 
     @Test
@@ -95,6 +100,7 @@ class TeamRosterServiceTest {
         assertThat(response.team()).isNull();
         assertThat(response.members()).isEmpty();
         assertThat(response.captain()).isFalse();
+        assertThat(response.canCreateTeam()).isTrue();
         assertThat(response.canManageRoster()).isFalse();
     }
 
@@ -124,6 +130,20 @@ class TeamRosterServiceTest {
                 TEAM_ID,
                 new AddTeamMemberRequest(INVITEE_PROFILE_ID, TeamMemberRole.SUPPORT)))
                 .isInstanceOf(AccessDeniedException.class);
+
+        verify(teamMemberRepository, never()).create(any());
+    }
+
+    @Test
+    void organizerCannotAddMember() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(OTHER_PROFILE_ID, ProfileRole.ORGANIZER));
+
+        assertThatThrownBy(() -> teamRosterService.addMember(
+                TEAM_ID,
+                new AddTeamMemberRequest(INVITEE_PROFILE_ID, TeamMemberRole.SUPPORT)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the team captain or an admin can manage this team.");
 
         verify(teamMemberRepository, never()).create(any());
     }
@@ -264,6 +284,71 @@ class TeamRosterServiceTest {
     }
 
     @Test
+    void createInvitationAllowsPlayerEmailWithoutProfileId() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamInvitationRepository.create(any()))
+                .thenReturn(invitation(TeamInvitationStatus.PENDING, null, "player@example.com", null));
+
+        teamRosterService.createInvitation(
+                TEAM_ID,
+                new CreateTeamInvitationRequest(null, "Player@Example.com", TeamMemberRole.CARRY, null));
+
+        ArgumentCaptor<CreateTeamInvitationCommand> captor = ArgumentCaptor.forClass(CreateTeamInvitationCommand.class);
+        verify(teamInvitationRepository).create(captor.capture());
+
+        assertThat(captor.getValue().inviteeProfileId()).isNull();
+        assertThat(captor.getValue().inviteeEmail()).isEqualTo("player@example.com");
+    }
+
+    @Test
+    void invitedUserCannotAcceptInvitationWhenRosterBecameFull() {
+        when(teamInvitationRepository.findById(INVITATION_ID))
+                .thenReturn(Optional.of(invitation(TeamInvitationStatus.PENDING, INVITEE_PROFILE_ID, null, null)));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(INVITEE_PROFILE_ID, ProfileRole.PLAYER));
+        when(currentUserProvider.currentUser()).thenReturn(Optional.of(principal(INVITEE_PROFILE_ID, "player@example.com")));
+        when(teamRosterLimitRepository.resolveRosterLimit(TEAM_ID)).thenReturn(1);
+        when(teamMemberRepository.countActiveByTeamId(TEAM_ID)).thenReturn(1);
+
+        assertThatThrownBy(() -> teamRosterService.acceptInvitation(INVITATION_ID))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Team roster cannot exceed 1 players.");
+
+        verify(teamInvitationRepository, never()).accept(eq(INVITATION_ID), any());
+        verify(teamMemberRepository, never()).create(any());
+    }
+
+    @Test
+    void invitedUserCannotAcceptInvitationWhenAlreadyOnAnotherTeam() {
+        when(teamInvitationRepository.findById(INVITATION_ID))
+                .thenReturn(Optional.of(invitation(TeamInvitationStatus.PENDING, INVITEE_PROFILE_ID, null, null)));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(INVITEE_PROFILE_ID, ProfileRole.PLAYER));
+        when(currentUserProvider.currentUser()).thenReturn(Optional.of(principal(INVITEE_PROFILE_ID, "player@example.com")));
+        when(teamRepository.existsCurrentTeamForProfileExcluding(INVITEE_PROFILE_ID, TEAM_ID)).thenReturn(true);
+
+        assertThatThrownBy(() -> teamRosterService.acceptInvitation(INVITATION_ID))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Profile already belongs to another active team.");
+
+        verify(teamInvitationRepository, never()).accept(eq(INVITATION_ID), any());
+        verify(teamMemberRepository, never()).create(any());
+    }
+
+    @Test
+    void organizerCannotAcceptPlayerInvitation() {
+        when(teamInvitationRepository.findById(INVITATION_ID))
+                .thenReturn(Optional.of(invitation(TeamInvitationStatus.PENDING, INVITEE_PROFILE_ID, null, null)));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(INVITEE_PROFILE_ID, ProfileRole.ORGANIZER));
+
+        assertThatThrownBy(() -> teamRosterService.acceptInvitation(INVITATION_ID))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only players can respond to team invitations.");
+
+        verify(teamInvitationRepository, never()).accept(eq(INVITATION_ID), any());
+        verify(teamMemberRepository, never()).create(any());
+    }
+
+    @Test
     void unrelatedUserCannotAcceptInvitation() {
         when(teamInvitationRepository.findById(INVITATION_ID))
                 .thenReturn(Optional.of(invitation(TeamInvitationStatus.PENDING, INVITEE_PROFILE_ID, null, null)));
@@ -273,6 +358,21 @@ class TeamRosterServiceTest {
         assertThatThrownBy(() -> teamRosterService.acceptInvitation(INVITATION_ID))
                 .isInstanceOf(AccessDeniedException.class);
 
+        verify(teamMemberRepository, never()).create(any());
+    }
+
+    @Test
+    void acceptedInvitationCannotBeAcceptedAgain() {
+        when(teamInvitationRepository.findById(INVITATION_ID))
+                .thenReturn(Optional.of(invitation(TeamInvitationStatus.ACCEPTED, INVITEE_PROFILE_ID, null, NOW)));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(INVITEE_PROFILE_ID, ProfileRole.PLAYER));
+        when(currentUserProvider.currentUser()).thenReturn(Optional.of(principal(INVITEE_PROFILE_ID, "player@example.com")));
+
+        assertThatThrownBy(() -> teamRosterService.acceptInvitation(INVITATION_ID))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Only pending invitations can be changed.");
+
+        verify(teamInvitationRepository, never()).accept(eq(INVITATION_ID), any());
         verify(teamMemberRepository, never()).create(any());
     }
 

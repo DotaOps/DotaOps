@@ -18,6 +18,7 @@ import si.um.feri.dotaops.backend.auth.domain.AuthenticatedProfile;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
+import si.um.feri.dotaops.backend.common.error.ConflictException;
 import si.um.feri.dotaops.backend.common.error.ResourceNotFoundException;
 import si.um.feri.dotaops.backend.common.pagination.PageResponse;
 import si.um.feri.dotaops.backend.storage.service.StoredImage;
@@ -93,6 +94,12 @@ public class TeamService {
     @Transactional
     public TeamResponse createTeam(CreateTeamRequest request) {
         AuthenticatedProfile profile = currentUserProvider.requireProfile();
+        if (profile.role() != ProfileRole.PLAYER) {
+            throw new AccessDeniedException("Only players can create teams.");
+        }
+        if (teamRepository.existsCurrentTeamForProfileExcluding(profile.profileId(), null)) {
+            throw new ConflictException("Profile already belongs to an active team.");
+        }
         UUID authUserId = profile.authUserId();
 
         try {
@@ -123,7 +130,7 @@ public class TeamService {
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
 
         if (!canUpdate(profile, existing)) {
-            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+            throw new AccessDeniedException("Only the team captain or an admin can update this team.");
         }
 
         try {
@@ -155,7 +162,7 @@ public class TeamService {
         Team existing = teamRepository.findById(teamId)
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
         if (!canUpdate(profile, existing)) {
-            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+            throw new AccessDeniedException("Only the team captain or an admin can update this team.");
         }
 
         StoredImage storedLogo = imageStorageService.storeTeamLogo(teamId, logo);
@@ -170,7 +177,7 @@ public class TeamService {
         Team existing = teamRepository.findById(teamId)
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
         if (!canUpdate(profile, existing)) {
-            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+            throw new AccessDeniedException("Only the team captain or an admin can update this team.");
         }
 
         StoredImage storedBanner = imageStorageService.storeTeamBanner(teamId, banner);
@@ -185,7 +192,7 @@ public class TeamService {
         Team existing = teamRepository.findById(teamId)
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
         if (!canUpdate(profile, existing)) {
-            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+            throw new AccessDeniedException("Only the team captain or an admin can update this team.");
         }
 
         return teamRepository.updateLogoUrl(teamId, null)
@@ -199,7 +206,7 @@ public class TeamService {
         Team existing = teamRepository.findById(teamId)
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
         if (!canUpdate(profile, existing)) {
-            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+            throw new AccessDeniedException("Only the team captain or an admin can update this team.");
         }
 
         return teamRepository.updateBannerUrl(teamId, null)
@@ -208,8 +215,7 @@ public class TeamService {
     }
 
     private boolean canUpdate(AuthenticatedProfile profile, Team team) {
-        return profile.role() == ProfileRole.ORGANIZER
-                || profile.role() == ProfileRole.ADMIN
+        return profile.role() == ProfileRole.ADMIN
                 || profile.profileId().equals(team.captainProfileId());
     }
 

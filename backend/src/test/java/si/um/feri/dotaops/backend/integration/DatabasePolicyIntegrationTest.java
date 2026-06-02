@@ -125,6 +125,15 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
     }
 
     @Test
+    void profileConstraintRejectsPersistedVisitorRole() {
+        UUID authUserId = UUID.randomUUID();
+        seedAuthUser(authUserId);
+
+        assertThatThrownBy(() -> upsertProfile(authUserId, "visitor"))
+                .isInstanceOf(DataAccessException.class);
+    }
+
+    @Test
     void authenticatedClientCannotMutateSteamExternalAccountsDirectly() {
         UUID authUserId = UUID.randomUUID();
         UUID profileId = upsertProfile(authUserId, "player");

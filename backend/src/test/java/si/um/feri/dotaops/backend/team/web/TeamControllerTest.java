@@ -64,6 +64,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TeamControllerTest {
 
     private static final UUID AUTH_USER_ID = UUID.fromString("55555555-5555-4555-8555-555555555555");
+    private static final UUID ORGANIZER_AUTH_USER_ID = UUID.fromString("45454545-4545-4545-8545-454545454545");
     private static final UUID PROFILE_ID = UUID.fromString("66666666-6666-4666-8666-666666666666");
     private static final UUID TEAM_ID = UUID.fromString("77777777-7777-4777-8777-777777777777");
     private static final UUID STEAM_PROFILE_ID = UUID.fromString("88888888-8888-4888-8888-888888888888");
@@ -86,6 +87,8 @@ class TeamControllerTest {
         Mockito.reset(teamService, authenticatedProfileRepository);
         when(authenticatedProfileRepository.findByAuthUserId(AUTH_USER_ID))
                 .thenReturn(Optional.of(authenticatedProfile()));
+        when(authenticatedProfileRepository.findByAuthUserId(ORGANIZER_AUTH_USER_ID))
+                .thenReturn(Optional.of(organizerAuthenticatedProfile()));
         when(authenticatedProfileRepository.findByProfileId(STEAM_PROFILE_ID))
                 .thenReturn(Optional.of(steamAuthenticatedProfile()));
     }
@@ -150,6 +153,20 @@ class TeamControllerTest {
     }
 
     @Test
+    void organizerCannotCreateTeam() throws Exception {
+        mockMvc.perform(post("/api/teams")
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Organizer Team"
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
     void createTeamAcceptsSteamSessionCookie() throws Exception {
         when(teamService.createTeam(any(CreateTeamRequest.class))).thenReturn(teamResponse());
 
@@ -198,7 +215,11 @@ class TeamControllerTest {
     }
 
     private static String bearerToken() throws Exception {
-        return "Bearer " + SupabaseJwtTestSupport.token(AUTH_USER_ID, Instant.now());
+        return bearerToken(AUTH_USER_ID);
+    }
+
+    private static String bearerToken(UUID authUserId) throws Exception {
+        return "Bearer " + SupabaseJwtTestSupport.token(authUserId, Instant.now());
     }
 
     private static AuthenticatedProfile authenticatedProfile() {
@@ -215,6 +236,14 @@ class TeamControllerTest {
                 null,
                 "steam_player",
                 ProfileRole.PLAYER);
+    }
+
+    private static AuthenticatedProfile organizerAuthenticatedProfile() {
+        return new AuthenticatedProfile(
+                UUID.fromString("46464646-4646-4646-8646-464646464646"),
+                ORGANIZER_AUTH_USER_ID,
+                "Organizer",
+                ProfileRole.ORGANIZER);
     }
 
     private Cookie steamSessionCookie() {

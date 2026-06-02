@@ -126,7 +126,7 @@ class TeamJoinRequestServiceTest {
 
         assertThatThrownBy(() -> service.listTeamJoinRequests(TEAM_ID, null))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessage("Only the team captain or an organizer can view join requests.");
+                .hasMessage("Only the team captain or an admin can view join requests.");
     }
 
     @Test
@@ -139,6 +139,28 @@ class TeamJoinRequestServiceTest {
 
         assertThat(response).hasSize(1);
         assertThat(response.getFirst().teamId()).isEqualTo(TEAM_ID);
+    }
+
+    @Test
+    void organizerCannotViewTeamJoinRequests() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(profile(OTHER_PROFILE_ID, ProfileRole.ORGANIZER));
+
+        assertThatThrownBy(() -> service.listTeamJoinRequests(TEAM_ID, null))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the team captain or an admin can view join requests.");
+    }
+
+    @Test
+    void organizerCannotCreateJoinRequest() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(profile(OTHER_PROFILE_ID, ProfileRole.ORGANIZER));
+
+        assertThatThrownBy(() -> service.createJoinRequest(TEAM_ID, new CreateTeamJoinRequestRequest(null)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only players can request team membership.");
+
+        verify(joinRequestRepository, never()).create(any());
     }
 
     @Test

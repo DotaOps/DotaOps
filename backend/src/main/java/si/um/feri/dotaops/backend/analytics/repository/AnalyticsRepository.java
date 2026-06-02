@@ -28,6 +28,14 @@ public class AnalyticsRepository {
     }
 
     public List<PlayerMetrics> findPlayerMetrics(AnalyticsFilters filters) {
+        return findPlayerMetrics(filters, true);
+    }
+
+    public List<PlayerMetrics> findProtectedPlayerMetrics(AnalyticsFilters filters) {
+        return findPlayerMetrics(filters, false);
+    }
+
+    private List<PlayerMetrics> findPlayerMetrics(AnalyticsFilters filters, boolean publicOnly) {
         QueryParts queryParts = filteredWhere(filters, "mp", "m");
         List<Object> parameters = new ArrayList<>(queryParts.parameters());
         parameters.add(filters.limit());
@@ -63,7 +71,7 @@ public class AnalyticsRepository {
                 join public.tournaments t on t.id = m.tournament_id
                 join public.profiles p on p.id = mp.profile_id
                 left join public.teams tm on tm.id = mp.team_id
-                where t.is_public = true
+                where """ + tournamentVisibilityCondition(publicOnly) + """
                   and mp.profile_id is not null
                 """ + queryParts.sql() + """
                 group by p.id, p.display_name, p.nickname, mp.team_id, tm.name, m.tournament_id, t.title
@@ -75,6 +83,14 @@ public class AnalyticsRepository {
     }
 
     public List<TeamMetrics> findTeamMetrics(AnalyticsFilters filters) {
+        return findTeamMetrics(filters, true);
+    }
+
+    public List<TeamMetrics> findProtectedTeamMetrics(AnalyticsFilters filters) {
+        return findTeamMetrics(filters, false);
+    }
+
+    private List<TeamMetrics> findTeamMetrics(AnalyticsFilters filters, boolean publicOnly) {
         QueryParts queryParts = filteredWhere(filters, "mp", "m");
         List<Object> parameters = new ArrayList<>(queryParts.parameters());
         parameters.add(filters.limit());
@@ -114,7 +130,7 @@ public class AnalyticsRepository {
                 join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
                 join public.tournaments t on t.id = m.tournament_id
                 join public.teams tm on tm.id = mp.team_id
-                where t.is_public = true
+                where """ + tournamentVisibilityCondition(publicOnly) + """
                   and mp.team_id is not null
                 """ + queryParts.sql() + """
                 group by tm.id, tm.name, m.tournament_id, t.title
@@ -126,6 +142,14 @@ public class AnalyticsRepository {
     }
 
     public List<HeroMetrics> findHeroMetrics(AnalyticsFilters filters) {
+        return findHeroMetrics(filters, true);
+    }
+
+    public List<HeroMetrics> findProtectedHeroMetrics(AnalyticsFilters filters) {
+        return findHeroMetrics(filters, false);
+    }
+
+    private List<HeroMetrics> findHeroMetrics(AnalyticsFilters filters, boolean publicOnly) {
         QueryParts queryParts = filteredWhere(filters, "mp", "m");
         List<Object> parameters = new ArrayList<>(queryParts.parameters());
         parameters.add(filters.limit());
@@ -162,7 +186,7 @@ public class AnalyticsRepository {
                 join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
                 join public.tournaments t on t.id = m.tournament_id
                 join public.heroes h on h.id = mp.hero_id
-                where t.is_public = true
+                where """ + tournamentVisibilityCondition(publicOnly) + """
                   and mp.hero_id is not null
                 """ + queryParts.sql() + """
                 group by h.id, h.dota_hero_id, h.name, h.localized_name, h.image_url, h.icon_url, m.tournament_id, t.title
@@ -174,12 +198,16 @@ public class AnalyticsRepository {
     }
 
     public List<TournamentMetrics> findTournamentMetrics(AnalyticsFilters filters) {
+        return findTournamentMetrics(filters, true);
+    }
+
+    private List<TournamentMetrics> findTournamentMetrics(AnalyticsFilters filters, boolean publicOnly) {
         QueryParts queryParts = filteredWhere(filters, "mp", "m");
         List<Object> parameters = new ArrayList<>(queryParts.parameters());
         parameters.add(filters.limit());
 
         List<TournamentMetrics> metrics = jdbcTemplate.query(
-                tournamentMetricsSql(queryParts.sql()) + """
+                tournamentMetricsSql(queryParts.sql(), publicOnly) + """
                 order by player_agg.games_played desc, player_agg.tournament_name asc
                 limit ?
                 """,
@@ -187,24 +215,36 @@ public class AnalyticsRepository {
                 parameters.toArray());
 
         return metrics.stream()
-                .map(metric -> withPickedHeroes(metric, filters.withTournamentId(metric.tournamentId())))
+                .map(metric -> withPickedHeroes(metric, filters.withTournamentId(metric.tournamentId()), publicOnly))
                 .toList();
     }
 
     public Optional<TournamentMetrics> findTournamentMetricsById(UUID tournamentId) {
+        return findTournamentMetricsById(tournamentId, true);
+    }
+
+    public Optional<TournamentMetrics> findProtectedTournamentMetricsById(UUID tournamentId) {
+        return findTournamentMetricsById(tournamentId, false);
+    }
+
+    private Optional<TournamentMetrics> findTournamentMetricsById(UUID tournamentId, boolean publicOnly) {
         AnalyticsFilters filters = new AnalyticsFilters(tournamentId, null, null, null, 1);
         QueryParts queryParts = filteredWhere(filters, "mp", "m");
 
         return jdbcTemplate.query(
-                        tournamentMetricsSql(queryParts.sql()),
+                        tournamentMetricsSql(queryParts.sql(), publicOnly),
                         this::mapTournamentMetricsWithoutPickedHeroes,
                         queryParts.parameters().toArray())
                 .stream()
                 .findFirst()
-                .map(metric -> withPickedHeroes(metric, filters));
+                .map(metric -> withPickedHeroes(metric, filters, publicOnly));
     }
 
-    private TournamentMetrics withPickedHeroes(TournamentMetrics metrics, AnalyticsFilters filters) {
+    private TournamentMetrics withPickedHeroes(
+            TournamentMetrics metrics,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
         return new TournamentMetrics(
                 metrics.tournamentId(),
                 metrics.tournamentName(),
@@ -218,10 +258,10 @@ public class AnalyticsRepository {
                 metrics.totalAssists(),
                 metrics.avgKillsPerGame(),
                 metrics.avgKda(),
-                findMostPickedHeroes(filters));
+                findMostPickedHeroes(filters, publicOnly));
     }
 
-    private List<PickedHeroMetrics> findMostPickedHeroes(AnalyticsFilters filters) {
+    private List<PickedHeroMetrics> findMostPickedHeroes(AnalyticsFilters filters, boolean publicOnly) {
         QueryParts queryParts = filteredWhere(filters, "mp", "m");
         List<Object> parameters = new ArrayList<>(queryParts.parameters());
         parameters.add(5);
@@ -240,7 +280,7 @@ public class AnalyticsRepository {
                 join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
                 join public.tournaments t on t.id = m.tournament_id
                 join public.heroes h on h.id = mp.hero_id
-                where t.is_public = true
+                where """ + tournamentVisibilityCondition(publicOnly) + """
                   and mp.hero_id is not null
                 """ + queryParts.sql() + """
                 group by h.id, h.dota_hero_id, h.localized_name, h.image_url, h.icon_url
@@ -251,7 +291,7 @@ public class AnalyticsRepository {
                 parameters.toArray());
     }
 
-    private String tournamentMetricsSql(String filteredWhere) {
+    private String tournamentMetricsSql(String filteredWhere, boolean publicOnly) {
         return """
                 with filtered_players as (
                   select
@@ -269,7 +309,7 @@ public class AnalyticsRepository {
                   left join public.match_games mg on mg.id = mp.match_game_id
                   join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
                   join public.tournaments t on t.id = m.tournament_id
-                  where t.is_public = true
+                  where """ + tournamentVisibilityCondition(publicOnly) + """
                 """ + filteredWhere + """
                 ),
                 player_agg as (
@@ -349,6 +389,10 @@ public class AnalyticsRepository {
         }
 
         return new QueryParts(" and " + String.join(" and ", clauses) + "\n", parameters);
+    }
+
+    private String tournamentVisibilityCondition(boolean publicOnly) {
+        return publicOnly ? " t.is_public = true" : " true";
     }
 
     private PlayerMetrics mapPlayerMetrics(ResultSet resultSet, int rowNumber) throws SQLException {

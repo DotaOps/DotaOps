@@ -131,6 +131,20 @@ class SecurityConfigTest {
     }
 
     @Test
+    void dashboardRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/me/dashboard"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void playerAnalyticsRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/me/analytics"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
     void invalidJwtReturnsUnauthorizedContract() throws Exception {
         mockMvc.perform(get("/api/me/security-test")
                         .header("Authorization", "Bearer invalid"))
@@ -173,6 +187,22 @@ class SecurityConfigTest {
                         .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result").value("organizer"));
+    }
+
+    @Test
+    void organizerCannotUsePlayerAnalyticsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/me/analytics")
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void playerCannotUseOrganizerAnalyticsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/organizer/analytics")
+                        .header("Authorization", bearerToken(PLAYER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
 
     @Test
