@@ -8335,6 +8335,7 @@ html[data-portal-handoff="active"] .page-loading-overlay {
 
 @media (min-width: 861px) {
   .role-dashboard-captain .role-dashboard-content,
+  .role-dashboard-player .role-dashboard-content,
   .role-dashboard-organizer .role-dashboard-content {
     width: 100%;
     max-width: none;

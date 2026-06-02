@@ -1,18 +1,37 @@
+import {
+  BarChart3,
+  DatabaseZap,
+  FileInput,
+  Trophy,
+  UserRound,
+  UsersRound
+} from "lucide-react";
 import Link from "next/link";
 
 import {
   AlertsPanel,
-  PlayerAvatar,
   RoleActionButton,
   RoleEmptyState,
   RoleKpiGrid,
-  RolePanel,
-  StatusChip
+  RolePanel
 } from "@/components/dashboard/role-dashboard-primitives";
-import { getOperationsDashboardData } from "@/lib/dashboard-production-data";
+import type { MeOrganizerDashboard } from "@/lib/me-dashboard-data";
+import type { DashboardAction, DashboardKpi } from "@/lib/role-dashboard-data";
 
-export function OrganizerDashboardView({ role = "organizer" }: { role?: "admin" | "organizer" }) {
-  const data = getOperationsDashboardData(role);
+export function OrganizerDashboardView({ dashboard }: { dashboard: MeOrganizerDashboard }) {
+  const kpis: DashboardKpi[] = [
+    { detail: "Managed tournaments", icon: Trophy, label: "Tournaments", tone: "red", value: String(dashboard.tournaments) },
+    { detail: "Awaiting organizer review", icon: FileInput, label: "Pending Registrations", tone: "gold", value: String(dashboard.pendingRegistrations) },
+    { detail: "Registration, published, or live", icon: UsersRound, label: "Active / Published", tone: "cyan", value: String(dashboard.activePublishedTournaments) },
+    { detail: "Ready match game records", icon: DatabaseZap, label: "Match Data Ready", tone: "green", value: String(dashboard.processedMatchGames) },
+    { detail: "OpenDota import jobs", icon: BarChart3, label: "Import Jobs", tone: "red", value: String(dashboard.importJobs) }
+  ];
+  const quickActions: DashboardAction[] = [
+    { href: "/organizator", icon: Trophy, label: "Manage Tournaments", tone: "red" },
+    { href: "/turnirji", icon: UsersRound, label: "View Public Tournaments", tone: "gold" },
+    { href: "/analitika", icon: BarChart3, label: "Analytics", tone: "cyan" },
+    { href: "/profile", icon: UserRound, label: "Profile", tone: "muted" }
+  ];
 
   return (
     <div className="role-dashboard role-dashboard-organizer">
@@ -20,24 +39,27 @@ export function OrganizerDashboardView({ role = "organizer" }: { role?: "admin" 
         <section className="role-hero role-organizer-hero">
           <div className="role-organizer-hero-copy">
             <div className="role-hero-label-row">
-              <span className="role-hero-kicker">{data.hero.stage}</span>
-              <span>Workspace overview</span>
+              <span className="role-hero-kicker">Organizer workspace</span>
+              <span>Live backend summary</span>
             </div>
-            <h1>{data.hero.title}</h1>
-            <p>{data.hero.description}</p>
+            <h1>Tournament Operations</h1>
+            <p>
+              Review managed tournament counts, pending registrations, and imported match data.
+              Detailed operational feeds will appear when the backend exposes those lists.
+            </p>
 
             <div className="role-organizer-signals">
               <article>
-                <span>Registered Teams</span>
-                <strong>{data.hero.registeredTeams}</strong>
+                <span>Managed Tournaments</span>
+                <strong>{dashboard.tournaments}</strong>
               </article>
               <article>
-                <span>Match Integrity</span>
-                <strong>{data.hero.integrity}</strong>
+                <span>Pending Registrations</span>
+                <strong>{dashboard.pendingRegistrations}</strong>
               </article>
               <article>
-                <span>Tournament Status</span>
-                <strong>{data.hero.status}</strong>
+                <span>Active / Published</span>
+                <strong>{dashboard.activePublishedTournaments}</strong>
               </article>
             </div>
 
@@ -52,118 +74,42 @@ export function OrganizerDashboardView({ role = "organizer" }: { role?: "admin" 
           </div>
         </section>
 
-        <RoleKpiGrid columns="five" items={data.kpis} />
+        <RoleKpiGrid columns="five" items={kpis} />
 
         <section className="role-organizer-grid">
           <div className="role-organizer-main">
-            <RolePanel
-              title="Operational Matrix"
-              eyebrow="Live telemetry and match control center."
-            >
-              <div className="role-table-wrap">
-                <table className="role-data-table">
-                  <thead>
-                    <tr>
-                      <th>Match ID</th>
-                      <th>Series</th>
-                      <th>Competitors</th>
-                      <th>Progress</th>
-                      <th>Integrity / Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.matrix.length === 0 ? (
-                      <tr>
-                        <td colSpan={5}>
-                          <RoleEmptyState
-                            detail="Match activity will appear after tournaments and match imports are active."
-                            title="No live match operations yet."
-                          />
-                        </td>
-                      </tr>
-                    ) : data.matrix.map((row) => (
-                      <tr key={row.matchId}>
-                        <td>{row.matchId}</td>
-                        <td>{row.series}</td>
-                        <td>
-                          <strong>{row.competitors}</strong>
-                        </td>
-                        <td>{row.progress}</td>
-                        <td>
-                          <StatusChip tone={row.status === "stable" ? "cyan" : row.status === "queued" ? "gold" : "muted"}>
-                            {row.status}
-                          </StatusChip>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <RolePanel title="Operational Matrix" eyebrow="Live telemetry and match control center.">
+              <RoleEmptyState
+                detail="The dashboard endpoint currently provides aggregate match counts, not live match rows."
+                title="No live match operations available."
+              />
             </RolePanel>
 
             <RolePanel title="Participating Squads">
-              <div className="role-squad-grid">
-                {data.squads.length === 0 ? (
-                  <RoleEmptyState
-                    className="role-empty-state-wide"
-                    detail="Registered teams will appear when tournament data is available."
-                    title="No participating squads to show yet."
-                  />
-                ) : data.squads.map((squad) => (
-                  <article key={squad.name}>
-                    <PlayerAvatar
-                      player={{
-                        avatarCode: squad.avatarCode,
-                        hero: "",
-                        id: squad.name,
-                        name: squad.name,
-                        role: ""
-                      }}
-                    />
-                    <strong>{squad.name}</strong>
-                    <StatusChip
-                      tone={
-                        squad.status === "approved"
-                          ? "cyan"
-                          : squad.status === "locked"
-                            ? "gold"
-                            : "red"
-                      }
-                    >
-                      {squad.status}
-                    </StatusChip>
-                    <button type="button">{squad.action}</button>
-                  </article>
-                ))}
-              </div>
+              <RoleEmptyState
+                className="role-empty-state-wide"
+                detail="The dashboard endpoint currently provides registration counts, not a team list."
+                title="No participating squad list available."
+              />
             </RolePanel>
           </div>
 
           <aside className="role-side-stack">
             <RolePanel title="Quick Actions">
               <div className="role-quick-actions role-organizer-actions-list">
-                {data.quickActions.map((action) => (
+                {quickActions.map((action) => (
                   <RoleActionButton action={action} key={action.label} />
                 ))}
               </div>
             </RolePanel>
 
-            <AlertsPanel alerts={data.alerts} />
+            <AlertsPanel alerts={[]} />
 
             <RolePanel title="Pipeline Status">
-              <div className="role-pipeline-list">
-                {data.pipeline.length === 0 ? (
-                  <RoleEmptyState
-                    detail="Import and analytics processing status will appear when data is available."
-                    title="No pipeline status available."
-                  />
-                ) : data.pipeline.map((item) => (
-                  <article key={item.label}>
-                    <span>{item.label}</span>
-                    <strong className={`role-tone-text-${item.tone}`}>{item.value}</strong>
-                  </article>
-                ))}
-              </div>
+              <RoleEmptyState
+                detail="Import job totals are available above. Per-job pipeline status is not included in this endpoint."
+                title="No pipeline event list available."
+              />
             </RolePanel>
           </aside>
         </section>
