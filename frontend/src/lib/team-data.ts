@@ -112,12 +112,56 @@ export interface TeamJoinRequest {
   updatedAt: string | null;
 }
 
+export interface RosterProfileStats {
+  avgAssists: number;
+  avgDeaths: number;
+  avgKills: number;
+  gamesPlayed: number;
+  kda: number;
+  losses: number;
+  winRate: number;
+  wins: number;
+}
+
+export interface RosterHeroMetrics {
+  heroId?: number | null;
+  heroName?: string | null;
+  gamesPlayed?: number | null;
+  wins?: number | null;
+  winRate?: number | null;
+}
+
+export interface RosterMatchHistory {
+  [key: string]: unknown;
+}
+
+export interface TeamRosterProfile {
+  avatarUrl: string | null;
+  displayName: string | null;
+  joinedAt: string | null;
+  mostPlayedHeroes: RosterHeroMetrics[];
+  nickname: string;
+  profileId: string;
+  recentMatches: RosterMatchHistory[];
+  role: TeamMemberRole;
+  stats: RosterProfileStats;
+  teamOwner: boolean;
+}
+
+export interface DisbandTeamResponse {
+  disbandedAt: string | null;
+  status: string;
+  teamId: string;
+}
+
 export interface TeamManagementViewModel {
   accessToken: string;
   activeEvents: TournamentRegistration[];
   availableTeams: TeamSummary[];
   canCreateTeam: boolean;
+  canDisbandTeam: boolean;
   canInvitePlayers: boolean;
+  canLeaveTeam: boolean;
   canManageTeam: boolean;
   canManageRoster: boolean;
   canRequestTeamMembership: boolean;
@@ -198,7 +242,9 @@ interface BackendTeamMemberResponse {
 
 interface BackendCurrentTeamResponse {
   canCreateTeam?: boolean;
+  canDisbandTeam?: boolean;
   canInvitePlayers?: boolean;
+  canLeaveTeam?: boolean;
   canManageTeam?: boolean;
   canManageRoster?: boolean;
   canTransferOwnership?: boolean;
@@ -231,6 +277,44 @@ interface BackendTeamJoinRequestResponse {
   teamName: string;
   teamSlug: string;
   updatedAt?: string | null;
+}
+
+interface BackendRosterProfileStatsResponse {
+  avgAssists?: number | null;
+  avgDeaths?: number | null;
+  avgKills?: number | null;
+  gamesPlayed?: number | null;
+  kda?: number | null;
+  losses?: number | null;
+  winRate?: number | null;
+  wins?: number | null;
+}
+
+interface BackendRosterHeroMetricsResponse {
+  heroId?: number | null;
+  heroName?: string | null;
+  gamesPlayed?: number | null;
+  wins?: number | null;
+  winRate?: number | null;
+}
+
+interface BackendTeamRosterProfileResponse {
+  avatarUrl?: string | null;
+  displayName?: string | null;
+  joinedAt?: string | null;
+  mostPlayedHeroes?: BackendRosterHeroMetricsResponse[] | null;
+  nickname: string;
+  profileId: string;
+  recentMatches?: RosterMatchHistory[] | null;
+  role: TeamMemberRole;
+  stats?: BackendRosterProfileStatsResponse | null;
+  teamOwner?: boolean | null;
+}
+
+interface BackendDisbandTeamResponse {
+  disbandedAt?: string | null;
+  status: string;
+  teamId: string;
 }
 
 interface BackendTeamInvitationResponse {
@@ -340,6 +424,10 @@ function optionalNonNegativeInteger(value: number | null | undefined) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
+function optionalNumber(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 function asInvitation(response: BackendTeamInvitationResponse): TeamInvitation {
   return {
     acceptedAt: response.acceptedAt ?? null,
@@ -374,6 +462,46 @@ function asJoinRequest(response: BackendTeamJoinRequestResponse): TeamJoinReques
     teamName: response.teamName,
     teamSlug: response.teamSlug,
     updatedAt: response.updatedAt ?? null
+  };
+}
+
+function asRosterProfile(response: BackendTeamRosterProfileResponse): TeamRosterProfile {
+  const stats = response.stats ?? {};
+
+  return {
+    avatarUrl: response.avatarUrl ?? null,
+    displayName: response.displayName ?? null,
+    joinedAt: response.joinedAt ?? null,
+    mostPlayedHeroes: (response.mostPlayedHeroes ?? []).map((hero) => ({
+      gamesPlayed: hero.gamesPlayed ?? null,
+      heroId: hero.heroId ?? null,
+      heroName: hero.heroName ?? null,
+      winRate: hero.winRate ?? null,
+      wins: hero.wins ?? null
+    })),
+    nickname: response.nickname,
+    profileId: response.profileId,
+    recentMatches: response.recentMatches ?? [],
+    role: response.role,
+    stats: {
+      avgAssists: optionalNumber(stats.avgAssists),
+      avgDeaths: optionalNumber(stats.avgDeaths),
+      avgKills: optionalNumber(stats.avgKills),
+      gamesPlayed: optionalNumber(stats.gamesPlayed),
+      kda: optionalNumber(stats.kda),
+      losses: optionalNumber(stats.losses),
+      winRate: optionalNumber(stats.winRate),
+      wins: optionalNumber(stats.wins)
+    },
+    teamOwner: Boolean(response.teamOwner)
+  };
+}
+
+function asDisbandResponse(response: BackendDisbandTeamResponse): DisbandTeamResponse {
+  return {
+    disbandedAt: response.disbandedAt ?? null,
+    status: response.status,
+    teamId: response.teamId
   };
 }
 
@@ -483,9 +611,11 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
   const isTeamOwner = Boolean(currentTeamAggregate?.isTeamOwner);
   const isCaptain = isTeamOwner;
   const canCreateTeam = Boolean(currentTeamAggregate?.canCreateTeam);
+  const canDisbandTeam = Boolean(currentTeamAggregate?.canDisbandTeam);
   const canManageTeam = Boolean(currentTeamAggregate?.canManageTeam);
   const canManageRoster = Boolean(currentTeamAggregate?.canManageRoster);
   const canInvitePlayers = Boolean(currentTeamAggregate?.canInvitePlayers);
+  const canLeaveTeam = Boolean(currentTeamAggregate?.canLeaveTeam);
   const canTransferOwnership = Boolean(currentTeamAggregate?.canTransferOwnership);
   const canViewAnalytics = Boolean(currentTeamAggregate?.canViewAnalytics);
   const capacity = optionalNonNegativeInteger(currentTeamAggregate?.capacity);
@@ -567,7 +697,9 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
     activeEvents,
     availableTeams,
     canCreateTeam,
+    canDisbandTeam,
     canInvitePlayers,
+    canLeaveTeam,
     canManageTeam,
     canManageRoster,
     canRequestTeamMembership,
@@ -700,6 +832,35 @@ export async function transferTeamOwnership(teamId: string, newOwnerProfileId: s
     `/teams/${teamId}/transfer-ownership`,
     { newOwnerProfileId },
     accessToken
+  );
+}
+
+export async function leaveCurrentTeam() {
+  const accessToken = await getFreshAccessToken();
+
+  return postApiAuthenticated<BackendCurrentTeamResponse>("/me/team/leave", {}, accessToken);
+}
+
+export async function disbandTeam(teamId: string) {
+  const accessToken = await getFreshAccessToken();
+
+  return asDisbandResponse(
+    await postApiAuthenticated<BackendDisbandTeamResponse>(
+      `/teams/${teamId}/disband`,
+      {},
+      accessToken
+    )
+  );
+}
+
+export async function getTeamRosterProfile(teamId: string, profileId: string) {
+  const accessToken = await getFreshAccessToken();
+
+  return asRosterProfile(
+    await getApiAuthenticated<BackendTeamRosterProfileResponse>(
+      `/teams/${teamId}/members/${profileId}/profile`,
+      accessToken
+    )
   );
 }
 
