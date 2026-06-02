@@ -81,6 +81,24 @@ const emptyManualPlayers: TeamManualPlayer[] = [];
 const emptyInvitations: TeamInvitation[] = [];
 const emptyEvents: TeamManagementViewModel["activeEvents"] = [];
 
+function hasActiveTeamOwnerMember(team: TeamSummary, members: TeamMember[]) {
+  return Boolean(
+    team.captainProfileId &&
+      members.some((member) => member.active && member.profileId === team.captainProfileId)
+  );
+}
+
+function needsDerivedTeamOwnerParticipant(team: TeamSummary, members: TeamMember[]) {
+  return Boolean(team.captainProfileId) && !hasActiveTeamOwnerMember(team, members);
+}
+
+function rosterParticipantCount(team: TeamSummary, members: TeamMember[], manualPlayers: TeamManualPlayer[]) {
+  const activeMembers = members.filter((member) => member.active).length;
+  const derivedTeamOwner = needsDerivedTeamOwnerParticipant(team, members) ? 1 : 0;
+
+  return activeMembers + manualPlayers.length + derivedTeamOwner;
+}
+
 function roleLabel(role: TeamMemberRole) {
   return roleOptions.find((option) => option.value === role)?.label ?? role;
 }
@@ -156,6 +174,88 @@ function TeamAvatar({ member, size = "regular" }: { member: TeamMember; size?: "
     >
       {member.avatarUrl ? null : initials(member.displayName || member.nickname)}
     </span>
+  );
+}
+
+function TeamOwnerAvatar({ team }: { team: TeamSummary }) {
+  return (
+    <span className="team-mgmt-avatar" aria-hidden="true">
+      {initials(team.captainNickname ?? "Team owner")}
+    </span>
+  );
+}
+
+function DerivedTeamOwnerPreview({ team }: { team: TeamSummary }) {
+  return (
+    <article className="team-mgmt-roster-tile ops-panel">
+      <span className="team-mgmt-captain-badge">Team owner</span>
+      <TeamOwnerAvatar team={team} />
+      <div>
+        <strong>{team.captainNickname ?? "Team owner"}</strong>
+        <p>Captain / roster participant</p>
+      </div>
+      <div className="team-mgmt-tile-actions">
+        <button
+          className="team-mgmt-later-action"
+          disabled
+          title="Backend player profile page required"
+          type="button"
+        >
+          Profile
+          <small>Later</small>
+        </button>
+        <button
+          className="team-mgmt-later-action"
+          disabled
+          title="Backend player stats page required"
+          type="button"
+        >
+          Stats
+          <small>Later</small>
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function DerivedTeamOwnerRosterCard({ team }: { team: TeamSummary }) {
+  return (
+    <article className="team-mgmt-member-card ops-panel">
+      <span className="team-mgmt-captain-badge">Team owner</span>
+      <div className="team-mgmt-member-head">
+        <TeamOwnerAvatar team={team} />
+        <div>
+          <strong>{team.captainNickname ?? "Team owner"}</strong>
+          <p>Captain / roster participant</p>
+        </div>
+      </div>
+      <div className="team-mgmt-member-meta">
+        <span>Status</span>
+        <strong className="is-online">Registered account</strong>
+        <span>Team access</span>
+        <strong>Owner</strong>
+      </div>
+      <div className="team-mgmt-member-actions">
+        <button
+          className="team-mgmt-later-action"
+          disabled
+          title="Backend player profile page required"
+          type="button"
+        >
+          Profile
+          <small>Later</small>
+        </button>
+        <button
+          className="team-mgmt-later-action"
+          disabled
+          title="Backend player stats page required"
+          type="button"
+        >
+          Stats
+          <small>Later</small>
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -625,7 +725,7 @@ export function TeamManagementPage() {
     viewModel?.currentProfile.role === "organizer" || viewModel?.currentProfile.role === "admin";
   const outgoingJoinRequests = viewModel?.outgoingJoinRequests ?? [];
   const teamJoinRequests = viewModel?.teamJoinRequests ?? [];
-  const rosterFilled = members.filter((member) => member.active).length + manualPlayers.length;
+  const rosterFilled = team ? rosterParticipantCount(team, members, manualPlayers) : 0;
   const filteredIncoming = useMemo(
     () => filterInvitations(incomingInvitations, filter),
     [filter, incomingInvitations]
@@ -976,7 +1076,7 @@ function TeamHero({
   members: TeamMember[];
   team: NonNullable<TeamManagementViewModel["team"]>;
 }) {
-  const rosterCount = members.filter((member) => member.active).length + manualPlayers.length;
+  const rosterCount = rosterParticipantCount(team, members, manualPlayers);
 
   return (
     <section
@@ -1216,14 +1316,20 @@ function OverviewTab({
             </span>
           </div>
           <div className="team-mgmt-roster-preview">
-            {members.length === 0 && manualPlayers.length === 0 ? (
+            {rosterFilled === 0 ? (
               <article className="team-mgmt-roster-empty ops-panel">
                 <strong>No roster participants yet.</strong>
                 <p>Invite registered players to build the team roster.</p>
               </article>
             ) : null}
+            {needsDerivedTeamOwnerParticipant(team, members) ? (
+              <DerivedTeamOwnerPreview team={team} />
+            ) : null}
             {members.map((member) => (
               <article className="team-mgmt-roster-tile ops-panel" key={member.id}>
+                {team.captainProfileId === member.profileId ? (
+                  <span className="team-mgmt-captain-badge">Team owner</span>
+                ) : null}
                 <TeamAvatar member={member} />
                 <div>
                   <strong>{member.displayName || member.nickname}</strong>
@@ -1379,11 +1485,14 @@ function RosterTab({
             <span>{rosterFilled} slots filled</span>
           </div>
           <div className="team-mgmt-roster-management-grid">
-            {members.length === 0 && manualPlayers.length === 0 ? (
+            {rosterFilled === 0 ? (
               <article className="team-mgmt-roster-empty ops-panel">
                 <strong>No roster participants yet.</strong>
                 <p>Use the recruitment terminal to invite registered players.</p>
               </article>
+            ) : null}
+            {needsDerivedTeamOwnerParticipant(team, members) ? (
+              <DerivedTeamOwnerRosterCard team={team} />
             ) : null}
             {members.map((member) => (
               <article className="team-mgmt-member-card ops-panel" key={member.id}>
@@ -1434,7 +1543,7 @@ function RosterTab({
                     Stats
                     <small>Later</small>
                   </button>
-                  {canManageRoster ? (
+                  {canManageRoster && team.captainProfileId !== member.profileId ? (
                     <button disabled={isMutating} onClick={() => onRemoveMember(member.id)} type="button">
                       <Trash2 size={15} />
                     </button>
