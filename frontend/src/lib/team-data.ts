@@ -62,6 +62,7 @@ export interface TeamMember {
   nickname: string;
   profileId: string;
   role: TeamMemberRole;
+  teamOwner: boolean;
   teamId: string;
   updatedAt: string | null;
 }
@@ -120,7 +121,9 @@ export interface TeamManagementViewModel {
   canManageTeam: boolean;
   canManageRoster: boolean;
   canRequestTeamMembership: boolean;
+  canTransferOwnership: boolean;
   canViewAnalytics: boolean;
+  capacity: number | null;
   currentProfile: CurrentUserProfile;
   currentUserTeamRole: string | null;
   dataSource: "api";
@@ -129,9 +132,13 @@ export interface TeamManagementViewModel {
   isTeamOwner: boolean;
   manualPlayers: TeamManualPlayer[];
   members: TeamMember[];
+  isFull: boolean | null;
   outgoingJoinRequests: TeamJoinRequest[];
   outgoingInvitations: TeamInvitation[];
+  participantsCount: number | null;
   protectedDataError: string | null;
+  slotsFilled: number | null;
+  slotsRemaining: number | null;
   team: TeamSummary | null;
   teamJoinRequests: TeamJoinRequest[];
   teamResolution: string;
@@ -184,6 +191,7 @@ interface BackendTeamMemberResponse {
   nickname: string;
   profileId: string;
   role: TeamMemberRole;
+  teamOwner?: boolean | null;
   teamId: string;
   updatedAt?: string | null;
 }
@@ -193,12 +201,18 @@ interface BackendCurrentTeamResponse {
   canInvitePlayers?: boolean;
   canManageTeam?: boolean;
   canManageRoster?: boolean;
+  canTransferOwnership?: boolean;
   canViewAnalytics?: boolean;
+  capacity?: number | null;
   captain?: boolean;
   currentUserTeamRole?: string | null;
+  isFull?: boolean | null;
   isTeamOwner?: boolean;
   manualPlayers?: BackendTeamManualPlayerResponse[] | null;
   members?: BackendTeamMemberResponse[] | null;
+  participantsCount?: number | null;
+  slotsFilled?: number | null;
+  slotsRemaining?: number | null;
   team?: BackendTeamResponse | null;
   teamResolution?: string | null;
 }
@@ -316,9 +330,14 @@ function asMember(response: BackendTeamMemberResponse): TeamMember {
     nickname: response.nickname,
     profileId: response.profileId,
     role: response.role,
+    teamOwner: Boolean(response.teamOwner),
     teamId: response.teamId,
     updatedAt: response.updatedAt ?? null
   };
+}
+
+function optionalNonNegativeInteger(value: number | null | undefined) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
 function asInvitation(response: BackendTeamInvitationResponse): TeamInvitation {
@@ -467,10 +486,17 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
   const canManageTeam = Boolean(currentTeamAggregate?.canManageTeam);
   const canManageRoster = Boolean(currentTeamAggregate?.canManageRoster);
   const canInvitePlayers = Boolean(currentTeamAggregate?.canInvitePlayers);
+  const canTransferOwnership = Boolean(currentTeamAggregate?.canTransferOwnership);
   const canViewAnalytics = Boolean(currentTeamAggregate?.canViewAnalytics);
+  const capacity = optionalNonNegativeInteger(currentTeamAggregate?.capacity);
   const canRequestTeamMembership =
     currentProfile.role === "player" && currentTeamAggregate?.team === null;
   const currentUserTeamRole = currentTeamAggregate?.currentUserTeamRole ?? null;
+  const isFull =
+    typeof currentTeamAggregate?.isFull === "boolean" ? currentTeamAggregate.isFull : null;
+  const participantsCount = optionalNonNegativeInteger(currentTeamAggregate?.participantsCount);
+  const slotsFilled = optionalNonNegativeInteger(currentTeamAggregate?.slotsFilled);
+  const slotsRemaining = optionalNonNegativeInteger(currentTeamAggregate?.slotsRemaining);
   const teamResolution =
     currentTeamAggregate?.teamResolution ?? "No team found for the current profile.";
   let outgoingInvitations: TeamInvitation[] = [];
@@ -545,18 +571,24 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
     canManageTeam,
     canManageRoster,
     canRequestTeamMembership,
+    canTransferOwnership,
     canViewAnalytics,
+    capacity,
     currentProfile,
     currentUserTeamRole,
     dataSource,
     incomingInvitations,
     isCaptain,
+    isFull,
     isTeamOwner,
     manualPlayers,
     members,
     outgoingJoinRequests,
     outgoingInvitations,
+    participantsCount,
     protectedDataError,
+    slotsFilled,
+    slotsRemaining,
     team: selectedTeam,
     teamJoinRequests,
     teamResolution
@@ -658,6 +690,16 @@ export async function cancelTeamInvitation(invitationId: string) {
       {},
       accessToken
     )
+  );
+}
+
+export async function transferTeamOwnership(teamId: string, newOwnerProfileId: string) {
+  const accessToken = await getFreshAccessToken();
+
+  return postApiAuthenticated<BackendCurrentTeamResponse>(
+    `/teams/${teamId}/transfer-ownership`,
+    { newOwnerProfileId },
+    accessToken
   );
 }
 

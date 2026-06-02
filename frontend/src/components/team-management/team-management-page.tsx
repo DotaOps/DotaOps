@@ -35,6 +35,7 @@ import {
   loadTeamManagementData,
   removeTeamMember,
   sendTeamInvitation,
+  transferTeamOwnership,
   updateTeamMemberRole,
   type TeamInvitation,
   type TeamInvitationStatus,
@@ -83,9 +84,12 @@ const emptyEvents: TeamManagementViewModel["activeEvents"] = [];
 
 function hasActiveTeamOwnerMember(team: TeamSummary, members: TeamMember[]) {
   return Boolean(
-    team.captainProfileId &&
-      members.some((member) => member.active && member.profileId === team.captainProfileId)
+    members.some((member) => member.active && isTeamOwnerMember(team, member))
   );
+}
+
+function isTeamOwnerMember(team: TeamSummary, member: TeamMember) {
+  return member.teamOwner || Boolean(team.captainProfileId && member.profileId === team.captainProfileId);
 }
 
 function needsDerivedTeamOwnerParticipant(team: TeamSummary, members: TeamMember[]) {
@@ -649,6 +653,8 @@ export function TeamManagementPage() {
   const [invitee, setInvitee] = useState("");
   const [inviteRole, setInviteRole] = useState<TeamMemberRole>("substitute");
   const [roleDrafts, setRoleDrafts] = useState<Record<string, TeamMemberRole>>({});
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferOwnerProfileId, setTransferOwnerProfileId] = useState("");
   const inviteInputRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -720,12 +726,28 @@ export function TeamManagementPage() {
   const canInvitePlayers = Boolean(viewModel?.canInvitePlayers);
   const canManageTeam = Boolean(viewModel?.canManageTeam);
   const canManageRoster = Boolean(viewModel?.canManageRoster);
+  const canTransferOwnership = Boolean(viewModel?.canTransferOwnership);
   const canRequestTeamMembership = Boolean(viewModel?.canRequestTeamMembership);
   const isTournamentOperator =
     viewModel?.currentProfile.role === "organizer" || viewModel?.currentProfile.role === "admin";
   const outgoingJoinRequests = viewModel?.outgoingJoinRequests ?? [];
   const teamJoinRequests = viewModel?.teamJoinRequests ?? [];
-  const rosterFilled = team ? rosterParticipantCount(team, members, manualPlayers) : 0;
+  const currentProfileId = viewModel?.currentProfile.profileId;
+  const rosterFilled = team
+    ? viewModel?.slotsFilled ?? viewModel?.participantsCount ?? rosterParticipantCount(team, members, manualPlayers)
+    : 0;
+  const eligibleTransferMembers = useMemo(
+    () =>
+      team
+        ? members.filter(
+            (member) =>
+              member.active &&
+              !isTeamOwnerMember(team, member) &&
+              member.profileId !== currentProfileId
+          )
+        : [],
+    [currentProfileId, members, team]
+  );
   const filteredIncoming = useMemo(
     () => filterInvitations(incomingInvitations, filter),
     [filter, incomingInvitations]
@@ -821,6 +843,53 @@ export function TeamManagementPage() {
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Roster member could not be removed.");
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  function openTransferOwnership() {
+    if (!canTransferOwnership) {
+      setPlaceholder("Ownership transfer is not available for this account.");
+      return;
+    }
+
+    if (eligibleTransferMembers.length === 0) {
+      setPlaceholder("Add another registered roster member before transferring team ownership.");
+      return;
+    }
+
+    setError(null);
+    setTransferOwnerProfileId(eligibleTransferMembers[0].profileId);
+    setIsTransferModalOpen(true);
+  }
+
+  function closeTransferOwnership() {
+    if (isMutating) {
+      return;
+    }
+
+    setIsTransferModalOpen(false);
+    setTransferOwnerProfileId("");
+  }
+
+  async function confirmTransferOwnership() {
+    if (!team || !canTransferOwnership || !transferOwnerProfileId) {
+      return;
+    }
+
+    setIsMutating(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await transferTeamOwnership(team.id, transferOwnerProfileId);
+      setIsTransferModalOpen(false);
+      setTransferOwnerProfileId("");
+      await load();
+      setNotice("Team ownership transferred successfully.");
+    } catch (caught) {
+      setError(readableError(caught, "Team ownership could not be transferred."));
     } finally {
       setIsMutating(false);
     }
@@ -1004,10 +1073,13 @@ export function TeamManagementPage() {
           activeEvents={activeEvents}
           canInvitePlayers={canInvitePlayers}
           canManageRoster={canManageRoster}
+          canTransferOwnership={canTransferOwnership}
+          isMutating={isMutating}
           manualPlayers={manualPlayers}
           members={members}
           onFocusInvite={focusInviteForm}
           onRosterTab={() => setActiveTab("roster")}
+          onTransferOwnership={openTransferOwnership}
           outgoingInvitations={outgoingInvitations}
           pendingInviteCount={pendingInvites.length}
           rosterFilled={rosterFilled}
@@ -1019,6 +1091,7 @@ export function TeamManagementPage() {
         <RosterTab
           canInvitePlayers={canInvitePlayers}
           canManageRoster={canManageRoster}
+          canTransferOwnership={canTransferOwnership}
           inviteRole={inviteRole}
           invitee={invitee}
           isMutating={isMutating}
@@ -1030,6 +1103,7 @@ export function TeamManagementPage() {
           onRoleDraftChange={(memberId, role) => setRoleDrafts((drafts) => ({ ...drafts, [memberId]: role }))}
           onSaveRoster={saveRosterChanges}
           onSendInvite={sendInvite}
+          onTransferOwnership={openTransferOwnership}
           outgoingInvitations={outgoingInvitations}
           roleDrafts={roleDrafts}
           rosterFilled={rosterFilled}
@@ -1057,10 +1131,100 @@ export function TeamManagementPage() {
           outgoingInvitations={filteredOutgoing}
           outgoingTotal={outgoingInvitations.length}
           pendingInviteCount={pendingInvites.length}
+          rosterFilled={rosterFilled}
           team={team}
           teamJoinRequests={teamJoinRequests}
         />
       ) : null}
+
+      {isTransferModalOpen && team ? (
+        <TransferOwnershipModal
+          eligibleMembers={eligibleTransferMembers}
+          error={error}
+          isMutating={isMutating}
+          onCancel={closeTransferOwnership}
+          onConfirm={confirmTransferOwnership}
+          onSelectionChange={setTransferOwnerProfileId}
+          selectedProfileId={transferOwnerProfileId}
+          team={team}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function TransferOwnershipModal({
+  eligibleMembers,
+  error,
+  isMutating,
+  onCancel,
+  onConfirm,
+  onSelectionChange,
+  selectedProfileId,
+  team
+}: {
+  eligibleMembers: TeamMember[];
+  error: string | null;
+  isMutating: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onSelectionChange: (profileId: string) => void;
+  selectedProfileId: string;
+  team: TeamSummary;
+}) {
+  return (
+    <div
+      aria-labelledby="team-transfer-title"
+      aria-modal="true"
+      className="team-mgmt-modal-backdrop"
+      onClick={onCancel}
+      role="dialog"
+    >
+      <section className="team-mgmt-modal ops-panel" onClick={(event) => event.stopPropagation()}>
+        <div className="team-mgmt-modal-heading">
+          <span className="team-mgmt-modal-icon">
+            <RefreshCcw size={20} />
+          </span>
+          <div>
+            <p className="ops-label">Team ownership</p>
+            <h2 id="team-transfer-title">Transfer Ownership</h2>
+          </div>
+        </div>
+        <p>
+          Select an active registered member to become the new owner of <strong>{team.name}</strong>.
+        </p>
+        <label className="team-mgmt-modal-select">
+          <span>New team owner</span>
+          <select
+            disabled={isMutating}
+            onChange={(event) => onSelectionChange(event.target.value)}
+            value={selectedProfileId}
+          >
+            {eligibleMembers.map((member) => (
+              <option key={member.profileId} value={member.profileId}>
+                {member.displayName || member.nickname} - {roleLabel(member.role)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {error ? <p className="team-mgmt-message team-mgmt-error">{error}</p> : null}
+        <p className="team-mgmt-modal-warning">
+          After transfer, you will lose owner permissions for this team.
+        </p>
+        <div className="team-mgmt-modal-actions">
+          <button className="button button-secondary" disabled={isMutating} onClick={onCancel} type="button">
+            Cancel
+          </button>
+          <button
+            className="button button-primary ops-button-primary"
+            disabled={isMutating || !selectedProfileId}
+            onClick={onConfirm}
+            type="button"
+          >
+            {isMutating ? "Transferring..." : "Confirm Transfer"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -1069,14 +1233,16 @@ function TeamHero({
   compact = false,
   manualPlayers,
   members,
+  rosterFilled,
   team
 }: {
   compact?: boolean;
   manualPlayers: TeamManualPlayer[];
   members: TeamMember[];
+  rosterFilled?: number;
   team: NonNullable<TeamManagementViewModel["team"]>;
 }) {
-  const rosterCount = rosterParticipantCount(team, members, manualPlayers);
+  const rosterCount = rosterFilled ?? rosterParticipantCount(team, members, manualPlayers);
 
   return (
     <section
@@ -1170,14 +1336,37 @@ function PlannedAction({
   );
 }
 
-function PlannedControls() {
+function PlannedControls({
+  canTransferOwnership,
+  isMutating,
+  onTransferOwnership
+}: {
+  canTransferOwnership: boolean;
+  isMutating?: boolean;
+  onTransferOwnership?: () => void;
+}) {
   return (
     <div className="team-mgmt-planned-controls">
-      <span className="team-mgmt-planned-title">Planned team controls</span>
-      <PlannedAction>
-        <RefreshCcw size={16} />
-        Transfer Ownership
-      </PlannedAction>
+      <span className="team-mgmt-planned-title">Team controls</span>
+      {canTransferOwnership ? (
+        <button
+          className="team-mgmt-transfer-action"
+          disabled={isMutating}
+          onClick={onTransferOwnership}
+          type="button"
+        >
+          <span>
+            <RefreshCcw size={16} />
+            Transfer Ownership
+          </span>
+          <small>Available</small>
+        </button>
+      ) : (
+        <PlannedAction label="Not available">
+          <RefreshCcw size={16} />
+          Transfer Ownership
+        </PlannedAction>
+      )}
       <PlannedAction>
         <Lock size={16} />
         Lock Roster
@@ -1201,21 +1390,25 @@ function PlannedControls() {
 function CommandCenter({
   canInvitePlayers,
   canManageRoster,
+  canTransferOwnership,
   mode,
   onFocusInvite,
   onRosterTab,
   onSaveRoster,
   onSendInvite,
+  onTransferOwnership,
   isMutating
 }: {
   canInvitePlayers: boolean;
   canManageRoster: boolean;
+  canTransferOwnership: boolean;
   isMutating?: boolean;
   mode: "overview" | "roster" | "invitations";
   onFocusInvite?: () => void;
   onRosterTab?: () => void;
   onSaveRoster?: () => void;
   onSendInvite?: () => void;
+  onTransferOwnership?: () => void;
 }) {
   if (mode === "roster") {
     return (
@@ -1233,7 +1426,13 @@ function CommandCenter({
             Send Invite
           </button>
         ) : null}
-        {canManageRoster ? <PlannedControls /> : null}
+        {canManageRoster ? (
+          <PlannedControls
+            canTransferOwnership={canTransferOwnership}
+            isMutating={isMutating}
+            onTransferOwnership={onTransferOwnership}
+          />
+        ) : null}
       </aside>
     );
   }
@@ -1268,7 +1467,13 @@ function CommandCenter({
           <ChevronRight size={16} />
         </button>
       ) : null}
-      {canManageRoster ? <PlannedControls /> : null}
+      {canManageRoster ? (
+        <PlannedControls
+          canTransferOwnership={canTransferOwnership}
+          isMutating={isMutating}
+          onTransferOwnership={onTransferOwnership}
+        />
+      ) : null}
     </aside>
   );
 }
@@ -1277,10 +1482,13 @@ function OverviewTab({
   activeEvents,
   canInvitePlayers,
   canManageRoster,
+  canTransferOwnership,
+  isMutating,
   manualPlayers,
   members,
   onFocusInvite,
   onRosterTab,
+  onTransferOwnership,
   outgoingInvitations,
   pendingInviteCount,
   rosterFilled,
@@ -1289,10 +1497,13 @@ function OverviewTab({
   activeEvents: TeamManagementViewModel["activeEvents"];
   canInvitePlayers: boolean;
   canManageRoster: boolean;
+  canTransferOwnership: boolean;
+  isMutating: boolean;
   manualPlayers: TeamManualPlayer[];
   members: TeamMember[];
   onFocusInvite: () => void;
   onRosterTab: () => void;
+  onTransferOwnership: () => void;
   outgoingInvitations: TeamInvitation[];
   pendingInviteCount: number;
   rosterFilled: number;
@@ -1300,7 +1511,7 @@ function OverviewTab({
 }) {
   return (
     <>
-      <TeamHero manualPlayers={manualPlayers} members={members} team={team} />
+      <TeamHero manualPlayers={manualPlayers} members={members} rosterFilled={rosterFilled} team={team} />
       <section className="team-mgmt-metrics">
         <MetricCard icon={UsersRound} label="Roster Participants" value={String(rosterFilled)} />
         <MetricCard icon={Mail} label="Pending Invites" tone="gold" value={String(pendingInviteCount)} />
@@ -1327,7 +1538,7 @@ function OverviewTab({
             ) : null}
             {members.map((member) => (
               <article className="team-mgmt-roster-tile ops-panel" key={member.id}>
-                {team.captainProfileId === member.profileId ? (
+                {isTeamOwnerMember(team, member) ? (
                   <span className="team-mgmt-captain-badge">Team owner</span>
                 ) : null}
                 <TeamAvatar member={member} />
@@ -1380,8 +1591,11 @@ function OverviewTab({
           <CommandCenter
             canInvitePlayers={canInvitePlayers}
             canManageRoster={canManageRoster}
+            canTransferOwnership={canTransferOwnership}
+            isMutating={isMutating}
             mode="overview"
             onRosterTab={onRosterTab}
+            onTransferOwnership={onTransferOwnership}
           />
         </aside>
       </section>
@@ -1431,6 +1645,7 @@ function InviteRegistry({
 function RosterTab({
   canInvitePlayers,
   canManageRoster,
+  canTransferOwnership,
   inviteInputRef,
   inviteRole,
   invitee,
@@ -1443,6 +1658,7 @@ function RosterTab({
   onRoleDraftChange,
   onSaveRoster,
   onSendInvite,
+  onTransferOwnership,
   outgoingInvitations,
   roleDrafts,
   rosterFilled,
@@ -1450,6 +1666,7 @@ function RosterTab({
 }: {
   canInvitePlayers: boolean;
   canManageRoster: boolean;
+  canTransferOwnership: boolean;
   inviteInputRef: RefObject<HTMLInputElement | null>;
   inviteRole: TeamMemberRole;
   invitee: string;
@@ -1462,6 +1679,7 @@ function RosterTab({
   onRoleDraftChange: (memberId: string, role: TeamMemberRole) => void;
   onSaveRoster: () => void;
   onSendInvite: () => void;
+  onTransferOwnership: () => void;
   outgoingInvitations: TeamInvitation[];
   roleDrafts: Record<string, TeamMemberRole>;
   rosterFilled: number;
@@ -1469,7 +1687,7 @@ function RosterTab({
 }) {
   return (
     <>
-      <TeamHero compact manualPlayers={manualPlayers} members={members} team={team} />
+      <TeamHero compact manualPlayers={manualPlayers} members={members} rosterFilled={rosterFilled} team={team} />
       <section className="team-mgmt-metrics team-mgmt-roster-metrics">
         <MetricCard icon={UsersRound} label="Roster Participants" value={String(rosterFilled)} />
         <MetricCard icon={Mail} label="Pending Invites" tone="gold" value={String(outgoingInvitations.filter((invite) => invite.status === "pending").length)} />
@@ -1496,7 +1714,7 @@ function RosterTab({
             ) : null}
             {members.map((member) => (
               <article className="team-mgmt-member-card ops-panel" key={member.id}>
-                {team.captainProfileId === member.profileId ? <span className="team-mgmt-captain-badge">Team owner</span> : null}
+                {isTeamOwnerMember(team, member) ? <span className="team-mgmt-captain-badge">Team owner</span> : null}
                 <div className="team-mgmt-member-head">
                   <TeamAvatar member={member} />
                   <div>
@@ -1543,7 +1761,7 @@ function RosterTab({
                     Stats
                     <small>Later</small>
                   </button>
-                  {canManageRoster && team.captainProfileId !== member.profileId ? (
+                  {canManageRoster && !isTeamOwnerMember(team, member) ? (
                     <button disabled={isMutating} onClick={() => onRemoveMember(member.id)} type="button">
                       <Trash2 size={15} />
                     </button>
@@ -1587,10 +1805,12 @@ function RosterTab({
           <CommandCenter
             canInvitePlayers={canInvitePlayers}
             canManageRoster={canManageRoster}
+            canTransferOwnership={canTransferOwnership}
             isMutating={isMutating}
             mode="roster"
             onSaveRoster={onSaveRoster}
             onSendInvite={onSendInvite}
+            onTransferOwnership={onTransferOwnership}
           />
         </aside>
       </section>
@@ -1672,6 +1892,7 @@ function InvitationsTab({
   outgoingInvitations,
   outgoingTotal,
   pendingInviteCount,
+  rosterFilled,
   team,
   teamJoinRequests
 }: {
@@ -1692,12 +1913,13 @@ function InvitationsTab({
   outgoingInvitations: TeamInvitation[];
   outgoingTotal: number;
   pendingInviteCount: number;
+  rosterFilled: number;
   team: NonNullable<TeamManagementViewModel["team"]>;
   teamJoinRequests: TeamJoinRequest[];
 }) {
   return (
     <>
-      <TeamHero compact manualPlayers={manualPlayers} members={members} team={team} />
+      <TeamHero compact manualPlayers={manualPlayers} members={members} rosterFilled={rosterFilled} team={team} />
       <section className="team-mgmt-metrics team-mgmt-invite-metrics">
         <MetricCard icon={Mail} label="Incoming Invites" value={String(incomingTotal)} />
         <MetricCard icon={UserPlus} label="Outgoing Invites" value={String(outgoingTotal)} />
@@ -1748,6 +1970,7 @@ function InvitationsTab({
           <CommandCenter
             canInvitePlayers={canInvitePlayers}
             canManageRoster={canManageRoster}
+            canTransferOwnership={false}
             mode="invitations"
             onFocusInvite={onFocusInvite}
           />
