@@ -12,7 +12,7 @@ interface LoginPortalOverlayProps {
 }
 
 const SUCTION_RING_COUNT = 6;
-const TUNNEL_RING_COUNT = 10;
+const VORTEX_RING_COUNT = 4;
 const SIGNAL_PACKET_COUNT = 18;
 const ENERGY_ARC_COUNT = 4;
 const MIN_TELEPORT_MS = 5200;
@@ -55,7 +55,7 @@ export function LoginPortalOverlay({
   const gravityLinesRef = useRef<HTMLDivElement>(null);
   const singularityRef = useRef<HTMLDivElement>(null);
   const coreRef = useRef<HTMLElement>(null);
-  const tunnelRef = useRef<HTMLDivElement>(null);
+  const vortexRef = useRef<HTMLDivElement>(null);
   const ignitionCopyRef = useRef<HTMLDivElement>(null);
   const gravityCopyRef = useRef<HTMLDivElement>(null);
   const routingCopyRef = useRef<HTMLDivElement>(null);
@@ -122,7 +122,7 @@ export function LoginPortalOverlay({
 
     const context = gsap.context(() => {
       const suctionRings = gsap.utils.toArray<HTMLElement>(".login-portal-suction-ring");
-      const tunnelRings = gsap.utils.toArray<HTMLElement>(".login-portal-tunnel-ring");
+      const vortexRings = gsap.utils.toArray<HTMLElement>(".login-portal-vortex-ring");
       const packets = gsap.utils.toArray<HTMLElement>(".login-portal-signal-packet");
       const arcs = gsap.utils.toArray<HTMLElement>(".login-portal-energy-arc");
       const loginScene = Array.from(document.querySelectorAll<HTMLElement>(".auth-login-card, .auth-uplink-row"));
@@ -154,6 +154,16 @@ export function LoginPortalOverlay({
         const angle = (index / SIGNAL_PACKET_COUNT) * Math.PI * 2;
         return (direction === "x" ? Math.cos(angle) : Math.sin(angle)) * packetRadius;
       };
+      const spiralPacketOffset = (
+        index: number,
+        direction: "x" | "y",
+        radiusFactor: number,
+        turnRadians: number
+      ) => {
+        const angle = ((index / SIGNAL_PACKET_COUNT) * Math.PI * 2) + turnRadians;
+        const radius = packetRadius * radiusFactor;
+        return (direction === "x" ? Math.cos(angle) : Math.sin(angle)) * radius;
+      };
 
       timeline
         .set(overlayRef.current, { autoAlpha: 1 })
@@ -161,9 +171,9 @@ export function LoginPortalOverlay({
         .set(gravityLinesRef.current, { autoAlpha: 0, rotation: -16, scale: 1.28 })
         .set(singularityRef.current, { autoAlpha: 0, scale: 0.18 })
         .set(coreRef.current, { autoAlpha: 0, scale: 0.32 })
-        .set(tunnelRef.current, { autoAlpha: 0, scale: 1.24 })
+        .set(vortexRef.current, { autoAlpha: 0, scale: 1.16 })
         .set(suctionRings, { autoAlpha: 0, scale: 1.92 })
-        .set(tunnelRings, { autoAlpha: 0, scale: 4.8 })
+        .set(vortexRings, { autoAlpha: 0, rotation: (index) => (index * 54) - 32, scale: 1.78 })
         .set(arcs, { autoAlpha: 0, rotation: (index) => (index * 82) - 18, scale: 0.64 })
         .set(loginScene, { transformOrigin: "50% 50%" })
         .set(packets, {
@@ -175,55 +185,79 @@ export function LoginPortalOverlay({
         .set(explosionRef.current, { autoAlpha: 0, scale: 0.12 })
 
         // 01 / 04: establish the session before the singularity appears.
-        .to(backdropRef.current, { opacity: 1, duration: 0.54, ease: "power1.out" }, 0)
-        .to(ignitionCopyRef.current, { autoAlpha: 1, duration: 0.28, ease: "power1.out", y: 0 }, 0.14)
-        .to(gravityLinesRef.current, { autoAlpha: 0.32, duration: 0.5, ease: "power1.out" }, 0.28)
-        .to(ignitionCopyRef.current, { autoAlpha: 0, duration: 0.18, ease: "power1.in", y: -9 }, 0.68)
+        .to(backdropRef.current, { opacity: 1, duration: 0.72, ease: "sine.out" }, 0)
+        .to(ignitionCopyRef.current, { autoAlpha: 1, duration: 0.4, ease: "power2.out", y: 0 }, 0.12)
+        .to(gravityLinesRef.current, { autoAlpha: 0.26, duration: 0.68, ease: "sine.out" }, 0.22)
+        .to(ignitionCopyRef.current, { autoAlpha: 0, duration: 0.32, ease: "sine.inOut", y: -7 }, 0.62)
 
         // 02 / 04: open the gravity well and pull the login scene inward.
         .call(() => setStage(2), [], 0.8)
-        .to(gravityCopyRef.current, { autoAlpha: 1, duration: 0.28, ease: "power1.out", y: 0 }, 0.82)
-        .to(singularityRef.current, { autoAlpha: 1, duration: 0.64, ease: "back.out(1.45)", scale: 1 }, 0.82)
-        .to(coreRef.current, { autoAlpha: 1, duration: 0.48, ease: "power2.out", scale: 1 }, 0.94)
-        .to(suctionRings, { autoAlpha: 0.72, duration: 0.82, ease: "power2.in", scale: 0.42, stagger: 0.08 }, 0.98)
-        .to(packets, { autoAlpha: 0.78, duration: 1.06, ease: "power2.in", scale: 0.12, stagger: 0.035, x: 0, y: 0 }, 1.0)
-        .to(gravityLinesRef.current, { autoAlpha: 0.84, duration: 1.02, ease: "power2.in", rotation: 42, scale: 0.64 }, 1.0)
-        .to(loginScene, { duration: 0.92, ease: "power2.in", opacity: 0.46, scale: 0.86 }, 1.0)
-        .to(gravityCopyRef.current, { autoAlpha: 0, duration: 0.2, ease: "power1.in", y: -10 }, 1.82)
-
-        // 03 / 04: collapse the tunnel around the operator signal.
-        .call(() => setStage(3), [], 2.0)
-        .to(routingCopyRef.current, { autoAlpha: 1, duration: 0.28, ease: "power1.out", y: 0 }, 2.02)
-        .to(tunnelRef.current, { autoAlpha: 1, duration: 0.32, ease: "power1.out", scale: 1 }, 2.0)
-        .to(tunnelRings, { autoAlpha: 0.76, duration: 1.34, ease: "power2.in", scale: 0.12, stagger: 0.1 }, 2.04)
+        .to(gravityCopyRef.current, { autoAlpha: 1, duration: 0.42, ease: "power2.out", y: 0 }, 0.74)
+        .to(singularityRef.current, { autoAlpha: 1, duration: 0.92, ease: "power3.out", scale: 1 }, 0.78)
+        .to(coreRef.current, { autoAlpha: 1, duration: 0.74, ease: "power2.inOut", scale: 1 }, 0.9)
+        .to(suctionRings, { autoAlpha: 0.58, duration: 1.16, ease: "expo.inOut", scale: 0.42, stagger: 0.06 }, 0.88)
         .to(packets, {
-          autoAlpha: 0.82,
+          autoAlpha: 0.58,
           duration: 1.34,
-          ease: "power2.in",
-          scale: 0.06,
+          ease: "power3.inOut",
+          rotation: (index) => (index * 20) + 116,
+          scale: 0.2,
           stagger: 0.025,
-          x: 0,
-          y: 0
-        }, 2.1)
-        .to(gravityLinesRef.current, { autoAlpha: 0.96, duration: 1.22, ease: "power1.in", rotation: 118, scale: 0.22 }, 2.12)
-        .to(loginScene, { duration: 1.32, ease: "power3.in", opacity: 0, scale: 0.16 }, 2.14)
-        .to(singularityRef.current, { duration: 1.3, ease: "sine.inOut", scale: 1.36 }, 2.18)
-        .to(routingCopyRef.current, { autoAlpha: 0, duration: 0.2, ease: "power1.in", y: -10 }, 3.42)
+          x: (index) => spiralPacketOffset(index, "x", 0.38, Math.PI * 0.72),
+          y: (index) => spiralPacketOffset(index, "y", 0.38, Math.PI * 0.72)
+        }, 0.92)
+        .to(gravityLinesRef.current, { autoAlpha: 0.66, duration: 1.18, ease: "power2.inOut", rotation: 42, scale: 0.64 }, 0.92)
+        .to(loginScene, { duration: 1.18, ease: "power2.inOut", filter: "blur(3px)", opacity: 0.44, scale: 0.86 }, 0.92)
+        .to(gravityCopyRef.current, { autoAlpha: 0, duration: 0.34, ease: "sine.inOut", y: -8 }, 1.68)
 
-        // 04 / 04: charge the singularity, then release the energy wash.
+        // 03 / 04: spiral the operator signal into the singularity.
+        .call(() => setStage(3), [], 2.0)
+        .to(routingCopyRef.current, { autoAlpha: 1, duration: 0.44, ease: "power2.out", y: 0 }, 1.88)
+        .to(vortexRef.current, { autoAlpha: 1, duration: 0.68, ease: "sine.inOut", scale: 1 }, 1.76)
+        .to(vortexRings, {
+          autoAlpha: 0.54,
+          duration: 1.68,
+          ease: "power3.inOut",
+          rotation: (index) => (index % 2 === 0 ? 248 : -214) + (index * 37),
+          scale: (index) => 0.12 + (index * 0.022),
+          stagger: 0.08
+        }, 1.84)
+        .to(packets, {
+          autoAlpha: 0.54,
+          duration: 1.64,
+          ease: "power3.inOut",
+          rotation: (index) => (index * 20) + 286,
+          scale: 0.035,
+          stagger: 0.022,
+          x: (index) => spiralPacketOffset(index, "x", 0.035, Math.PI * 1.9),
+          y: (index) => spiralPacketOffset(index, "y", 0.035, Math.PI * 1.9)
+        }, 1.9)
+        .to(suctionRings, { autoAlpha: 0.3, duration: 1.52, ease: "expo.inOut", rotation: 164, scale: 0.14, stagger: 0.035 }, 1.94)
+        .to(gravityLinesRef.current, { autoAlpha: 0.7, duration: 1.52, ease: "power3.inOut", rotation: 178, scale: 0.2 }, 1.96)
+        .to(loginScene, { duration: 1.46, ease: "power3.inOut", filter: "blur(10px)", opacity: 0, scale: 0.16 }, 2.02)
+        .to(singularityRef.current, { duration: 1.46, ease: "sine.inOut", scale: 1.28 }, 2.04)
+        .to(routingCopyRef.current, { autoAlpha: 0, duration: 0.36, ease: "sine.inOut", y: -8 }, 3.28)
+
+        // 04 / 04: implode the singularity, then release the energy bloom.
         .call(() => setStage(4), [], 3.6)
-        .to(syncCopyRef.current, { autoAlpha: 1, duration: 0.3, ease: "power1.out", y: 0 }, 3.62)
-        .to(arcs, { autoAlpha: 0.86, duration: 0.86, ease: "power2.out", rotation: (index) => (index * 82) + 88, scale: 1.26, stagger: 0.08 }, 3.64)
-        .to(coreRef.current, { autoAlpha: 1, duration: 0.84, ease: "power2.in", scale: 1.78 }, 3.7)
-        .to(singularityRef.current, { autoAlpha: 0.96, duration: 0.84, ease: "power2.in", scale: 1.72 }, 3.78)
-        .to(syncCopyRef.current, { autoAlpha: 0, duration: 0.2, ease: "power1.in", y: -10 }, 4.58)
-        .to(exitCopyRef.current, { autoAlpha: 1, duration: 0.24, ease: "power1.out", y: 0 }, 4.78)
-        .to(explosionRef.current, { autoAlpha: 1, duration: 1.02, ease: "power3.inOut", scale: 10.8 }, 4.8)
-        .to([gravityLinesRef.current, singularityRef.current, tunnelRef.current, coreRef.current], {
+        .to(syncCopyRef.current, { autoAlpha: 1, duration: 0.46, ease: "power2.out", y: 0 }, 3.44)
+        .to(vortexRings, { autoAlpha: 0.2, duration: 0.72, ease: "expo.inOut", rotation: (index) => (index * 76) + 412, scale: 0.025 }, 3.42)
+        .to(suctionRings, { autoAlpha: 0.12, duration: 0.7, ease: "expo.inOut", rotation: 244, scale: 0.055 }, 3.46)
+        .to(arcs, { autoAlpha: 0.54, duration: 1.08, ease: "sine.inOut", rotation: (index) => (index * 82) + 128, scale: 1.1, stagger: 0.07 }, 3.48)
+        .to(coreRef.current, { autoAlpha: 0.96, duration: 0.56, ease: "expo.inOut", scale: 0.62 }, 3.54)
+        .to(singularityRef.current, { autoAlpha: 0.9, duration: 0.58, ease: "expo.inOut", scale: 0.86 }, 3.56)
+        .to(coreRef.current, { duration: 0.68, ease: "power3.inOut", scale: 1.38 }, 4.1)
+        .to(singularityRef.current, { duration: 0.7, ease: "power3.inOut", scale: 1.46 }, 4.12)
+        .to(explosionRef.current, { autoAlpha: 0.24, duration: 0.44, ease: "sine.inOut", scale: 1.34 }, 4.34)
+        .to(syncCopyRef.current, { autoAlpha: 0, duration: 0.38, ease: "sine.inOut", y: -8 }, 4.42)
+        .to(exitCopyRef.current, { autoAlpha: 1, duration: 0.46, ease: "power2.out", y: 0 }, 4.6)
+        .to(explosionRef.current, { autoAlpha: 0.68, duration: 0.68, ease: "sine.inOut", scale: 9.2 }, 4.76)
+        .to(explosionRef.current, { autoAlpha: 0.48, duration: 0.4, ease: "sine.out", scale: 10.4 }, 5.42)
+        .to([gravityLinesRef.current, singularityRef.current, vortexRef.current, coreRef.current], {
           autoAlpha: 0,
-          duration: 0.68,
-          ease: "power1.in"
-        }, 4.94);
+          duration: 0.86,
+          ease: "power2.inOut"
+        }, 4.76);
     }, overlayRef);
 
     return () => {
@@ -279,9 +313,9 @@ export function LoginPortalOverlay({
         </i>
       </div>
 
-      <div aria-hidden="true" className="login-portal-tunnel" ref={tunnelRef}>
-        {Array.from({ length: TUNNEL_RING_COUNT }, (_, index) => (
-          <span className="login-portal-tunnel-ring" key={`tunnel-ring-${index}`} />
+      <div aria-hidden="true" className="login-portal-vortex" ref={vortexRef}>
+        {Array.from({ length: VORTEX_RING_COUNT }, (_, index) => (
+          <span className="login-portal-vortex-ring" key={`vortex-ring-${index}`} />
         ))}
       </div>
 
@@ -300,7 +334,7 @@ export function LoginPortalOverlay({
         <strong>Gravity well opened</strong>
       </div>
       <div className="login-portal-phase-copy" ref={routingCopyRef}>
-        <small>Data tunnel collapsing</small>
+        <small>Signal vortex converging</small>
         <strong>Routing operator signal</strong>
       </div>
       <div className="login-portal-phase-copy" ref={syncCopyRef}>

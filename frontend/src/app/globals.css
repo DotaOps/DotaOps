@@ -9120,6 +9120,28 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   background: rgba(16, 10, 10, 0.84);
 }
 
+.team-mgmt-tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.team-mgmt-role-context {
+  padding: 8px 11px;
+  border: 1px solid rgba(233, 195, 73, 0.22);
+  border-radius: var(--ops-radius-sm);
+  background: rgba(233, 195, 73, 0.06);
+  color: var(--ops-secondary);
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .team-mgmt-tab {
   min-height: 38px;
   padding: 9px 16px;
@@ -9361,6 +9383,57 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   opacity: 0.65;
 }
 
+.team-mgmt-join-request-form {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(280px, 1.25fr) auto;
+  gap: 14px;
+  align-items: end;
+  margin-top: 10px;
+  padding: 18px;
+  border: 1px solid rgba(233, 195, 73, 0.2);
+  border-left: 3px solid rgba(233, 195, 73, 0.66);
+  background: rgba(233, 195, 73, 0.045);
+}
+
+.team-mgmt-join-request-form > div {
+  grid-column: 1 / -1;
+}
+
+.team-mgmt-join-request-form p {
+  margin-top: 4px;
+  font-size: 0.86rem;
+}
+
+.team-mgmt-join-request-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.team-mgmt-join-request-form label > span {
+  color: var(--ops-muted);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.team-mgmt-join-request-form select,
+.team-mgmt-join-request-form textarea {
+  width: 100%;
+  min-height: 43px;
+  border: 1px solid rgba(255, 180, 171, 0.28);
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--ops-text);
+  font: inherit;
+  padding: 11px 12px;
+}
+
+.team-mgmt-join-request-form textarea {
+  resize: vertical;
+}
+
 .team-mgmt-create-field-wide {
   grid-column: 1 / -1;
 }
@@ -9413,6 +9486,10 @@ html[data-portal-handoff="active"] .page-loading-overlay {
 
   .team-mgmt-empty-briefing {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .team-mgmt-join-request-form {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -9852,6 +9929,10 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   text-transform: uppercase;
 }
 
+.team-mgmt-status-pending {
+  color: var(--ops-secondary);
+}
+
 .team-mgmt-status-accepted {
   color: var(--ops-green);
 }
@@ -9873,6 +9954,35 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   padding-bottom: 14px;
   border-bottom: 1px solid var(--ops-line);
   font-size: 1rem;
+}
+
+.team-mgmt-command-note {
+  color: var(--ops-muted);
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  text-transform: uppercase;
+}
+
+.team-mgmt-planned-controls {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ops-line);
+}
+
+.team-mgmt-planned-title {
+  color: var(--ops-muted);
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .team-mgmt-side-card button,
@@ -14045,11 +14155,11 @@ button.schedule-results-match:hover,
   inset: 0;
   opacity: 0;
   background:
-    radial-gradient(circle at center, rgba(127, 18, 23, 0.36), transparent 29%),
-    radial-gradient(circle at 72% 28%, rgba(0, 168, 179, 0.09), transparent 24%),
-    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.024) 0 1px, transparent 1px 7px),
+    radial-gradient(circle at center, rgba(127, 18, 23, 0.3), transparent 35%),
+    radial-gradient(circle at 72% 28%, rgba(0, 168, 179, 0.07), transparent 29%),
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.015) 0 1px, transparent 1px 7px),
     linear-gradient(160deg, rgba(20, 8, 8, 0.7), rgba(2, 5, 6, 0.94));
-  backdrop-filter: blur(5px) brightness(0.58);
+  backdrop-filter: blur(6px) brightness(0.56);
 }
 
 .login-portal-handoff-topbar,
@@ -14100,7 +14210,7 @@ button.schedule-results-match:hover,
 
 .login-portal-gravity-lines,
 .login-portal-singularity,
-.login-portal-tunnel,
+.login-portal-vortex,
 .login-portal-signal-packets {
   position: absolute;
   inset: 0;
@@ -14112,12 +14222,13 @@ button.schedule-results-match:hover,
   background:
     repeating-conic-gradient(
       from 0deg,
-      rgba(255, 105, 98, 0.36) 0deg 0.8deg,
-      transparent 0.8deg 12deg,
-      rgba(0, 221, 221, 0.18) 12deg 12.6deg,
-      transparent 12.6deg 24deg
+      rgba(255, 105, 98, 0.2) 0deg 0.55deg,
+      transparent 0.55deg 12deg,
+      rgba(0, 221, 221, 0.11) 12deg 12.4deg,
+      transparent 12.4deg 24deg
     );
   mask-image: radial-gradient(circle, transparent 0 8%, #000 21%, rgba(0, 0, 0, 0.62) 48%, transparent 74%);
+  filter: blur(0.65px);
   opacity: 0;
   transform: scale(1.28) rotate(-16deg);
   transform-origin: center;
@@ -14134,7 +14245,7 @@ button.schedule-results-match:hover,
 }
 
 .login-portal-suction-ring,
-.login-portal-tunnel-ring,
+.login-portal-vortex-ring,
 .login-portal-energy-arc {
   position: absolute;
   inset: 50% auto auto 50%;
@@ -14145,23 +14256,24 @@ button.schedule-results-match:hover,
 }
 
 .login-portal-suction-ring {
-  border: 1px solid rgba(255, 139, 132, 0.28);
-  box-shadow: 0 0 28px rgba(255, 63, 58, 0.08);
+  border: 1px solid rgba(255, 139, 132, 0.2);
+  box-shadow: 0 0 34px rgba(255, 63, 58, 0.07);
+  filter: blur(0.35px);
 }
 
-.login-portal-suction-ring:nth-child(1) { width: 100%; border-color: rgba(255, 111, 103, 0.58); }
-.login-portal-suction-ring:nth-child(2) { width: 84%; border-color: rgba(0, 221, 221, 0.25); }
-.login-portal-suction-ring:nth-child(3) { width: 70%; border-color: rgba(255, 179, 172, 0.28); }
-.login-portal-suction-ring:nth-child(4) { width: 53%; border-color: rgba(255, 90, 83, 0.44); }
-.login-portal-suction-ring:nth-child(5) { width: 38%; border-color: rgba(0, 221, 221, 0.32); }
-.login-portal-suction-ring:nth-child(6) { width: 23%; border-color: rgba(255, 187, 182, 0.46); }
+.login-portal-suction-ring:nth-child(1) { width: 100%; border-color: rgba(255, 111, 103, 0.38); }
+.login-portal-suction-ring:nth-child(2) { width: 84%; border-color: rgba(0, 221, 221, 0.18); }
+.login-portal-suction-ring:nth-child(3) { width: 70%; border-color: rgba(255, 179, 172, 0.2); }
+.login-portal-suction-ring:nth-child(4) { width: 53%; border-color: rgba(255, 90, 83, 0.28); }
+.login-portal-suction-ring:nth-child(5) { width: 38%; border-color: rgba(0, 221, 221, 0.21); }
+.login-portal-suction-ring:nth-child(6) { width: 23%; border-color: rgba(255, 187, 182, 0.3); }
 
 .login-portal-energy-arc {
   width: 94%;
-  border: 2px solid transparent;
-  border-top-color: rgba(255, 82, 75, 0.72);
-  border-right-color: rgba(0, 221, 221, 0.22);
-  filter: drop-shadow(0 0 12px rgba(255, 61, 56, 0.28));
+  border: 1px solid transparent;
+  border-top-color: rgba(255, 82, 75, 0.5);
+  border-right-color: rgba(0, 221, 221, 0.15);
+  filter: blur(0.25px) drop-shadow(0 0 15px rgba(255, 61, 56, 0.2));
 }
 
 .login-portal-energy-arc:nth-child(8) { width: 76%; }
@@ -14174,35 +14286,115 @@ button.schedule-results-match:hover,
   display: grid;
   width: clamp(70px, 8vw, 96px);
   aspect-ratio: 1;
-  border: 1px solid rgba(255, 179, 172, 0.64);
+  border: 1px solid rgba(255, 179, 172, 0.34);
   border-radius: 50%;
   background:
-    radial-gradient(circle, rgba(1, 2, 3, 0.98) 0 31%, rgba(98, 21, 24, 0.82) 54%, rgba(0, 173, 184, 0.3) 72%, rgba(3, 5, 6, 0.96) 100%),
+    radial-gradient(circle, rgba(0, 0, 0, 0.995) 0 24%, rgba(5, 8, 9, 0.99) 37%, rgba(71, 18, 22, 0.66) 57%, rgba(0, 134, 144, 0.2) 75%, rgba(4, 5, 6, 0.96) 100%),
     #020303;
   box-shadow:
-    0 0 32px rgba(255, 74, 67, 0.48),
-    0 0 86px rgba(0, 221, 221, 0.14),
-    0 0 140px rgba(255, 57, 52, 0.2);
+    0 0 42px rgba(255, 74, 67, 0.31),
+    0 0 104px rgba(0, 221, 221, 0.1),
+    0 0 172px rgba(255, 57, 52, 0.14);
   color: #ffaaa4;
   place-items: center;
   transform: translate(-50%, -50%);
   will-change: opacity, transform;
 }
 
-.login-portal-tunnel {
+.login-portal-gravity-lines::before,
+.login-portal-gravity-lines::after {
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  background:
+    repeating-conic-gradient(
+      from 26deg,
+      transparent 0deg 18deg,
+      rgba(255, 88, 81, 0.13) 18deg 18.6deg,
+      transparent 18.6deg 36deg,
+      rgba(0, 212, 220, 0.07) 36deg 36.35deg
+    );
+  content: "";
+  filter: blur(2.8px);
+  mask-image: radial-gradient(circle, transparent 0 18%, rgba(0, 0, 0, 0.88) 36%, rgba(0, 0, 0, 0.45) 64%, transparent 80%);
+  opacity: 0.72;
+  transform: rotate(18deg) scaleX(0.82);
+}
+
+.login-portal-gravity-lines::after {
+  inset: 20%;
+  opacity: 0.46;
+  transform: rotate(-22deg) scaleX(1.16);
+}
+
+.login-portal-black-hole-core::before,
+.login-portal-black-hole-core::after {
+  position: absolute;
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+}
+
+.login-portal-black-hole-core::before {
+  inset: -18%;
+  background: radial-gradient(circle, transparent 0 42%, rgba(255, 83, 76, 0.16) 55%, rgba(0, 210, 220, 0.08) 67%, transparent 79%);
+  filter: blur(7px);
+  opacity: 0.78;
+}
+
+.login-portal-black-hole-core::after {
+  inset: 13%;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.995) 0 62%, rgba(5, 8, 9, 0.98) 100%);
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.94);
+}
+
+.login-portal-black-hole-core svg {
+  position: relative;
+  z-index: 1;
+  opacity: 0.76;
+}
+
+.login-portal-vortex {
+  inset: 50% auto auto 50%;
+  width: min(70vw, 720px);
+  aspect-ratio: 1;
   opacity: 0;
-  transform: scale(0.62);
+  transform: translate(-50%, -50%) scale(1.16);
   will-change: opacity, transform;
 }
 
-.login-portal-tunnel-ring {
-  width: min(56vw, 560px);
-  border: 1px solid rgba(255, 109, 102, 0.24);
-  box-shadow: 0 0 28px rgba(255, 62, 57, 0.08);
+.login-portal-vortex::before {
+  position: absolute;
+  inset: 7%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 0 28%, rgba(255, 70, 64, 0.09) 48%, rgba(0, 207, 215, 0.045) 62%, transparent 78%);
+  content: "";
+  filter: blur(14px);
 }
 
-.login-portal-tunnel-ring:nth-child(2n) {
-  border-color: rgba(0, 221, 221, 0.2);
+.login-portal-vortex-ring {
+  border: 1px solid transparent;
+  border-left-color: rgba(255, 102, 94, 0.24);
+  border-top-color: rgba(255, 170, 160, 0.18);
+  border-right-color: rgba(0, 210, 218, 0.1);
+  box-shadow:
+    0 0 42px rgba(255, 63, 57, 0.045),
+    inset 0 0 34px rgba(0, 214, 222, 0.025);
+  filter: blur(0.7px);
+}
+
+.login-portal-vortex-ring:nth-child(1) { width: 96%; }
+.login-portal-vortex-ring:nth-child(2) {
+  width: 78%;
+  border-left-color: rgba(0, 210, 218, 0.14);
+  border-right-color: rgba(255, 102, 94, 0.16);
+}
+.login-portal-vortex-ring:nth-child(3) { width: 61%; }
+.login-portal-vortex-ring:nth-child(4) {
+  width: 45%;
+  border-left-color: rgba(0, 210, 218, 0.12);
+  border-right-color: rgba(255, 102, 94, 0.18);
 }
 
 .login-portal-signal-packets {
@@ -14211,16 +14403,16 @@ button.schedule-results-match:hover,
 
 .login-portal-signal-packet {
   position: absolute;
-  width: 3px;
+  width: 2px;
   height: clamp(44px, 8vw, 96px);
-  background: linear-gradient(180deg, transparent, rgba(255, 100, 93, 0.82), transparent);
+  background: linear-gradient(180deg, transparent, rgba(255, 100, 93, 0.58), transparent);
   opacity: 0;
   transform-origin: center;
   will-change: opacity, transform;
 }
 
 .login-portal-signal-packet:nth-child(3n) {
-  background: linear-gradient(180deg, transparent, rgba(0, 221, 221, 0.68), transparent);
+  background: linear-gradient(180deg, transparent, rgba(0, 221, 221, 0.48), transparent);
 }
 
 .login-portal-phase-copy {
@@ -14275,7 +14467,7 @@ button.schedule-results-match:hover,
 
 .login-portal-entering-copy {
   z-index: 7;
-  text-shadow: 0 0 24px rgba(255, 255, 255, 0.44);
+  text-shadow: 0 0 30px rgba(255, 238, 235, 0.26);
 }
 
 .login-portal-energy-explosion {
@@ -14286,11 +14478,12 @@ button.schedule-results-match:hover,
   aspect-ratio: 1;
   border-radius: 50%;
   background:
-    radial-gradient(circle, rgba(255, 255, 255, 0.98) 0 21%, rgba(255, 227, 222, 0.95) 34%, rgba(255, 84, 77, 0.78) 52%, rgba(0, 221, 221, 0.44) 68%, rgba(8, 12, 13, 0.98) 83%);
+    radial-gradient(circle, rgba(255, 255, 255, 0.72) 0 17%, rgba(255, 227, 222, 0.62) 32%, rgba(255, 84, 77, 0.46) 51%, rgba(0, 221, 221, 0.22) 69%, rgba(8, 12, 13, 0.94) 86%);
   box-shadow:
-    0 0 130px rgba(255, 244, 241, 0.56),
-    0 0 200px rgba(255, 72, 66, 0.44),
-    0 0 260px rgba(0, 221, 221, 0.16);
+    0 0 142px rgba(255, 244, 241, 0.34),
+    0 0 224px rgba(255, 72, 66, 0.28),
+    0 0 294px rgba(0, 221, 221, 0.1);
+  filter: blur(2px);
   opacity: 0;
   transform: translate(-50%, -50%) scale(0.2);
   will-change: opacity, transform;
