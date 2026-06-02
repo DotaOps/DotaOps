@@ -2,7 +2,6 @@
 
 import {
   deleteApiAuthenticated,
-  fetchApi,
   getApi,
   getApiAuthenticated,
   patchApiAuthenticated,
@@ -26,6 +25,8 @@ export type TeamInvitationStatus =
   | "declined"
   | "cancelled"
   | "expired";
+
+export type TeamJoinRequestStatus = "pending" | "accepted" | "declined" | "cancelled";
 
 export interface TeamSummary {
   bannerUrl: string | null;
@@ -94,19 +95,45 @@ export interface TournamentRegistration {
   tournamentTitle: string | null;
 }
 
+export interface TeamJoinRequest {
+  createdAt: string | null;
+  id: string;
+  message: string | null;
+  requesterDisplayName: string | null;
+  requesterProfileId: string;
+  resolvedAt: string | null;
+  resolvedByDisplayName: string | null;
+  resolvedByProfileId: string | null;
+  status: TeamJoinRequestStatus;
+  teamId: string;
+  teamName: string;
+  teamSlug: string;
+  updatedAt: string | null;
+}
+
 export interface TeamManagementViewModel {
   accessToken: string;
   activeEvents: TournamentRegistration[];
+  availableTeams: TeamSummary[];
+  canCreateTeam: boolean;
+  canInvitePlayers: boolean;
+  canManageTeam: boolean;
   canManageRoster: boolean;
+  canRequestTeamMembership: boolean;
+  canViewAnalytics: boolean;
   currentProfile: CurrentUserProfile;
+  currentUserTeamRole: string | null;
   dataSource: "api";
   incomingInvitations: TeamInvitation[];
   isCaptain: boolean;
+  isTeamOwner: boolean;
   manualPlayers: TeamManualPlayer[];
   members: TeamMember[];
+  outgoingJoinRequests: TeamJoinRequest[];
   outgoingInvitations: TeamInvitation[];
   protectedDataError: string | null;
   team: TeamSummary | null;
+  teamJoinRequests: TeamJoinRequest[];
   teamResolution: string;
 }
 
@@ -162,12 +189,34 @@ interface BackendTeamMemberResponse {
 }
 
 interface BackendCurrentTeamResponse {
+  canCreateTeam?: boolean;
+  canInvitePlayers?: boolean;
+  canManageTeam?: boolean;
   canManageRoster?: boolean;
+  canViewAnalytics?: boolean;
   captain?: boolean;
+  currentUserTeamRole?: string | null;
+  isTeamOwner?: boolean;
   manualPlayers?: BackendTeamManualPlayerResponse[] | null;
   members?: BackendTeamMemberResponse[] | null;
   team?: BackendTeamResponse | null;
   teamResolution?: string | null;
+}
+
+interface BackendTeamJoinRequestResponse {
+  createdAt?: string | null;
+  id: string;
+  message?: string | null;
+  requesterDisplayName?: string | null;
+  requesterProfileId: string;
+  resolvedAt?: string | null;
+  resolvedByDisplayName?: string | null;
+  resolvedByProfileId?: string | null;
+  status: TeamJoinRequestStatus;
+  teamId: string;
+  teamName: string;
+  teamSlug: string;
+  updatedAt?: string | null;
 }
 
 interface BackendTeamInvitationResponse {
@@ -291,6 +340,24 @@ function asInvitation(response: BackendTeamInvitationResponse): TeamInvitation {
   };
 }
 
+function asJoinRequest(response: BackendTeamJoinRequestResponse): TeamJoinRequest {
+  return {
+    createdAt: response.createdAt ?? null,
+    id: response.id,
+    message: response.message ?? null,
+    requesterDisplayName: response.requesterDisplayName ?? null,
+    requesterProfileId: response.requesterProfileId,
+    resolvedAt: response.resolvedAt ?? null,
+    resolvedByDisplayName: response.resolvedByDisplayName ?? null,
+    resolvedByProfileId: response.resolvedByProfileId ?? null,
+    status: response.status,
+    teamId: response.teamId,
+    teamName: response.teamName,
+    teamSlug: response.teamSlug,
+    updatedAt: response.updatedAt ?? null
+  };
+}
+
 function asRegistration(response: BackendTournamentRegistrationResponse): TournamentRegistration {
   return {
     checkedInAt: response.checkedInAt ?? null,
@@ -372,38 +439,11 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
   }
 
   const teamsResult = await listTeams();
-  let dataSource: "api" = teamsResult.source;
-  let teams = teamsResult.data;
-  let membersByTeam = new Map<string, TeamMember[]>();
+  const dataSource: "api" = teamsResult.source;
+  const availableTeams = teamsResult.data;
   const aggregateTeam = currentTeamAggregate?.team ? asTeam(currentTeamAggregate.team) : null;
-
-  if (teams.length > 0) {
-    const memberPairs = await Promise.all(
-      teams.map(async (team) => {
-        const result = await fetchApi<BackendTeamMemberResponse[]>(`/teams/${team.id}/members`, []);
-        return [team.id, result.data.map(asMember)] as const;
-      })
-    );
-    membersByTeam = new Map(memberPairs);
-  }
-
-  if (aggregateTeam) {
-    dataSource = "api";
-    teams = [aggregateTeam, ...teams.filter((team) => team.id !== aggregateTeam.id)];
-    membersByTeam.set(
-      aggregateTeam.id,
-      (currentTeamAggregate?.members ?? []).map(asMember)
-    );
-  }
-
-  const membershipTeam =
-    !aggregateTeam && currentProfile.profileId
-      ? teams.find((team) =>
-          (membersByTeam.get(team.id) ?? []).some((member) => member.profileId === currentProfile.profileId)
-        )
-      : null;
-  const selectedTeam = aggregateTeam ?? membershipTeam ?? null;
-  const members = selectedTeam ? membersByTeam.get(selectedTeam.id) ?? [] : [];
+  const selectedTeam = aggregateTeam;
+  const members = (currentTeamAggregate?.members ?? []).map(asMember);
   let manualPlayers =
     (currentTeamAggregate?.manualPlayers ?? currentTeamAggregate?.team?.manualPlayers ?? []).map(
       asManualPlayer
@@ -421,23 +461,22 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
       manualPlayers = selectedTeam.manualPlayers;
     }
   }
-  const isCaptain = aggregateTeam
-    ? Boolean(currentTeamAggregate?.captain)
-    : Boolean(
-        selectedTeam?.captainProfileId &&
-          currentProfile.profileId &&
-          selectedTeam.captainProfileId === currentProfile.profileId
-      );
-  const canManageRoster = aggregateTeam ? Boolean(currentTeamAggregate?.canManageRoster) : isCaptain;
-  const teamResolution = aggregateTeam
-    ? currentTeamAggregate?.teamResolution ?? "Resolved from GET /api/me/team."
-    : membershipTeam
-      ? "Resolved from current profile membership."
-      : currentTeamAggregate
-        ? currentTeamAggregate.teamResolution ?? "No team found for the current profile."
-        : "No team found for the current profile.";
+  const isTeamOwner = Boolean(currentTeamAggregate?.isTeamOwner);
+  const isCaptain = isTeamOwner;
+  const canCreateTeam = Boolean(currentTeamAggregate?.canCreateTeam);
+  const canManageTeam = Boolean(currentTeamAggregate?.canManageTeam);
+  const canManageRoster = Boolean(currentTeamAggregate?.canManageRoster);
+  const canInvitePlayers = Boolean(currentTeamAggregate?.canInvitePlayers);
+  const canViewAnalytics = Boolean(currentTeamAggregate?.canViewAnalytics);
+  const canRequestTeamMembership =
+    currentProfile.role === "player" && currentTeamAggregate?.team === null;
+  const currentUserTeamRole = currentTeamAggregate?.currentUserTeamRole ?? null;
+  const teamResolution =
+    currentTeamAggregate?.teamResolution ?? "No team found for the current profile.";
   let outgoingInvitations: TeamInvitation[] = [];
   let incomingInvitations: TeamInvitation[] = [];
+  let outgoingJoinRequests: TeamJoinRequest[] = [];
+  let teamJoinRequests: TeamJoinRequest[] = [];
   let activeEvents: TournamentRegistration[] = [];
 
   try {
@@ -448,7 +487,17 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
     protectedDataError = protectedErrorMessage(error);
   }
 
-  if (selectedTeam && canManageRoster && dataSource === "api") {
+  if (canRequestTeamMembership) {
+    try {
+      outgoingJoinRequests = (
+        await getApiAuthenticated<BackendTeamJoinRequestResponse[]>("/me/team-join-requests", accessToken)
+      ).map(asJoinRequest);
+    } catch (error) {
+      protectedDataError = protectedDataError ?? protectedErrorMessage(error);
+    }
+  }
+
+  if (selectedTeam && canInvitePlayers) {
     try {
       outgoingInvitations = (
         await getApiAuthenticated<BackendTeamInvitationResponse[]>(
@@ -461,7 +510,20 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
     }
   }
 
-  if (selectedTeam && dataSource === "api") {
+  if (selectedTeam && canManageTeam) {
+    try {
+      teamJoinRequests = (
+        await getApiAuthenticated<BackendTeamJoinRequestResponse[]>(
+          `/teams/${selectedTeam.id}/join-requests`,
+          accessToken
+        )
+      ).map(asJoinRequest);
+    } catch (error) {
+      protectedDataError = protectedDataError ?? protectedErrorMessage(error);
+    }
+  }
+
+  if (selectedTeam) {
     try {
       activeEvents = (
         await getApiAuthenticated<BackendTournamentRegistrationResponse[]>(
@@ -477,16 +539,26 @@ export async function loadTeamManagementData(): Promise<TeamManagementViewModel 
   return {
     accessToken,
     activeEvents,
+    availableTeams,
+    canCreateTeam,
+    canInvitePlayers,
+    canManageTeam,
     canManageRoster,
+    canRequestTeamMembership,
+    canViewAnalytics,
     currentProfile,
+    currentUserTeamRole,
     dataSource,
     incomingInvitations,
     isCaptain,
+    isTeamOwner,
     manualPlayers,
     members,
+    outgoingJoinRequests,
     outgoingInvitations,
     protectedDataError,
     team: selectedTeam,
+    teamJoinRequests,
     teamResolution
   };
 }
@@ -583,6 +655,73 @@ export async function cancelTeamInvitation(invitationId: string) {
   return asInvitation(
     await postApiAuthenticated<BackendTeamInvitationResponse>(
       `/team-invitations/${invitationId}/cancel`,
+      {},
+      accessToken
+    )
+  );
+}
+
+export async function createTeamJoinRequest(teamId: string, message?: string) {
+  const accessToken = await getFreshAccessToken();
+
+  return asJoinRequest(
+    await postApiAuthenticated<BackendTeamJoinRequestResponse>(
+      `/teams/${teamId}/join-requests`,
+      { message: message?.trim() || null },
+      accessToken
+    )
+  );
+}
+
+export async function getMyTeamJoinRequests() {
+  const accessToken = await getFreshAccessToken();
+
+  return (
+    await getApiAuthenticated<BackendTeamJoinRequestResponse[]>("/me/team-join-requests", accessToken)
+  ).map(asJoinRequest);
+}
+
+export async function getTeamJoinRequests(teamId: string) {
+  const accessToken = await getFreshAccessToken();
+
+  return (
+    await getApiAuthenticated<BackendTeamJoinRequestResponse[]>(
+      `/teams/${teamId}/join-requests`,
+      accessToken
+    )
+  ).map(asJoinRequest);
+}
+
+export async function acceptTeamJoinRequest(requestId: string) {
+  const accessToken = await getFreshAccessToken();
+
+  return asJoinRequest(
+    await postApiAuthenticated<BackendTeamJoinRequestResponse>(
+      `/team-join-requests/${requestId}/accept`,
+      {},
+      accessToken
+    )
+  );
+}
+
+export async function declineTeamJoinRequest(requestId: string) {
+  const accessToken = await getFreshAccessToken();
+
+  return asJoinRequest(
+    await postApiAuthenticated<BackendTeamJoinRequestResponse>(
+      `/team-join-requests/${requestId}/decline`,
+      {},
+      accessToken
+    )
+  );
+}
+
+export async function cancelTeamJoinRequest(requestId: string) {
+  const accessToken = await getFreshAccessToken();
+
+  return asJoinRequest(
+    await postApiAuthenticated<BackendTeamJoinRequestResponse>(
+      `/team-join-requests/${requestId}/cancel`,
       {},
       accessToken
     )
