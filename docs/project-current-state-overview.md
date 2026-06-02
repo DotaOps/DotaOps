@@ -27,7 +27,7 @@ Ta dokument opisuje dejansko stanje repozitorija. Predlogi so loceni v poglavjih
 | Backend | Java 21, Spring Boot 4.0.6, Spring MVC, Spring Security | `backend/pom.xml` |
 | Dostop do baze | `JdbcTemplate` repository razredi | npr. `TournamentRepository`, `MatchImportRepository`, `AnalyticsRepository` |
 | JPA | Odvisnost je prisotna, vendar ni najdenih `@Entity` razredov ali Spring Data repository interface-ov | `backend/pom.xml`, pregled `backend/src/main/java` |
-| Migracije | Flyway, 28 migracij | `backend/src/main/resources/db/migration/` |
+| Migracije | Flyway, 29 migracij | `backend/src/main/resources/db/migration/` |
 | Baza | Supabase PostgreSQL | `supabase/config.toml`, `backend/src/main/resources/application.properties` |
 | Frontend | Next.js 16.2.6 App Router, React 19.2.5, TypeScript 6 | `frontend/package.json` |
 | Frontend auth | Supabase JS in `@supabase/ssr` | `frontend/src/lib/auth.ts`, `frontend/src/lib/supabase/`, `frontend/src/proxy.ts` |
@@ -251,8 +251,9 @@ Obstajajo tudi starejsi ali delno prekrivajoci adapterji: `data.ts`, `organizer-
 | `V26` | team images, manual players, team size in join requests |
 | `V27` | uporabni notification outbox servis |
 | `V28` | persisted profile role allowlist in team permission hardening: player-only create, captain/admin team RLS |
+| `V29` | `audit_log(created_at desc, id desc)` indeks za newest-first admin paginacijo in casovne filtre |
 
-Integracijski test je na cisti PostgreSQL 16 bazi uspesno izvedel vseh 28 migracij.
+Integracijski test je na cisti PostgreSQL 16 bazi uspesno izvedel vseh 29 migracij.
 
 ### Pomembne tabele
 
@@ -282,7 +283,7 @@ Integracijski test je na cisti PostgreSQL 16 bazi uspesno izvedel vseh 28 migrac
 | `heroes` | Dota hero reference podatki | match players | `HeroRepository` |
 | `match_players` | normalizirana statistika igralca na igro | import, match game, profile, team, hero | import in analytics repositories |
 | `notification_outbox` | durable dogodki in in-app read state | prejemnikov profil | notification repositories |
-| `audit_log` | DB audit triggerji za pomembne spremembe | actor profil | `AdminAuditLogRepository` |
+| `audit_log` | DB audit triggerji za pomembne spremembe; raw `previous_row` in `new_row` ostaneta interni | actor profil | `AdminAuditLogRepository`, admin-only DTO projekcija |
 
 ### Statusi in enum-i
 
@@ -466,11 +467,33 @@ Outbox je trajen DB zapis. Trenutni dogodki so submission, approval, rejection i
 
 `TournamentGroupController` ohranja tudi starejse ne-`/organizer` write alias poti. Servis se vedno preveri pravice.
 
+### Admin audit API
+
+`GET /api/admin/audit-logs` je dostopen samo `ROLE_ADMIN`. Privzeto vrne stran `0`, velikosti `20`, urejeno po `created_at desc, id desc`. Najvecja dovoljena velikost strani je `100`.
+
+Podprti filtri:
+
+- `tableName`: allowlist filter za `teams`, `tournaments`, `tournament_registrations`, `matches`, `match_games`, `match_imports` in `match_players`; sprejme tudi polno obliko `public.<table>`;
+- `recordId`: natancen UUID zapisa;
+- `actorProfileId`: natancen UUID profila akterja;
+- `from` in `to`: ISO datetime meji, obe vkljucujoci;
+- `action`: `insert`, `update` ali `delete`;
+- `page` in `size`;
+- `table` in `actor`: kompatibilna legacy filtra za obstojeci frontend `/admin/audit`.
+
+Primer:
+
+```text
+GET /api/admin/audit-logs?tableName=tournament_registrations&actorProfileId=<uuid>&from=2026-05-01T00:00:00Z&to=2026-06-01T00:00:00Z&page=0&size=50
+```
+
+DTO vrne actor `profileId`, `nickname`, `displayName` in profilno `role`, ce profil se obstaja. Email in interni `actor_auth_user_id` nista izpostavljena. `previousRow` in `newRow` nista raw trigger payloada: servis vrne samo allowlist dejansko spremenjenih operativnih polj in rekurzivno maskira obcutljive nested kljuce z vrednostjo `[REDACTED]`.
+
 ## 10. Testi in kakovost
 
 ### Backend testi
 
-Najdenih je 68 backend test source datotek. Suite vsebuje:
+Najdenih je 72 backend test source datotek. Suite vsebuje:
 
 - unit teste za servise in helperje;
 - MockMvc controller teste;
@@ -497,9 +520,9 @@ Frontend nima `npm test` skripte in avtomatiziranih frontend test datotek ni naj
 
 | Ukaz | Rezultat |
 | --- | --- |
-| `.\mvnw.cmd -B test "-Dspring.profiles.active=test" "-Dtest=*Test,!*IntegrationTest,!SupabaseIntegrationTest"` | uspeh, 362 testov |
+| `.\mvnw.cmd -B test "-Dspring.profiles.active=test" "-Dtest=*Test,!*IntegrationTest,!SupabaseIntegrationTest"` | uspeh, 392 testov |
 | lokalni Docker PostgreSQL 16 + CI bootstrap auth sheme | uspeh, izolirana zacasna baza |
-| `.\mvnw.cmd -B "-Dtest=*IntegrationTest" test "-Dspring.profiles.active=integration"` | uspeh, 39 testov, 27 Flyway migracij |
+| `.\mvnw.cmd -B "-Dtest=*IntegrationTest" test "-Dspring.profiles.active=integration"` | uspeh, 43 testov, 29 Flyway migracij |
 | `.\mvnw.cmd -B package -DskipTests` | uspeh |
 | `npm ci` | uspeh; osvezil ignorirani `node_modules` |
 | `npm run lint` | uspeh z 5 opozorili v `frontend/src/lib/tournament-data.ts` |
@@ -534,7 +557,7 @@ Zacasni PostgreSQL container je bil po testu odstranjen.
 - Protected analytics loci osebne player/team metrike od organizer agregatov in preveri tournament ownership.
 - Public view-i so `security_invoker`.
 - Raw OpenDota payload ni v javnih DTO-jih.
-- Admin audit DTO ne vraca polnih `previous_row` in `new_row`, ampak allowlist spremenjenih polj.
+- Admin audit DTO ne vraca polnih raw `previous_row` in `new_row`, ampak samo sanitizirano allowlist projekcijo spremenjenih polj; nested tokeni, gesla, secrets, API kljuci, session in webhook vrednosti so redacted.
 - Global error handler ne razkriva stack trace-a.
 - Service-role storage kljuc ostane v backendu.
 

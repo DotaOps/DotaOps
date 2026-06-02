@@ -3,6 +3,7 @@ package si.um.feri.dotaops.backend.audit.web;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -93,7 +94,8 @@ class AdminAuditLogControllerTest {
         when(auditLogService.listAuditLogs(
                 "public.teams",
                 RECORD_ID,
-                "Admin",
+                ADMIN_PROFILE_ID,
+                null,
                 "update",
                 FROM,
                 TO,
@@ -102,18 +104,20 @@ class AdminAuditLogControllerTest {
                 List.of(new AdminAuditLogItem(
                         AUDIT_ID,
                         CREATED_AT,
-                        new AdminAuditActor(ADMIN_PROFILE_ID, "Admin"),
+                        new AdminAuditActor(ADMIN_PROFILE_ID, "Admin", "System Admin", "admin"),
                         "update",
                         "public.teams",
                         RECORD_ID,
                         "Team updated",
-                        List.of("name"))),
+                        List.of("name"),
+                        Map.of("name", "Before"),
+                        Map.of("name", "After"))),
                 new PageMeta(1, 10, 14, 2, false, true)));
 
         mockMvc.perform(get("/api/admin/audit-logs")
-                        .param("table", "public.teams")
+                        .param("tableName", "public.teams")
                         .param("recordId", RECORD_ID.toString())
-                        .param("actor", "Admin")
+                        .param("actorProfileId", ADMIN_PROFILE_ID.toString())
                         .param("action", "update")
                         .param("from", FROM.toString())
                         .param("to", TO.toString())
@@ -125,12 +129,14 @@ class AdminAuditLogControllerTest {
                 .andExpect(jsonPath("$.data.items[0].id").value(AUDIT_ID.toString()))
                 .andExpect(jsonPath("$.data.items[0].actor.profileId").value(ADMIN_PROFILE_ID.toString()))
                 .andExpect(jsonPath("$.data.items[0].actor.nickname").value("Admin"))
+                .andExpect(jsonPath("$.data.items[0].actor.displayName").value("System Admin"))
+                .andExpect(jsonPath("$.data.items[0].actor.role").value("admin"))
                 .andExpect(jsonPath("$.data.items[0].action").value("update"))
                 .andExpect(jsonPath("$.data.items[0].table").value("public.teams"))
                 .andExpect(jsonPath("$.data.items[0].summary").value("Team updated"))
                 .andExpect(jsonPath("$.data.items[0].changedFields[0]").value("name"))
-                .andExpect(jsonPath("$.data.items[0].previousRow").doesNotExist())
-                .andExpect(jsonPath("$.data.items[0].newRow").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].previousRow.name").value("Before"))
+                .andExpect(jsonPath("$.data.items[0].newRow.name").value("After"))
                 .andExpect(jsonPath("$.data.items[0].actorAuthUserId").doesNotExist())
                 .andExpect(jsonPath("$.data.page.page").value(1))
                 .andExpect(jsonPath("$.data.page.size").value(10))
@@ -139,12 +145,47 @@ class AdminAuditLogControllerTest {
         verify(auditLogService).listAuditLogs(
                 "public.teams",
                 RECORD_ID,
-                "Admin",
+                ADMIN_PROFILE_ID,
+                null,
                 "update",
                 FROM,
                 TO,
                 1,
                 10);
+    }
+
+    @Test
+    void legacyTableAndActorFiltersRemainSupportedWithDefaultPagination() throws Exception {
+        when(auditLogService.listAuditLogs("teams", null, null, "Admin", null, null, null, 0, 20))
+                .thenReturn(new PageResponse<>(List.of(), new PageMeta(0, 20, 0, 0, false, false)));
+
+        mockMvc.perform(get("/api/admin/audit-logs")
+                        .param("table", "teams")
+                        .param("actor", "Admin")
+                        .header("Authorization", bearerToken(ADMIN_AUTH_USER_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page.page").value(0))
+                .andExpect(jsonPath("$.data.page.size").value(20));
+
+        verify(auditLogService).listAuditLogs("teams", null, null, "Admin", null, null, null, 0, 20);
+    }
+
+    @Test
+    void invalidActorProfileIdIsRejected() throws Exception {
+        mockMvc.perform(get("/api/admin/audit-logs")
+                        .param("actorProfileId", "not-a-uuid")
+                        .header("Authorization", bearerToken(ADMIN_AUTH_USER_ID)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void pageSizeAboveMaximumIsRejected() throws Exception {
+        mockMvc.perform(get("/api/admin/audit-logs")
+                        .param("size", "101")
+                        .header("Authorization", bearerToken(ADMIN_AUTH_USER_ID)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test

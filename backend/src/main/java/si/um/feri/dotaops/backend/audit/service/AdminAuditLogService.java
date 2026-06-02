@@ -61,18 +61,25 @@ public class AdminAuditLogService {
             "public.match_games", "Match game",
             "public.match_imports", "Match import",
             "public.match_players", "Match player");
+    private static final Set<String> AUDITABLE_TABLES = SAFE_CHANGED_FIELDS.keySet();
 
     private final AdminAuditLogRepository auditLogRepository;
+    private final AuditJsonSanitizer auditJsonSanitizer;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public AdminAuditLogService(AdminAuditLogRepository auditLogRepository) {
+    public AdminAuditLogService(
+            AdminAuditLogRepository auditLogRepository,
+            AuditJsonSanitizer auditJsonSanitizer
+    ) {
         this.auditLogRepository = auditLogRepository;
+        this.auditJsonSanitizer = auditJsonSanitizer;
     }
 
     @Transactional(readOnly = true)
     public PageResponse<AdminAuditLogItem> listAuditLogs(
             String table,
             UUID recordId,
+            UUID actorProfileId,
             String actor,
             String action,
             OffsetDateTime from,
@@ -88,8 +95,9 @@ public class AdminAuditLogService {
         }
 
         AdminAuditLogFilters filters = new AdminAuditLogFilters(
-                normalizeOptional(table),
+                normalizeTable(table),
                 recordId,
+                actorProfileId,
                 normalizeOptional(actor),
                 normalizeAction(action),
                 from,
@@ -108,15 +116,34 @@ public class AdminAuditLogService {
     }
 
     private AdminAuditLogItem toItem(AdminAuditLogRecord record) {
+        List<String> changedFields = changedFields(record);
+        Set<String> includedFields = Set.copyOf(changedFields);
         return new AdminAuditLogItem(
                 record.id(),
                 record.createdAt(),
-                new AdminAuditActor(record.actorProfileId(), record.actorNickname()),
+                actor(record),
                 record.action().databaseValue(),
                 record.tableName(),
                 record.recordId(),
                 summary(record),
-                changedFields(record));
+                changedFields,
+                auditJsonSanitizer.projectSanitizedObject(record.previousRowJson(), includedFields),
+                auditJsonSanitizer.projectSanitizedObject(record.newRowJson(), includedFields));
+    }
+
+    private AdminAuditActor actor(AdminAuditLogRecord record) {
+        if (record.actorProfileId() == null
+                && record.actorNickname() == null
+                && record.actorDisplayName() == null
+                && record.actorRole() == null) {
+            return null;
+        }
+
+        return new AdminAuditActor(
+                record.actorProfileId(),
+                record.actorNickname(),
+                record.actorDisplayName(),
+                record.actorRole());
     }
 
     private String summary(AdminAuditLogRecord record) {
@@ -172,5 +199,21 @@ public class AdminAuditLogService {
         }
 
         return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeTable(String table) {
+        String normalized = normalizeOptional(table);
+        if (normalized == null) {
+            return null;
+        }
+
+        String qualifiedName = normalized.startsWith("public.")
+                ? normalized
+                : "public." + normalized;
+        if (!AUDITABLE_TABLES.contains(qualifiedName)) {
+            throw new BadRequestException("Unsupported audit table.");
+        }
+
+        return qualifiedName;
     }
 }

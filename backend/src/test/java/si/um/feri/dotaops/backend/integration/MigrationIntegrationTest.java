@@ -65,7 +65,8 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('match_games'),
                       ('match_import_events'),
                       ('match_players'),
-                      ('notification_outbox')
+                      ('notification_outbox'),
+                      ('audit_log')
                 ) as expected(relname)
                 left join pg_class c
                   on c.relname = expected.relname
@@ -134,6 +135,7 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('matches_status_idx'),
                       ('steam_login_states_expires_idx'),
                       ('matches_tournament_stage_idx'),
+                      ('audit_log_created_at_idx'),
                       ('notification_outbox_recipient_profile_id_idx'),
                       ('notification_outbox_status_idx'),
                       ('notification_outbox_type_idx'),
@@ -205,6 +207,38 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
         assertThat(privateAnalyticsRefresh).isOne();
         assertThat(missingAnalyticsViews).isEmpty();
         assertThat(profileCreationTrigger).isOne();
+    }
+
+    @Test
+    void operationalAuditTriggersCoverRequiredTables() {
+        List<String> missingAuditTriggers = jdbcTemplate.queryForList(
+                """
+                select expected.trigger_name
+                from (
+                    values
+                      ('audit_teams', 'teams'),
+                      ('audit_tournaments', 'tournaments'),
+                      ('audit_tournament_registrations', 'tournament_registrations'),
+                      ('audit_matches', 'matches'),
+                      ('audit_match_games', 'match_games'),
+                      ('audit_match_imports', 'match_imports'),
+                      ('audit_match_players', 'match_players')
+                ) as expected(trigger_name, table_name)
+                left join pg_trigger trigger
+                  on trigger.tgname = expected.trigger_name
+                 and not trigger.tgisinternal
+                left join pg_class target_table
+                  on target_table.oid = trigger.tgrelid
+                 and target_table.relname = expected.table_name
+                left join pg_namespace target_schema
+                  on target_schema.oid = target_table.relnamespace
+                 and target_schema.nspname = 'public'
+                where target_schema.oid is null
+                order by expected.trigger_name
+                """,
+                String.class);
+
+        assertThat(missingAuditTriggers).isEmpty();
     }
 
     private List<String> currentMigrationVersions() throws IOException {

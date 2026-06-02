@@ -35,6 +35,8 @@ public class AdminAuditLogRepository {
                   al.created_at,
                   al.actor_profile_id,
                   actor.nickname as actor_nickname,
+                  actor.display_name as actor_display_name,
+                  actor.role::text as actor_role,
                   al.action::text as action,
                   al.table_name,
                   al.record_id,
@@ -79,10 +81,19 @@ public class AdminAuditLogRepository {
             parameters.add(filters.recordId());
         }
 
-        if (filters.actor() != null) {
-            clauses.add("(cast(al.actor_profile_id as text) = ? or actor.nickname ilike '%' || ? || '%')");
-            parameters.add(filters.actor());
-            parameters.add(filters.actor());
+        if (filters.actorProfileId() != null) {
+            clauses.add("al.actor_profile_id = ?");
+            parameters.add(filters.actorProfileId());
+        }
+
+        if (filters.actorQuery() != null) {
+            clauses.add("""
+                    (cast(al.actor_profile_id as text) = ?
+                      or actor.nickname ilike '%' || ? || '%'
+                      or actor.display_name ilike '%' || ? || '%')""");
+            parameters.add(filters.actorQuery());
+            parameters.add(filters.actorQuery());
+            parameters.add(filters.actorQuery());
         }
 
         if (filters.action() != null) {
@@ -111,6 +122,8 @@ public class AdminAuditLogRepository {
                 resultSet.getObject("created_at", OffsetDateTime.class),
                 resultSet.getObject("actor_profile_id", UUID.class),
                 resultSet.getString("actor_nickname"),
+                resultSet.getString("actor_display_name"),
+                resultSet.getString("actor_role"),
                 AdminAuditAction.fromDatabaseValue(resultSet.getString("action")),
                 resultSet.getString("table_name"),
                 resultSet.getObject("record_id", UUID.class),

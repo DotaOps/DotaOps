@@ -156,6 +156,39 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
     }
 
     @Test
+    void onlyAdminCanReadAuditLogThroughAuthenticatedRole() {
+        UUID playerAuthUserId = UUID.randomUUID();
+        UUID adminAuthUserId = UUID.randomUUID();
+        upsertProfile(playerAuthUserId, "player");
+        upsertProfile(adminAuthUserId, "admin");
+        UUID auditLogId = asServiceRole(() -> jdbcTemplate.queryForObject(
+                """
+                insert into public.audit_log (table_name, record_id, action, new_row)
+                values ('public.teams', ?, 'insert'::public.dotaops_audit_action, '{}'::jsonb)
+                returning id
+                """,
+                UUID.class,
+                UUID.randomUUID()));
+
+        Integer playerVisibleRows = asAuthenticated(playerAuthUserId, () -> jdbcTemplate.queryForObject(
+                "select count(*) from public.audit_log where id = ?",
+                Integer.class,
+                auditLogId));
+        Integer adminVisibleRows = asAuthenticated(adminAuthUserId, () -> jdbcTemplate.queryForObject(
+                "select count(*) from public.audit_log where id = ?",
+                Integer.class,
+                auditLogId));
+
+        assertThat(playerVisibleRows).isZero();
+        assertThat(adminVisibleRows).isOne();
+        assertThatThrownBy(() -> asRole("anon", null, () -> jdbcTemplate.queryForObject(
+                "select count(*) from public.audit_log where id = ?",
+                Integer.class,
+                auditLogId)))
+                .isInstanceOf(DataAccessException.class);
+    }
+
+    @Test
     void serviceRoleSteamHelperLinksPrimarySteamToAutoCreatedAuthProfile() {
         UUID authUserId = UUID.randomUUID();
         seedAuthUser(authUserId);
