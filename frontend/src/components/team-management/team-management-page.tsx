@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Lock,
   Mail,
-  MoreVertical,
   RefreshCcw,
   Save,
   Shield,
@@ -26,8 +25,12 @@ import type { LucideIcon } from "lucide-react";
 import { RouteLoadingSkeleton } from "@/components/route-loading-skeleton";
 import {
   createTeam,
+  createTeamJoinRequest,
   acceptTeamInvitation,
+  acceptTeamJoinRequest,
+  cancelTeamJoinRequest,
   cancelTeamInvitation,
+  declineTeamJoinRequest,
   declineTeamInvitation,
   loadTeamManagementData,
   removeTeamMember,
@@ -35,10 +38,12 @@ import {
   updateTeamMemberRole,
   type TeamInvitation,
   type TeamInvitationStatus,
+  type TeamJoinRequest,
   type TeamManagementViewModel,
   type TeamManualPlayer,
   type TeamMember,
   type TeamMemberRole,
+  type TeamSummary,
   type CreateTeamInput
 } from "@/lib/team-data";
 import { classNames } from "@/lib/utils";
@@ -199,25 +204,39 @@ function readableError(caught: unknown, fallback: string) {
 }
 
 function NoTeamState({
+  availableTeams,
   canCreateTeam,
+  canRequestTeamMembership,
   incomingInvitations,
   isTournamentOperator,
   isMutating,
   message,
+  notice,
   onInvitationAction,
+  onJoinRequestAction,
+  onRequestTeamMembership,
   onCreateTeam,
+  outgoingJoinRequests,
   onRefresh
 }: {
+  availableTeams: TeamSummary[];
   canCreateTeam: boolean;
+  canRequestTeamMembership: boolean;
   incomingInvitations: TeamInvitation[];
   isTournamentOperator: boolean;
   isMutating: boolean;
   message: string | null;
+  notice: string | null;
   onInvitationAction: (action: "accept" | "decline", invitationId: string) => void;
+  onJoinRequestAction: (action: "cancel", requestId: string) => void;
+  onRequestTeamMembership: (teamId: string, message: string) => Promise<void>;
   onCreateTeam: (input: CreateTeamInput) => Promise<void>;
+  outgoingJoinRequests: TeamJoinRequest[];
   onRefresh: () => void;
 }) {
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [joinRequestMessage, setJoinRequestMessage] = useState("");
+  const [joinRequestTeamId, setJoinRequestTeamId] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [teamInput, setTeamInput] = useState<CreateTeamInput>({
     description: "",
@@ -237,6 +256,20 @@ function NoTeamState({
     }
 
     await onCreateTeam(teamInput);
+  }
+
+  async function submitJoinRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError(null);
+
+    if (!joinRequestTeamId) {
+      setFormError("Select a team before sending a join request.");
+      return;
+    }
+
+    await onRequestTeamMembership(joinRequestTeamId, joinRequestMessage);
+    setJoinRequestMessage("");
+    setJoinRequestTeamId("");
   }
 
   return (
@@ -318,6 +351,7 @@ function NoTeamState({
       ) : null}
 
       {message ? <p className="team-mgmt-message team-mgmt-error">{message}</p> : null}
+      {notice ? <p className="team-mgmt-message team-mgmt-notice">{notice}</p> : null}
       {formError ? <p className="team-mgmt-message team-mgmt-error">{formError}</p> : null}
       {showCreateForm && canCreateTeam ? (
         <form className="team-mgmt-create-form" onSubmit={submitCreateTeam}>
@@ -397,13 +431,60 @@ function NoTeamState({
           </div>
         </form>
       ) : null}
+      {canRequestTeamMembership ? (
+        <form className="team-mgmt-join-request-form" onSubmit={submitJoinRequest}>
+          <div>
+            <span className="ops-label">Request team access</span>
+            <p>Send a membership request to an existing team. The team owner must approve it.</p>
+          </div>
+          {availableTeams.length > 0 ? (
+            <>
+              <label>
+                <span>Team</span>
+                <select
+                  disabled={isMutating}
+                  onChange={(event) => setJoinRequestTeamId(event.target.value)}
+                  required
+                  value={joinRequestTeamId}
+                >
+                  <option value="">Select a team</option>
+                  {availableTeams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                      {team.tag ? ` (${team.tag})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Message (optional)</span>
+                <textarea
+                  disabled={isMutating}
+                  maxLength={1000}
+                  onChange={(event) => setJoinRequestMessage(event.target.value)}
+                  placeholder="Introduce yourself to the team owner."
+                  rows={3}
+                  value={joinRequestMessage}
+                />
+              </label>
+              <button className="button button-secondary" disabled={isMutating} type="submit">
+                {isMutating ? "Sending..." : "Send Join Request"}
+              </button>
+            </>
+          ) : (
+            <p className="team-mgmt-muted">No teams are currently available for membership requests.</p>
+          )}
+        </form>
+      ) : null}
       {incomingInvitations.length > 0 ? (
         <div className="team-mgmt-empty-list">
           <span className="ops-label">Incoming invitations</span>
           {incomingInvitations.map((invitation) => (
             <article key={invitation.id}>
               <strong>{invitation.teamName ?? "Team invitation"}</strong>
-              <span>{invitation.status}</span>
+              <span className={classNames("team-mgmt-status", statusClass(invitation.status))}>
+                {invitation.status}
+              </span>
               {invitation.status === "pending" ? (
                 <div className="team-mgmt-empty-invite-actions">
                   <button
@@ -419,6 +500,33 @@ function NoTeamState({
                     type="button"
                   >
                     Decline
+                  </button>
+                </div>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : null}
+      {outgoingJoinRequests.length > 0 ? (
+        <div className="team-mgmt-empty-list">
+          <span className="ops-label">Your join requests</span>
+          {outgoingJoinRequests.map((request) => (
+            <article key={request.id}>
+              <div>
+                <strong>{request.teamName}</strong>
+                <p>{request.message ?? "No message was provided."}</p>
+              </div>
+              <span className={classNames("team-mgmt-status", `team-mgmt-status-${request.status}`)}>
+                {request.status}
+              </span>
+              {request.status === "pending" ? (
+                <div className="team-mgmt-empty-invite-actions">
+                  <button
+                    disabled={isMutating}
+                    onClick={() => onJoinRequestAction("cancel", request.id)}
+                    type="button"
+                  >
+                    Cancel Request
                   </button>
                 </div>
               ) : null}
@@ -507,10 +615,16 @@ export function TeamManagementPage() {
   const pendingInvites = allInvitations.filter((invitation) => invitation.status === "pending");
   const acceptedThisWeek = allInvitations.filter((invitation) => invitation.status === "accepted").length;
   const activeEvents = viewModel?.activeEvents ?? emptyEvents;
+  const availableTeams = viewModel?.availableTeams ?? [];
+  const canCreateTeam = Boolean(viewModel?.canCreateTeam);
+  const canInvitePlayers = Boolean(viewModel?.canInvitePlayers);
+  const canManageTeam = Boolean(viewModel?.canManageTeam);
   const canManageRoster = Boolean(viewModel?.canManageRoster);
-  const canCreateTeam = viewModel?.currentProfile.role === "player";
+  const canRequestTeamMembership = Boolean(viewModel?.canRequestTeamMembership);
   const isTournamentOperator =
     viewModel?.currentProfile.role === "organizer" || viewModel?.currentProfile.role === "admin";
+  const outgoingJoinRequests = viewModel?.outgoingJoinRequests ?? [];
+  const teamJoinRequests = viewModel?.teamJoinRequests ?? [];
   const rosterFilled = members.filter((member) => member.active).length + manualPlayers.length;
   const filteredIncoming = useMemo(
     () => filterInvitations(incomingInvitations, filter),
@@ -536,7 +650,7 @@ export function TeamManagementPage() {
       return;
     }
 
-    if (!canManageRoster) {
+    if (!canInvitePlayers) {
       setPlaceholder("Only the team owner can send roster invitations.");
       return;
     }
@@ -638,6 +752,55 @@ export function TeamManagementPage() {
     }
   }
 
+  async function joinRequestAction(
+    action: "accept" | "decline" | "cancel",
+    requestId: string
+  ) {
+    setIsMutating(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      if (action === "accept") {
+        await acceptTeamJoinRequest(requestId);
+        setNotice("Join request accepted.");
+      } else if (action === "decline") {
+        await declineTeamJoinRequest(requestId);
+        setNotice("Join request declined.");
+      } else {
+        await cancelTeamJoinRequest(requestId);
+        setNotice("Join request cancelled.");
+      }
+
+      await load();
+    } catch (caught) {
+      setError(readableError(caught, "Join request action failed."));
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function requestTeamMembership(teamId: string, message: string) {
+    if (!canRequestTeamMembership) {
+      setError("Team membership requests are available to players without an active team.");
+      return;
+    }
+
+    setIsMutating(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await createTeamJoinRequest(teamId, message);
+      setNotice("Join request sent successfully.");
+      await load();
+    } catch (caught) {
+      setError(readableError(caught, "Join request could not be sent."));
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
   async function createNewTeam(input: CreateTeamInput) {
     if (!canCreateTeam) {
       setError("Team creation is available for player accounts.");
@@ -693,13 +856,19 @@ export function TeamManagementPage() {
   if (!team) {
     return (
       <NoTeamState
+        availableTeams={availableTeams}
         canCreateTeam={canCreateTeam}
+        canRequestTeamMembership={canRequestTeamMembership}
         incomingInvitations={incomingInvitations}
         isTournamentOperator={isTournamentOperator}
         isMutating={isMutating}
         message={error}
+        notice={notice}
         onCreateTeam={createNewTeam}
         onInvitationAction={(action, invitationId) => invitationAction(action, invitationId)}
+        onJoinRequestAction={(action, requestId) => joinRequestAction(action, requestId)}
+        onRequestTeamMembership={requestTeamMembership}
+        outgoingJoinRequests={outgoingJoinRequests}
         onRefresh={load}
       />
     );
@@ -707,17 +876,24 @@ export function TeamManagementPage() {
 
   return (
     <div className="team-mgmt-page">
-      <div className="team-mgmt-tabs" role="tablist" aria-label="Team management tabs">
-        {tabs.map((tab) => (
-          <button
-            className={classNames("team-mgmt-tab", activeTab === tab.id && "is-active")}
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="team-mgmt-tab-row">
+        <div className="team-mgmt-tabs" role="tablist" aria-label="Team management tabs">
+          {tabs.map((tab) => (
+            <button
+              className={classNames("team-mgmt-tab", activeTab === tab.id && "is-active")}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              type="button"
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {viewModel.currentUserTeamRole ? (
+          <span className="team-mgmt-role-context">
+            Team access: {viewModel.currentUserTeamRole}
+          </span>
+        ) : null}
       </div>
 
       {notice ? <p className="team-mgmt-message team-mgmt-notice">{notice}</p> : null}
@@ -726,6 +902,7 @@ export function TeamManagementPage() {
       {activeTab === "overview" ? (
         <OverviewTab
           activeEvents={activeEvents}
+          canInvitePlayers={canInvitePlayers}
           canManageRoster={canManageRoster}
           manualPlayers={manualPlayers}
           members={members}
@@ -740,6 +917,7 @@ export function TeamManagementPage() {
 
       {activeTab === "roster" ? (
         <RosterTab
+          canInvitePlayers={canInvitePlayers}
           canManageRoster={canManageRoster}
           inviteRole={inviteRole}
           invitee={invitee}
@@ -763,6 +941,8 @@ export function TeamManagementPage() {
       {activeTab === "invitations" ? (
         <InvitationsTab
           acceptedThisWeek={acceptedThisWeek}
+          canInvitePlayers={canInvitePlayers}
+          canManageTeam={canManageTeam}
           canManageRoster={canManageRoster}
           filter={filter}
           incomingInvitations={filteredIncoming}
@@ -773,10 +953,12 @@ export function TeamManagementPage() {
           onFilterChange={setFilter}
           onFocusInvite={focusInviteForm}
           onInvitationAction={invitationAction}
+          onJoinRequestAction={joinRequestAction}
           outgoingInvitations={filteredOutgoing}
           outgoingTotal={outgoingInvitations.length}
           pendingInviteCount={pendingInvites.length}
           team={team}
+          teamJoinRequests={teamJoinRequests}
         />
       ) : null}
     </div>
@@ -873,16 +1055,51 @@ function MetricCard({
   );
 }
 
-function LaterAction({ children }: { children: ReactNode }) {
+function PlannedAction({
+  children,
+  label = "Backend required"
+}: {
+  children: ReactNode;
+  label?: string;
+}) {
   return (
     <button className="team-mgmt-later-action" disabled type="button">
       <span>{children}</span>
-      <small>Later</small>
+      <small>{label}</small>
     </button>
   );
 }
 
+function PlannedControls() {
+  return (
+    <div className="team-mgmt-planned-controls">
+      <span className="team-mgmt-planned-title">Planned team controls</span>
+      <PlannedAction>
+        <RefreshCcw size={16} />
+        Transfer Ownership
+      </PlannedAction>
+      <PlannedAction>
+        <Lock size={16} />
+        Lock Roster
+      </PlannedAction>
+      <PlannedAction>
+        <UserMinus size={16} />
+        Leave Team
+      </PlannedAction>
+      <PlannedAction>
+        <TerminalSquare size={16} />
+        Audit Logs
+      </PlannedAction>
+      <PlannedAction>
+        <Trash2 size={16} />
+        Disband Team
+      </PlannedAction>
+    </div>
+  );
+}
+
 function CommandCenter({
+  canInvitePlayers,
   canManageRoster,
   mode,
   onFocusInvite,
@@ -891,6 +1108,7 @@ function CommandCenter({
   onSendInvite,
   isMutating
 }: {
+  canInvitePlayers: boolean;
   canManageRoster: boolean;
   isMutating?: boolean;
   mode: "overview" | "roster" | "invitations";
@@ -903,27 +1121,19 @@ function CommandCenter({
     return (
       <aside className="team-mgmt-side-card ops-panel">
         <h2>Command Center</h2>
-        <button className="team-mgmt-command-primary" disabled={isMutating || !canManageRoster} onClick={onSaveRoster} type="button">
-          <Save size={18} />
-          Save Roster Changes
-        </button>
-        <button disabled={isMutating || !canManageRoster} onClick={onSendInvite} type="button">
-          <Mail size={18} />
-          Send Invite
-        </button>
-        <LaterAction>
-          <Lock size={18} />
-          Lock Roster
-        </LaterAction>
-        <hr />
-        <LaterAction>
-          <RefreshCcw size={18} />
-          Transfer Ownership
-        </LaterAction>
-        <LaterAction>
-          <UserMinus size={18} />
-          Leave Team
-        </LaterAction>
+        {canManageRoster ? (
+          <button className="team-mgmt-command-primary" disabled={isMutating} onClick={onSaveRoster} type="button">
+            <Save size={18} />
+            Save Roster Changes
+          </button>
+        ) : null}
+        {canInvitePlayers ? (
+          <button disabled={isMutating} onClick={onSendInvite} type="button">
+            <Mail size={18} />
+            Send Invite
+          </button>
+        ) : null}
+        {canManageRoster ? <PlannedControls /> : null}
       </aside>
     );
   }
@@ -935,19 +1145,13 @@ function CommandCenter({
           <TerminalSquare size={18} />
           Command Center
         </h2>
-        <button className="team-mgmt-command-primary" disabled={!canManageRoster} onClick={onFocusInvite} type="button">
-          New Invite
-          <UserPlus size={18} />
-        </button>
-        <LaterAction>
-          Review Pending
-        </LaterAction>
-        <LaterAction>
-          View Invite History
-        </LaterAction>
-        <LaterAction>
-          Clear Declined
-        </LaterAction>
+        {canInvitePlayers ? (
+          <button className="team-mgmt-command-primary" onClick={onFocusInvite} type="button">
+            New Invite
+            <UserPlus size={18} />
+          </button>
+        ) : null}
+        <p className="team-mgmt-command-note">Invitation and join request history actions require backend support.</p>
       </aside>
     );
   }
@@ -958,31 +1162,20 @@ function CommandCenter({
         <Shield size={18} />
         Command Center
       </h2>
-      <button disabled={!canManageRoster} onClick={onRosterTab} type="button">
-        Edit Roster
-        <ChevronRight size={16} />
-      </button>
-      <LaterAction>
-        Transfer Ownership
-        <ChevronRight size={16} />
-      </LaterAction>
-      <LaterAction>
-        Audit Logs
-        <ChevronRight size={16} />
-      </LaterAction>
-      <hr />
-      <button className="team-mgmt-danger team-mgmt-later-action" disabled type="button">
-        <span>
-        Disband Team
-        </span>
-        <small>Later</small>
-      </button>
+      {canManageRoster ? (
+        <button onClick={onRosterTab} type="button">
+          Edit Roster
+          <ChevronRight size={16} />
+        </button>
+      ) : null}
+      {canManageRoster ? <PlannedControls /> : null}
     </aside>
   );
 }
 
 function OverviewTab({
   activeEvents,
+  canInvitePlayers,
   canManageRoster,
   manualPlayers,
   members,
@@ -994,6 +1187,7 @@ function OverviewTab({
   team
 }: {
   activeEvents: TeamManagementViewModel["activeEvents"];
+  canInvitePlayers: boolean;
   canManageRoster: boolean;
   manualPlayers: TeamManualPlayer[];
   members: TeamMember[];
@@ -1036,11 +1230,23 @@ function OverviewTab({
                   <p>{shortRole(member.role)}</p>
                 </div>
                 <div className="team-mgmt-tile-actions">
-                  <button disabled type="button">
-                    Profile later
+                  <button
+                    className="team-mgmt-later-action"
+                    disabled
+                    title="Backend player profile page required"
+                    type="button"
+                  >
+                    Profile
+                    <small>Later</small>
                   </button>
-                  <button disabled type="button">
-                    Stats later
+                  <button
+                    className="team-mgmt-later-action"
+                    disabled
+                    title="Backend player stats page required"
+                    type="button"
+                  >
+                    Stats
+                    <small>Later</small>
                   </button>
                 </div>
               </article>
@@ -1057,7 +1263,7 @@ function OverviewTab({
                 <span className="team-mgmt-manual-badge">Manual</span>
               </article>
             ))}
-            <button className="team-mgmt-invite-tile ops-panel" disabled={!canManageRoster} onClick={onFocusInvite} type="button">
+            <button className="team-mgmt-invite-tile ops-panel" disabled={!canInvitePlayers} onClick={onFocusInvite} type="button">
               <UserPlus size={24} />
               Invite New Player
             </button>
@@ -1066,6 +1272,7 @@ function OverviewTab({
         </main>
         <aside className="team-mgmt-side-stack">
           <CommandCenter
+            canInvitePlayers={canInvitePlayers}
             canManageRoster={canManageRoster}
             mode="overview"
             onRosterTab={onRosterTab}
@@ -1085,13 +1292,6 @@ function InviteRegistry({
     <section className="team-mgmt-registry ops-panel">
       <div className="team-mgmt-panel-title">
         <h2>Invite Registry</h2>
-        <button className="team-mgmt-later-action" disabled type="button">
-          <span>
-          View History
-          <ChevronRight size={15} />
-          </span>
-          <small>Later</small>
-        </button>
       </div>
       {invitations.length === 0 ? (
         <p className="team-mgmt-muted">No outgoing invitations are available for this team.</p>
@@ -1123,6 +1323,7 @@ function InviteRegistry({
 }
 
 function RosterTab({
+  canInvitePlayers,
   canManageRoster,
   inviteInputRef,
   inviteRole,
@@ -1141,6 +1342,7 @@ function RosterTab({
   rosterFilled,
   team
 }: {
+  canInvitePlayers: boolean;
   canManageRoster: boolean;
   inviteInputRef: RefObject<HTMLInputElement | null>;
   inviteRole: TeamMemberRole;
@@ -1214,13 +1416,29 @@ function RosterTab({
                   </select>
                 </label>
                 <div className="team-mgmt-member-actions">
-                  <button disabled type="button">Profile later</button>
-                  <button disabled={!canManageRoster || isMutating} onClick={() => onRemoveMember(member.id)} type="button">
-                    <Trash2 size={15} />
+                  <button
+                    className="team-mgmt-later-action"
+                    disabled
+                    title="Backend player profile page required"
+                    type="button"
+                  >
+                    Profile
+                    <small>Later</small>
                   </button>
-                  <button disabled type="button">
-                    <MoreVertical size={15} />
+                  <button
+                    className="team-mgmt-later-action"
+                    disabled
+                    title="Backend player stats page required"
+                    type="button"
+                  >
+                    Stats
+                    <small>Later</small>
                   </button>
+                  {canManageRoster ? (
+                    <button disabled={isMutating} onClick={() => onRemoveMember(member.id)} type="button">
+                      <Trash2 size={15} />
+                    </button>
+                  ) : null}
                 </div>
               </article>
             ))}
@@ -1246,7 +1464,7 @@ function RosterTab({
             ))}
           </div>
           <RecruitmentTerminal
-            canManageRoster={canManageRoster}
+            canInvitePlayers={canInvitePlayers}
             inviteInputRef={inviteInputRef}
             inviteRole={inviteRole}
             invitee={invitee}
@@ -1258,6 +1476,7 @@ function RosterTab({
         </main>
         <aside className="team-mgmt-side-stack">
           <CommandCenter
+            canInvitePlayers={canInvitePlayers}
             canManageRoster={canManageRoster}
             isMutating={isMutating}
             mode="roster"
@@ -1271,7 +1490,7 @@ function RosterTab({
 }
 
 function RecruitmentTerminal({
-  canManageRoster,
+  canInvitePlayers,
   inviteInputRef,
   inviteRole,
   invitee,
@@ -1280,7 +1499,7 @@ function RecruitmentTerminal({
   onInviteeChange,
   onSendInvite
 }: {
-  canManageRoster: boolean;
+  canInvitePlayers: boolean;
   inviteInputRef: RefObject<HTMLInputElement | null>;
   inviteRole: TeamMemberRole;
   invitee: string;
@@ -1296,7 +1515,7 @@ function RecruitmentTerminal({
         <label>
           <span>Player email</span>
           <input
-            disabled={!canManageRoster || isMutating}
+            disabled={!canInvitePlayers || isMutating}
             onChange={(event) => onInviteeChange(event.target.value)}
             placeholder="player@email.com"
             ref={inviteInputRef}
@@ -1306,7 +1525,7 @@ function RecruitmentTerminal({
         <label>
           <span>Intended Role</span>
           <select
-            disabled={!canManageRoster || isMutating}
+            disabled={!canInvitePlayers || isMutating}
             onChange={(event) => onInviteRoleChange(event.target.value as TeamMemberRole)}
             value={inviteRole}
           >
@@ -1317,7 +1536,7 @@ function RecruitmentTerminal({
             ))}
           </select>
         </label>
-        <button disabled={!canManageRoster || isMutating} onClick={onSendInvite} type="button">
+        <button disabled={!canInvitePlayers || isMutating} onClick={onSendInvite} type="button">
           {isMutating ? "Sending..." : "Send Invite"}
         </button>
       </div>
@@ -1328,6 +1547,8 @@ function RecruitmentTerminal({
 
 function InvitationsTab({
   acceptedThisWeek,
+  canInvitePlayers,
+  canManageTeam,
   canManageRoster,
   filter,
   incomingInvitations,
@@ -1338,12 +1559,16 @@ function InvitationsTab({
   onFilterChange,
   onFocusInvite,
   onInvitationAction,
+  onJoinRequestAction,
   outgoingInvitations,
   outgoingTotal,
   pendingInviteCount,
-  team
+  team,
+  teamJoinRequests
 }: {
   acceptedThisWeek: number;
+  canInvitePlayers: boolean;
+  canManageTeam: boolean;
   canManageRoster: boolean;
   filter: InviteFilter;
   incomingInvitations: TeamInvitation[];
@@ -1354,10 +1579,12 @@ function InvitationsTab({
   onFilterChange: (filter: InviteFilter) => void;
   onFocusInvite: () => void;
   onInvitationAction: (action: "accept" | "decline" | "cancel", invitationId: string) => void;
+  onJoinRequestAction: (action: "accept" | "decline" | "cancel", requestId: string) => void;
   outgoingInvitations: TeamInvitation[];
   outgoingTotal: number;
   pendingInviteCount: number;
   team: NonNullable<TeamManagementViewModel["team"]>;
+  teamJoinRequests: TeamJoinRequest[];
 }) {
   return (
     <>
@@ -1391,7 +1618,7 @@ function InvitationsTab({
             title="Incoming Invitations"
           />
           <InvitationList
-            canManageRoster={canManageRoster}
+            canManageRoster={canInvitePlayers}
             emptyMessage="No outgoing invitations match this filter."
             invitations={outgoingInvitations}
             isMutating={isMutating}
@@ -1399,15 +1626,18 @@ function InvitationsTab({
             onInvitationAction={onInvitationAction}
             title="Outgoing Invitations"
           />
-          <section className="team-mgmt-join-placeholder ops-panel">
-            <h2>Join Requests</h2>
-            <p className="team-mgmt-muted">
-              Join request management will be available in a later update.
-            </p>
-          </section>
+          {canManageTeam ? (
+            <TeamJoinRequestList
+              canManageTeam={canManageTeam}
+              isMutating={isMutating}
+              onJoinRequestAction={onJoinRequestAction}
+              requests={teamJoinRequests}
+            />
+          ) : null}
         </main>
         <aside className="team-mgmt-side-stack">
           <CommandCenter
+            canInvitePlayers={canInvitePlayers}
             canManageRoster={canManageRoster}
             mode="invitations"
             onFocusInvite={onFocusInvite}
@@ -1421,6 +1651,63 @@ function InvitationsTab({
         </aside>
       </section>
     </>
+  );
+}
+
+function TeamJoinRequestList({
+  canManageTeam,
+  isMutating,
+  onJoinRequestAction,
+  requests
+}: {
+  canManageTeam: boolean;
+  isMutating: boolean;
+  onJoinRequestAction: (action: "accept" | "decline", requestId: string) => void;
+  requests: TeamJoinRequest[];
+}) {
+  return (
+    <section className="team-mgmt-join-placeholder ops-panel">
+      <h2>
+        <UsersRound size={18} />
+        Join Requests
+      </h2>
+      {requests.length === 0 ? (
+        <p className="team-mgmt-muted">No membership requests are waiting for this team.</p>
+      ) : (
+        requests.map((request) => (
+          <article key={request.id}>
+            <span className="team-mgmt-mini-avatar">
+              {initials(request.requesterDisplayName ?? "PL")}
+            </span>
+            <div>
+              <strong>{request.requesterDisplayName ?? "Player request"}</strong>
+              <p>{request.message ?? "No message was provided."}</p>
+            </div>
+            <span className={classNames("team-mgmt-status", `team-mgmt-status-${request.status}`)}>
+              {request.status}
+            </span>
+            {request.status === "pending" ? (
+              <>
+                <button
+                  disabled={isMutating || !canManageTeam}
+                  onClick={() => onJoinRequestAction("accept", request.id)}
+                  type="button"
+                >
+                  Accept
+                </button>
+                <button
+                  disabled={isMutating || !canManageTeam}
+                  onClick={() => onJoinRequestAction("decline", request.id)}
+                  type="button"
+                >
+                  Decline
+                </button>
+              </>
+            ) : null}
+          </article>
+        ))
+      )}
+    </section>
   );
 }
 

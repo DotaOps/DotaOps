@@ -9120,6 +9120,28 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   background: rgba(16, 10, 10, 0.84);
 }
 
+.team-mgmt-tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.team-mgmt-role-context {
+  padding: 8px 11px;
+  border: 1px solid rgba(233, 195, 73, 0.22);
+  border-radius: var(--ops-radius-sm);
+  background: rgba(233, 195, 73, 0.06);
+  color: var(--ops-secondary);
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .team-mgmt-tab {
   min-height: 38px;
   padding: 9px 16px;
@@ -9361,6 +9383,57 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   opacity: 0.65;
 }
 
+.team-mgmt-join-request-form {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(280px, 1.25fr) auto;
+  gap: 14px;
+  align-items: end;
+  margin-top: 10px;
+  padding: 18px;
+  border: 1px solid rgba(233, 195, 73, 0.2);
+  border-left: 3px solid rgba(233, 195, 73, 0.66);
+  background: rgba(233, 195, 73, 0.045);
+}
+
+.team-mgmt-join-request-form > div {
+  grid-column: 1 / -1;
+}
+
+.team-mgmt-join-request-form p {
+  margin-top: 4px;
+  font-size: 0.86rem;
+}
+
+.team-mgmt-join-request-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.team-mgmt-join-request-form label > span {
+  color: var(--ops-muted);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.team-mgmt-join-request-form select,
+.team-mgmt-join-request-form textarea {
+  width: 100%;
+  min-height: 43px;
+  border: 1px solid rgba(255, 180, 171, 0.28);
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--ops-text);
+  font: inherit;
+  padding: 11px 12px;
+}
+
+.team-mgmt-join-request-form textarea {
+  resize: vertical;
+}
+
 .team-mgmt-create-field-wide {
   grid-column: 1 / -1;
 }
@@ -9413,6 +9486,10 @@ html[data-portal-handoff="active"] .page-loading-overlay {
 
   .team-mgmt-empty-briefing {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .team-mgmt-join-request-form {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -9852,6 +9929,10 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   text-transform: uppercase;
 }
 
+.team-mgmt-status-pending {
+  color: var(--ops-secondary);
+}
+
 .team-mgmt-status-accepted {
   color: var(--ops-green);
 }
@@ -9873,6 +9954,35 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   padding-bottom: 14px;
   border-bottom: 1px solid var(--ops-line);
   font-size: 1rem;
+}
+
+.team-mgmt-command-note {
+  color: var(--ops-muted);
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  text-transform: uppercase;
+}
+
+.team-mgmt-planned-controls {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ops-line);
+}
+
+.team-mgmt-planned-title {
+  color: var(--ops-muted);
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .team-mgmt-side-card button,
