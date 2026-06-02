@@ -52,6 +52,15 @@ class AnalyticsRepositoryTest {
         assertThat(jdbcTemplate.parameters).containsExactly(10);
     }
 
+    @Test
+    void protectedPlayerMetricsDoNotRequirePublicTournamentVisibility() {
+        repository.findProtectedPlayerMetrics(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        assertThat(jdbcTemplate.sql).contains("where true");
+        assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true");
+        assertThat(jdbcTemplate.parameters).containsExactly(PROFILE_ID, 10);
+    }
+
     private static class CapturingJdbcTemplate extends JdbcTemplate {
 
         private String sql;

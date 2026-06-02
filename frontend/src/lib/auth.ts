@@ -48,6 +48,7 @@ export interface AuthResult {
   dashboardPath: string;
   message?: string;
   requiresEmailConfirmation?: boolean;
+  role?: ProfileRole | null;
 }
 
 export class RegistrationRateLimitError extends Error {
@@ -631,6 +632,17 @@ export async function signOutCurrentUser() {
   }
 }
 
+export async function hasAuthenticatedSession() {
+  const supabase = requireSupabaseClient();
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error) {
+    throw error;
+  }
+
+  return Boolean(data.session?.access_token);
+}
+
 export async function loginWithEmailPassword(input: LoginInput): Promise<AuthResult> {
   const supabase = requireSupabaseClient();
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -661,7 +673,8 @@ export async function loginWithEmailPassword(input: LoginInput): Promise<AuthRes
 
   return {
     dashboardPath: dashboardPathForRole(role),
-    message: role ? undefined : "No profile role was found; using the player dashboard fallback."
+    message: role ? undefined : "No profile role was found; using the player dashboard fallback.",
+    role
   };
 }
 

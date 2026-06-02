@@ -63,9 +63,11 @@ public class TeamJoinRequestService {
     public TeamJoinRequestResponse createJoinRequest(UUID teamId, CreateTeamJoinRequestRequest request) {
         Team team = ensureTeamExists(teamId);
         AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
+        ensurePlayerFlow(currentProfile);
         UUID requesterProfileId = currentProfile.profileId();
 
         ensureRequesterIsNotMember(team, requesterProfileId);
+        ensureRequesterHasNoOtherActiveTeam(team, requesterProfileId);
         if (joinRequestRepository.findPendingByTeamAndRequester(teamId, requesterProfileId).isPresent()) {
             throw new BadRequestException("Pending join request already exists for this team.");
         }
@@ -118,6 +120,7 @@ public class TeamJoinRequestService {
         ensureCaptain(currentProfile, team);
         ensurePending(joinRequest);
         ensureRequesterIsNotMember(team, joinRequest.requesterProfileId());
+        ensureRequesterHasNoOtherActiveTeam(team, joinRequest.requesterProfileId());
         ensureTeamHasOpenRosterSlot(team.id());
 
         try {
@@ -179,13 +182,24 @@ public class TeamJoinRequestService {
     }
 
     private void ensureCanViewTeamJoinRequests(AuthenticatedProfile profile, Team team) {
-        if (profile.role() == ProfileRole.ORGANIZER
-                || profile.role() == ProfileRole.ADMIN
+        if (profile.role() == ProfileRole.ADMIN
                 || profile.profileId().equals(team.captainProfileId())) {
             return;
         }
 
-        throw new AccessDeniedException("Only the team captain or an organizer can view join requests.");
+        throw new AccessDeniedException("Only the team captain or an admin can view join requests.");
+    }
+
+    private void ensurePlayerFlow(AuthenticatedProfile profile) {
+        if (profile.role() != ProfileRole.PLAYER) {
+            throw new AccessDeniedException("Only players can request team membership.");
+        }
+    }
+
+    private void ensureRequesterHasNoOtherActiveTeam(Team team, UUID requesterProfileId) {
+        if (teamRepository.existsCurrentTeamForProfileExcluding(requesterProfileId, team.id())) {
+            throw new BadRequestException("Profile already belongs to another active team.");
+        }
     }
 
     private void ensureCaptain(AuthenticatedProfile profile, Team team) {

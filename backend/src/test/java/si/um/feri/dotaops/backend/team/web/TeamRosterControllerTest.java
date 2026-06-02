@@ -150,7 +150,12 @@ class TeamRosterControllerTest {
                 .andExpect(jsonPath("$.data.team.id").value(TEAM_ID.toString()))
                 .andExpect(jsonPath("$.data.members[0].id").value(MEMBER_ID.toString()))
                 .andExpect(jsonPath("$.data.captain").value(true))
-                .andExpect(jsonPath("$.data.canManageRoster").value(true));
+                .andExpect(jsonPath("$.data.isTeamOwner").value(true))
+                .andExpect(jsonPath("$.data.currentUserTeamRole").value("owner"))
+                .andExpect(jsonPath("$.data.canManageTeam").value(true))
+                .andExpect(jsonPath("$.data.canManageRoster").value(true))
+                .andExpect(jsonPath("$.data.canInvitePlayers").value(true))
+                .andExpect(jsonPath("$.data.canViewAnalytics").value(true));
     }
 
     @Test

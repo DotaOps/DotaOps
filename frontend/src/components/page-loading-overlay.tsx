@@ -1,8 +1,18 @@
+"use client";
+
+import { usePathname } from "next/navigation";
+
 export function PageLoadingOverlay({
   label = "Loading page"
 }: {
   label?: string;
 }) {
+  const pathname = usePathname();
+
+  if (pathname === "/portal-entry") {
+    return null;
+  }
+
   return (
     <section
       aria-busy="true"

@@ -32,6 +32,14 @@ public class AnalyticsQueryService {
     }
 
     @Transactional(readOnly = true)
+    public List<PlayerMetricsResponse> protectedPlayerMetrics(AnalyticsFilters filters) {
+        return analyticsRepository.findProtectedPlayerMetrics(filters)
+                .stream()
+                .map(PlayerMetricsResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<TeamMetricsResponse> teamMetrics(AnalyticsFilters filters) {
         return analyticsRepository.findTeamMetrics(filters)
                 .stream()
@@ -40,8 +48,24 @@ public class AnalyticsQueryService {
     }
 
     @Transactional(readOnly = true)
+    public List<TeamMetricsResponse> protectedTeamMetrics(AnalyticsFilters filters) {
+        return analyticsRepository.findProtectedTeamMetrics(filters)
+                .stream()
+                .map(TeamMetricsResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<HeroMetricsResponse> heroMetrics(AnalyticsFilters filters) {
         return analyticsRepository.findHeroMetrics(filters)
+                .stream()
+                .map(HeroMetricsResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<HeroMetricsResponse> protectedHeroMetrics(AnalyticsFilters filters) {
+        return analyticsRepository.findProtectedHeroMetrics(filters)
                 .stream()
                 .map(HeroMetricsResponse::from)
                 .toList();
@@ -60,5 +84,11 @@ public class AnalyticsQueryService {
         return analyticsRepository.findTournamentMetricsById(tournamentId)
                 .map(TournamentMetricsResponse::from)
                 .orElseThrow(() -> new ResourceNotFoundException("Tournament analytics", "tournamentId", tournamentId));
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<TournamentMetricsResponse> protectedTournamentMetrics(UUID tournamentId) {
+        return analyticsRepository.findProtectedTournamentMetricsById(tournamentId)
+                .map(TournamentMetricsResponse::from);
     }
 }

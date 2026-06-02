@@ -102,7 +102,7 @@ public class TeamRosterService {
 
         return teamRepository.findCurrentTeamForProfile(currentProfile.profileId())
                 .map(team -> currentTeamResponse(currentProfile, team))
-                .orElseGet(CurrentTeamResponse::none);
+                .orElseGet(() -> CurrentTeamResponse.none(currentProfile.role() == ProfileRole.PLAYER));
     }
 
     @Transactional(readOnly = true)
@@ -134,6 +134,7 @@ public class TeamRosterService {
         if (teamMemberRepository.existsActive(teamId, targetProfileId)) {
             throw new BadRequestException("Profile is already an active team member.");
         }
+        ensureNoOtherActiveTeam(targetProfileId, teamId);
         ensureRosterCapacity(teamId, 1);
 
         try {
@@ -282,6 +283,7 @@ public class TeamRosterService {
             if (teamMemberRepository.existsActive(teamId, inviteeProfileId)) {
                 throw new BadRequestException("Profile is already an active team member.");
             }
+            ensureNoOtherActiveTeam(inviteeProfileId, teamId);
 
             if (teamInvitationRepository.findPendingByTeamAndInviteeProfile(teamId, inviteeProfileId).isPresent()) {
                 throw new BadRequestException("Pending invitation already exists for this team and profile.");
@@ -310,8 +312,14 @@ public class TeamRosterService {
     public TeamInvitationResponse acceptInvitation(UUID invitationId) {
         TeamInvitation invitation = findInvitation(invitationId);
         AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
+        ensurePlayerInvitationFlow(currentProfile);
         ensureCanRespondToInvitation(currentProfile, invitation);
         ensurePendingAndNotExpired(invitation);
+        if (teamMemberRepository.existsActive(invitation.teamId(), currentProfile.profileId())) {
+            throw new BadRequestException("Profile is already an active team member.");
+        }
+        ensureNoOtherActiveTeam(currentProfile.profileId(), invitation.teamId());
+        ensureRosterCapacity(invitation.teamId(), 1);
 
         try {
             TeamInvitation accepted = teamInvitationRepository.accept(invitationId, currentProfile.profileId())
@@ -332,6 +340,7 @@ public class TeamRosterService {
     public TeamInvitationResponse declineInvitation(UUID invitationId) {
         TeamInvitation invitation = findInvitation(invitationId);
         AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
+        ensurePlayerInvitationFlow(currentProfile);
         ensureCanRespondToInvitation(currentProfile, invitation);
         ensurePendingAndNotExpired(invitation);
 
@@ -368,7 +377,7 @@ public class TeamRosterService {
             return;
         }
 
-        throw new AccessDeniedException("Only the team captain or an organizer can manage this team.");
+        throw new AccessDeniedException("Only the team captain or an admin can manage this team.");
     }
 
     private CurrentTeamResponse currentTeamResponse(AuthenticatedProfile profile, Team team) {
@@ -378,20 +387,38 @@ public class TeamRosterService {
                 .toList();
         List<TeamManualPlayerResponse> manualPlayers = manualPlayersForTeam(team.id());
         boolean captain = profile.profileId().equals(team.captainProfileId());
+        boolean canManageTeam = canManageTeam(profile, team);
 
         return new CurrentTeamResponse(
                 TeamResponse.from(team, manualPlayers),
                 members,
                 manualPlayers,
                 captain,
-                canManageTeam(profile, team),
+                captain,
+                captain ? "owner" : "member",
+                false,
+                canManageTeam,
+                canManageTeam,
+                canManageTeam,
+                profile.role() == ProfileRole.PLAYER,
                 captain ? "Resolved from current captain ownership." : "Resolved from active team membership.");
     }
 
     private boolean canManageTeam(AuthenticatedProfile profile, Team team) {
-        return profile.role() == ProfileRole.ORGANIZER
-                || profile.role() == ProfileRole.ADMIN
+        return profile.role() == ProfileRole.ADMIN
                 || profile.profileId().equals(team.captainProfileId());
+    }
+
+    private void ensurePlayerInvitationFlow(AuthenticatedProfile profile) {
+        if (profile.role() != ProfileRole.PLAYER) {
+            throw new AccessDeniedException("Only players can respond to team invitations.");
+        }
+    }
+
+    private void ensureNoOtherActiveTeam(UUID profileId, UUID targetTeamId) {
+        if (teamRepository.existsCurrentTeamForProfileExcluding(profileId, targetTeamId)) {
+            throw new BadRequestException("Profile already belongs to another active team.");
+        }
     }
 
     private void ensureCanRespondToInvitation(AuthenticatedProfile profile, TeamInvitation invitation) {

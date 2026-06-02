@@ -8,6 +8,8 @@ public record AdminAuditLogRecord(
         OffsetDateTime createdAt,
         UUID actorProfileId,
         String actorNickname,
+        String actorDisplayName,
+        String actorRole,
         AdminAuditAction action,
         String tableName,
         UUID recordId,

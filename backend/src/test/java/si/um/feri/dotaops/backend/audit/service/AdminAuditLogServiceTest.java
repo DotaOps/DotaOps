@@ -4,6 +4,8 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -27,15 +29,19 @@ class AdminAuditLogServiceTest {
     private static final UUID RECORD_ID = UUID.fromString("33333333-3333-4333-8333-333333333333");
     private static final OffsetDateTime FROM = OffsetDateTime.parse("2026-05-01T00:00:00Z");
     private static final OffsetDateTime TO = OffsetDateTime.parse("2026-06-01T00:00:00Z");
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final AdminAuditLogRepository auditLogRepository = mock(AdminAuditLogRepository.class);
-    private final AdminAuditLogService auditLogService = new AdminAuditLogService(auditLogRepository);
+    private final AdminAuditLogService auditLogService = new AdminAuditLogService(
+            auditLogRepository,
+            new AuditJsonSanitizer());
 
     @Test
     void listAuditLogsMapsOnlyWhitelistedChangedFieldNames() {
         AdminAuditLogFilters expectedFilters = new AdminAuditLogFilters(
-                "teams",
+                "public.teams",
                 RECORD_ID,
+                PROFILE_ID,
                 "operator",
                 AdminAuditAction.UPDATE,
                 FROM,
@@ -45,6 +51,8 @@ class AdminAuditLogServiceTest {
                 TO,
                 PROFILE_ID,
                 "Operator",
+                "Tournament Operator",
+                "organizer",
                 AdminAuditAction.UPDATE,
                 "public.teams",
                 RECORD_ID,
@@ -52,6 +60,7 @@ class AdminAuditLogServiceTest {
                 {
                   "name": "Old team",
                   "region": "EU",
+                  "description": {"label": "before", "nested": {"token": "must-not-leak"}},
                   "token_hash": "must-not-leak",
                   "raw_response": {"secret": true}
                 }
@@ -60,6 +69,7 @@ class AdminAuditLogServiceTest {
                 {
                   "name": "New team",
                   "region": "EU",
+                  "description": {"label": "after", "nested": {"token": "changed-secret"}},
                   "token_hash": "changed-secret",
                   "raw_response": {"secret": false}
                 }
@@ -69,6 +79,7 @@ class AdminAuditLogServiceTest {
         var response = auditLogService.listAuditLogs(
                 " Teams ",
                 RECORD_ID,
+                PROFILE_ID,
                 " Operator ",
                 "UPDATE",
                 FROM,
@@ -78,9 +89,18 @@ class AdminAuditLogServiceTest {
 
         assertThat(response.items()).hasSize(1);
         assertThat(response.items().getFirst().summary()).isEqualTo("Team updated");
-        assertThat(response.items().getFirst().changedFields()).containsExactly("name");
+        assertThat(response.items().getFirst().changedFields()).containsExactly("description", "name");
         assertThat(response.items().getFirst().actor().profileId()).isEqualTo(PROFILE_ID);
         assertThat(response.items().getFirst().actor().nickname()).isEqualTo("Operator");
+        assertThat(response.items().getFirst().actor().displayName()).isEqualTo("Tournament Operator");
+        assertThat(response.items().getFirst().actor().role()).isEqualTo("organizer");
+        assertThat(OBJECT_MAPPER.valueToTree(response.items().getFirst().previousRow())
+                .path("description").path("nested").path("token").asText())
+                .isEqualTo("[REDACTED]");
+        assertThat(OBJECT_MAPPER.valueToTree(response.items().getFirst().newRow())
+                .path("description").path("nested").path("token").asText())
+                .isEqualTo("[REDACTED]");
+        assertThat(response.items().getFirst().newRow()).doesNotContainKey("token_hash");
         assertThat(response.page().page()).isEqualTo(2);
         assertThat(response.page().size()).isEqualTo(10);
         assertThat(response.page().totalElements()).isEqualTo(21);
@@ -89,10 +109,12 @@ class AdminAuditLogServiceTest {
 
     @Test
     void insertAuditMapsSafePresentFieldsWithoutReturningValues() {
-        AdminAuditLogFilters filters = new AdminAuditLogFilters(null, null, null, null, null, null);
+        AdminAuditLogFilters filters = new AdminAuditLogFilters(null, null, null, null, null, null, null);
         when(auditLogRepository.findAuditLogs(filters, 20, 0)).thenReturn(List.of(new AdminAuditLogRecord(
                 AUDIT_ID,
                 TO,
+                null,
+                null,
                 null,
                 null,
                 AdminAuditAction.INSERT,
@@ -109,13 +131,15 @@ class AdminAuditLogServiceTest {
                 """)));
         when(auditLogRepository.countAuditLogs(filters)).thenReturn(1L);
 
-        var response = auditLogService.listAuditLogs(null, null, null, null, null, null, 0, 20);
+        var response = auditLogService.listAuditLogs(null, null, null, null, null, null, null, 0, 20);
 
         assertThat(response.items().getFirst().summary()).isEqualTo("Match import inserted");
         assertThat(response.items().getFirst().changedFields())
                 .containsExactly("attempt_count", "error_code", "status");
-        assertThat(response.items().getFirst().actor().profileId()).isNull();
-        assertThat(response.items().getFirst().actor().nickname()).isNull();
+        assertThat(response.items().getFirst().actor()).isNull();
+        assertThat(response.items().getFirst().previousRow()).isNull();
+        assertThat(response.items().getFirst().newRow()).containsEntry("status", "queued");
+        assertThat(response.items().getFirst().newRow()).doesNotContainKey("last_error");
     }
 
     @Test
@@ -124,7 +148,7 @@ class AdminAuditLogServiceTest {
                 org.mockito.ArgumentMatchers.eq(0L))).thenReturn(List.of());
         when(auditLogRepository.countAuditLogs(org.mockito.ArgumentMatchers.any())).thenReturn(0L);
 
-        auditLogService.listAuditLogs(" public.tournaments ", null, null, null, null, null, -2, 1000);
+        auditLogService.listAuditLogs(" public.tournaments ", null, null, null, null, null, null, -2, 1000);
 
         ArgumentCaptor<AdminAuditLogFilters> captor = ArgumentCaptor.forClass(AdminAuditLogFilters.class);
         verify(auditLogRepository).findAuditLogs(captor.capture(), org.mockito.ArgumentMatchers.eq(100),
@@ -135,7 +159,7 @@ class AdminAuditLogServiceTest {
     @Test
     void invalidActionIsRejectedBeforeRepositoryCall() {
         assertThatThrownBy(() -> auditLogService.listAuditLogs(
-                null, null, null, "export", null, null, 0, 20))
+                null, null, null, null, "export", null, null, 0, 20))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Unsupported audit action.");
 
@@ -145,9 +169,19 @@ class AdminAuditLogServiceTest {
     @Test
     void invertedTimeRangeIsRejectedBeforeRepositoryCall() {
         assertThatThrownBy(() -> auditLogService.listAuditLogs(
-                null, null, null, null, TO, FROM, 0, 20))
+                null, null, null, null, null, TO, FROM, 0, 20))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Audit time range is invalid.");
+
+        verifyNoInteractions(auditLogRepository);
+    }
+
+    @Test
+    void unsupportedTableIsRejectedBeforeRepositoryCall() {
+        assertThatThrownBy(() -> auditLogService.listAuditLogs(
+                "profiles", null, null, null, null, null, null, 0, 20))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Unsupported audit table.");
 
         verifyNoInteractions(auditLogRepository);
     }

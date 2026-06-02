@@ -30,8 +30,10 @@ public class AdminAuditLogController {
 
     @GetMapping
     ApiResponse<PageResponse<AdminAuditLogItem>> listAuditLogs(
-            @RequestParam(name = "table", required = false) String tableName,
+            @RequestParam(required = false) String tableName,
+            @RequestParam(name = "table", required = false) String legacyTableName,
             @RequestParam(required = false) UUID recordId,
+            @RequestParam(required = false) UUID actorProfileId,
             @RequestParam(required = false) String actor,
             @RequestParam(required = false) String action,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
@@ -42,13 +44,18 @@ public class AdminAuditLogController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
         return ApiResponse.of(auditLogService.listAuditLogs(
-                tableName,
+                preferred(tableName, legacyTableName),
                 recordId,
+                actorProfileId,
                 actor,
                 action,
                 from,
                 to,
                 page,
                 size));
+    }
+
+    private String preferred(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 }
