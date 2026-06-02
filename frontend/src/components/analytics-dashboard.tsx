@@ -182,7 +182,7 @@ export function AnalyticsDashboard() {
   if (isLoading) {
     return (
       <div className="analytics-terminal real-analytics-dashboard">
-        <section className="analytics-terminal-header ops-panel ops-command-grid">
+        <section className="analytics-terminal-header ops-panel">
           <div className="analytics-terminal-copy">
             <p className="ops-label">DotaOps Analytics Terminal</p>
             <h1>Analytics Terminal</h1>
@@ -195,7 +195,7 @@ export function AnalyticsDashboard() {
 
   return (
     <div className="analytics-terminal real-analytics-dashboard">
-      <section className="analytics-terminal-header ops-panel ops-command-grid">
+      <section className="analytics-terminal-header ops-panel">
         <div className="analytics-terminal-copy">
           <p className="ops-label">DOTAOPS ANALYTICS ENGINE</p>
           <h1>Analytics Terminal</h1>

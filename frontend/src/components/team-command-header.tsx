@@ -15,7 +15,7 @@ export function TeamCommandHeader({ teams }: TeamCommandHeaderProps) {
     Math.max(teams.length, 1);
 
   return (
-    <section className="team-command-header ops-panel ops-command-grid">
+    <section className="team-command-header ops-panel">
       <div className="team-command-copy">
         <p className="ops-label">Team operations</p>
         <h1>Team Command Center</h1>

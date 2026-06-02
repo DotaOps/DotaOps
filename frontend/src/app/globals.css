@@ -1682,10 +1682,7 @@ textarea:focus {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(to bottom, transparent 50%, rgba(0, 221, 221, 0.035) 50%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
-  background-size: 100% 4px, 52px 100%;
+  background: linear-gradient(90deg, transparent 0 86%, rgba(123, 209, 248, 0.045));
   content: "";
   opacity: 0.65;
 }
@@ -2218,10 +2215,7 @@ textarea:focus {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(to bottom, transparent 50%, rgba(255, 84, 78, 0.035) 50%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
-  background-size: 100% 4px, 52px 100%;
+  background: linear-gradient(90deg, transparent 0 86%, rgba(123, 209, 248, 0.04));
   content: "";
   opacity: 0.65;
 }
@@ -2542,10 +2536,8 @@ textarea:focus {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(rgba(176, 135, 131, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(176, 135, 131, 0.08) 1px, transparent 1px),
+    radial-gradient(circle at 18% 22%, rgba(211, 47, 47, 0.1), transparent 34%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 42%);
-  background-size: 32px 32px, 32px 32px, auto;
   content: "";
   opacity: 0.48;
 }
@@ -9524,9 +9516,8 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(rgba(176, 135, 131, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(176, 135, 131, 0.08) 1px, transparent 1px);
-  background-size: 44px 44px;
+    radial-gradient(circle at 18% 24%, rgba(211, 47, 47, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 48%);
   content: "";
   opacity: 0.42;
 }
@@ -10377,9 +10368,8 @@ html[data-portal-handoff="active"] .page-loading-overlay {
 
 .team-mgmt-hero::before {
   background:
-    linear-gradient(rgba(176, 135, 131, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(176, 135, 131, 0.07) 1px, transparent 1px);
-  background-size: 48px 48px;
+    radial-gradient(circle at 18% 24%, rgba(211, 47, 47, 0.14), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 48%);
   opacity: 0.58;
 }
 

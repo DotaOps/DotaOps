@@ -16,7 +16,7 @@ export function AnalyticsTerminalHeader({
   topTeam
 }: AnalyticsTerminalHeaderProps) {
   return (
-    <section className="analytics-terminal-header ops-panel ops-command-grid">
+    <section className="analytics-terminal-header ops-panel">
       <div className="analytics-terminal-copy">
         <p className="ops-label">DotaOps Analytics Terminal</p>
         <h1>Analytics Terminal</h1>
