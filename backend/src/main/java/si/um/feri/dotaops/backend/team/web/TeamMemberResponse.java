@@ -14,6 +14,7 @@ public record TeamMemberResponse(
         String displayName,
         String avatarUrl,
         TeamMemberRole role,
+        boolean teamOwner,
         boolean active,
         OffsetDateTime joinedAt,
         OffsetDateTime leftAt,
@@ -21,6 +22,10 @@ public record TeamMemberResponse(
 ) {
 
     public static TeamMemberResponse from(TeamMember member) {
+        return from(member, null);
+    }
+
+    public static TeamMemberResponse from(TeamMember member, UUID captainProfileId) {
         return new TeamMemberResponse(
                 member.id(),
                 member.teamId(),
@@ -29,6 +34,7 @@ public record TeamMemberResponse(
                 member.displayName(),
                 member.avatarUrl(),
                 member.role(),
+                member.profileId().equals(captainProfileId),
                 member.active(),
                 member.joinedAt(),
                 member.leftAt(),

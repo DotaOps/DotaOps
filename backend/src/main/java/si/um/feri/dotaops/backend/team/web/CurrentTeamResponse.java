@@ -13,7 +13,13 @@ public record CurrentTeamResponse(
         boolean canManageTeam,
         boolean canManageRoster,
         boolean canInvitePlayers,
+        boolean canTransferOwnership,
         boolean canViewAnalytics,
+        int participantsCount,
+        int capacity,
+        int slotsFilled,
+        int slotsRemaining,
+        boolean isFull,
         String teamResolution
 ) {
 
@@ -35,7 +41,13 @@ public record CurrentTeamResponse(
                 canManageRoster,
                 canManageRoster,
                 canManageRoster,
+                captain,
                 team != null,
+                members == null ? 0 : members.size(),
+                0,
+                members == null ? 0 : members.size(),
+                0,
+                false,
                 teamResolution);
     }
 
@@ -55,6 +67,12 @@ public record CurrentTeamResponse(
                 false,
                 false,
                 false,
+                false,
+                false,
+                0,
+                0,
+                0,
+                0,
                 false,
                 "No active team found for the current profile.");
     }

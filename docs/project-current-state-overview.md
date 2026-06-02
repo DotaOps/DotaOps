@@ -27,7 +27,7 @@ Ta dokument opisuje dejansko stanje repozitorija. Predlogi so loceni v poglavjih
 | Backend | Java 21, Spring Boot 4.0.6, Spring MVC, Spring Security | `backend/pom.xml` |
 | Dostop do baze | `JdbcTemplate` repository razredi | npr. `TournamentRepository`, `MatchImportRepository`, `AnalyticsRepository` |
 | JPA | Odvisnost je prisotna, vendar ni najdenih `@Entity` razredov ali Spring Data repository interface-ov | `backend/pom.xml`, pregled `backend/src/main/java` |
-| Migracije | Flyway, 29 migracij | `backend/src/main/resources/db/migration/` |
+| Migracije | Flyway, 30 migracij | `backend/src/main/resources/db/migration/` |
 | Baza | Supabase PostgreSQL | `supabase/config.toml`, `backend/src/main/resources/application.properties` |
 | Frontend | Next.js 16.2.6 App Router, React 19.2.5, TypeScript 6 | `frontend/package.json` |
 | Frontend auth | Supabase JS in `@supabase/ssr` | `frontend/src/lib/auth.ts`, `frontend/src/lib/supabase/`, `frontend/src/proxy.ts` |
@@ -252,8 +252,9 @@ Obstajajo tudi starejsi ali delno prekrivajoci adapterji: `data.ts`, `organizer-
 | `V27` | uporabni notification outbox servis |
 | `V28` | persisted profile role allowlist in team permission hardening: player-only create, captain/admin team RLS |
 | `V29` | `audit_log(created_at desc, id desc)` indeks za newest-first admin paginacijo in casovne filtre |
+| `V30` | reaktivacija ali backfill manjkajocih captain roster zapisov; owner/captain je tudi aktiven `team_members` participant |
 
-Integracijski test je na cisti PostgreSQL 16 bazi uspesno izvedel vseh 29 migracij.
+Integracijski test je na cisti PostgreSQL 16 bazi uspesno izvedel vseh 30 migracij.
 
 ### Pomembne tabele
 
@@ -312,9 +313,11 @@ Migracije vsebujejo:
 
 PostgreSQL enum zaradi kompatibilnosti stare migracijske zgodovine ohranja legacy labela `visitor` in `captain`, vendar `profiles_role_no_global_captain` po `V28` dovoli samo `player`, `organizer` in `admin`. Java `ProfileRole.VISITOR` je sinteticna anonimna vrednost, ne persisted uporabniska vloga. Legacy `captain` se pri branju mapira v `PLAYER`, novi zapisi pa ga ne morejo shraniti.
 
-Captain oziroma owner je team-level koncept prek `teams.captain_profile_id`. `TeamService.createTeam()` dovoli create samo profilu `PLAYER`; ustvarjalec postane captain. `TeamService`, `TeamRosterService` in `TeamJoinRequestService` organizerju ne dovolijo upravljanja ekip. Ekipo upravlja njen captain ali eksplicitni `ADMIN`.
+Captain oziroma owner je team-level koncept prek `teams.captain_profile_id`. `TeamService.createTeam()` dovoli create samo profilu `PLAYER`; ustvarjalec postane captain in se v isti transakciji doda kot aktiven `team_members` participant z igralno pozicijo `support`. `V30` enako normalizira stare ekipe: reaktivira najnovejsi zgodovinski captain roster zapis ali vstavi novega, ce zapis se ne obstaja. `TeamService`, `TeamRosterService` in `TeamJoinRequestService` organizerju ne dovolijo upravljanja ekip. Ekipo upravlja njen captain ali eksplicitni `ADMIN`, vendar admin nima implicitnega bypassa za transfer ownership.
 
-`GET /api/me/team` zaradi frontend odlocanja poleg starega `captain` vraca se `isTeamOwner`, `currentUserTeamRole`, `canCreateTeam`, `canManageTeam`, `canManageRoster`, `canInvitePlayers` in `canViewAnalytics`. Frontend zato ne rabi sklepati team pravic iz globalne profilne vloge.
+`TeamRosterCapacityService` centralizira capacity logiko za direct member add, manual player add, invitations in join requests. Steje aktivne `team_members`, rocne igralce in captain fallback samo, ce captain se nima aktivnega roster zapisa. S tem owner steje kot participant in se ne steje dvakrat. Roster write tokovi pred preverjanjem capacityja zaklenejo team vrstico z `FOR UPDATE`, zato dva socasna accepta ne moreta porabiti istega zadnjega mesta.
+
+`GET /api/me/team` zaradi frontend odlocanja poleg starega `captain` vraca se `isTeamOwner`, `currentUserTeamRole`, `canCreateTeam`, `canManageTeam`, `canManageRoster`, `canInvitePlayers`, `canTransferOwnership`, `canViewAnalytics`, `participantsCount`, `capacity`, `slotsFilled`, `slotsRemaining` in `isFull`. Vsak roster member DTO vraca tudi `teamOwner`. Frontend zato ne rabi sklepati team pravic iz globalne profilne vloge.
 
 ### RLS, grants in view-i
 
@@ -442,7 +445,7 @@ Outbox je trajen DB zapis. Trenutni dogodki so submission, approval, rejection i
 | --- | --- |
 | Profil | `GET`, `POST`, `PATCH /api/me/profile`, `POST /api/me/avatar`, `POST /api/me/opendota/sync` |
 | Steam | `POST /api/auth/steam/link`, `POST /api/auth/steam/logout` |
-| Ekipe | create/update/image endpointi, roster write endpointi, invitations, join requests, `/api/me/team` |
+| Ekipe | create/update/image endpointi, roster write endpointi, invitations, join requests, `/api/me/team`, `POST /api/teams/{teamId}/transfer-ownership` |
 | Prijave | `POST /api/tournaments/{id}/registrations`, check-in, team registration pregled |
 | Import pregled | `GET /api/match-imports/{id}`, `/by-match/{id}`, `/{id}/events` |
 | Obvestila | `GET /api/me/notifications`, mark-read, read-all |
@@ -466,6 +469,20 @@ Outbox je trajen DB zapis. Trenutni dogodki so submission, approval, rejection i
 | Outbox | admin process |
 
 `TournamentGroupController` ohranja tudi starejse ne-`/organizer` write alias poti. Servis se vedno preveri pravice.
+
+### Team ownership transfer
+
+`POST /api/teams/{teamId}/transfer-ownership` sprejme:
+
+```json
+{
+  "newOwnerProfileId": "uuid"
+}
+```
+
+Endpoint je `ROLE_PLAYER` protected. Servis dodatno preveri, da je actor trenutni captain, novi owner obstaja, ima persisted vlogo `player` in je aktiven clan iste ekipe. Stari owner ostane clan ekipe, globalne profilne vloge se ne spremenijo. Sprememba `teams.captain_profile_id` sprozi obstojeci `audit_teams` trigger; `DatabaseActorContext` zagotovi actor profil v `audit_log`.
+
+Planned oziroma se neimplementirane My Team funkcije ostajajo: Lock Roster, Leave Team, Disband Team, team-specific Audit Logs in player Profile/Stats pogled.
 
 ### Admin audit API
 
@@ -493,7 +510,7 @@ DTO vrne actor `profileId`, `nickname`, `displayName` in profilno `role`, ce pro
 
 ### Backend testi
 
-Najdenih je 72 backend test source datotek. Suite vsebuje:
+Najdenih je 73 backend test source datotek. Suite vsebuje:
 
 - unit teste za servise in helperje;
 - MockMvc controller teste;
@@ -520,9 +537,9 @@ Frontend nima `npm test` skripte in avtomatiziranih frontend test datotek ni naj
 
 | Ukaz | Rezultat |
 | --- | --- |
-| `.\mvnw.cmd -B test "-Dspring.profiles.active=test" "-Dtest=*Test,!*IntegrationTest,!SupabaseIntegrationTest"` | uspeh, 392 testov |
+| `.\mvnw.cmd -B test "-Dspring.profiles.active=test" "-Dtest=*Test,!*IntegrationTest,!SupabaseIntegrationTest"` | uspeh, 409 testov |
 | lokalni Docker PostgreSQL 16 + CI bootstrap auth sheme | uspeh, izolirana zacasna baza |
-| `.\mvnw.cmd -B "-Dtest=*IntegrationTest" test "-Dspring.profiles.active=integration"` | uspeh, 43 testov, 29 Flyway migracij |
+| `.\mvnw.cmd -B "-Dtest=*IntegrationTest" test "-Dspring.profiles.active=integration"` | uspeh, 45 testov, 30 Flyway migracij |
 | `.\mvnw.cmd -B package -DskipTests` | uspeh |
 | `npm ci` | uspeh; osvezil ignorirani `node_modules` |
 | `npm run lint` | uspeh z 5 opozorili v `frontend/src/lib/tournament-data.ts` |
@@ -708,7 +725,7 @@ Trenutno iz repozitorija ni razvidno, da bi bilo dokoncanje naslednjih delov imp
 5. Public DTO-ji in RLS izpostavljajo profilne podatke ter manual-player note; pregledati je treba zasebnost.
 6. Storage upload zaupa MIME headerju.
 7. `npm audit` ima eno produkcijsko in eno razvojno zmerno tranzitivno ranljivost.
-8. Pravilo ene aktivne ekipe je utrjeno v servisih za create, invite accept, direct member add in join request. Ker captain ownership in roster membership zivita v dveh tabelah, se nima atomarnega cross-table DB constrainta; pred takim constraintom je potreben pregled obstojecih podatkov in konkurencnih zapisov.
+8. Pravilo ene aktivne ekipe je utrjeno v servisih za create, invite accept, direct member add in join request. `V30` normalizira captain roster zapise, capacity write tokovi pa uporabljajo team row lock. Se vedno ni atomarnega cross-table DB constrainta za eno aktivno ekipo cez `teams.captain_profile_id` in `team_members`.
 
 ### Nizja prioriteta
 
@@ -731,8 +748,8 @@ Trenutno iz repozitorija ni razvidno, da bi bilo dokoncanje naslednjih delov imp
 10. Pregledati public privacy contract za `ProfileResponse` in `TeamManualPlayerResponse`.
 11. Uskladiti JDBC usmeritev: odstraniti zavajajoce JPA nastavitve ali dokumentirati, zakaj ostajajo.
 12. V Docker frontend buildu uporabiti `npm ci`.
-13. Dolociti captain transfer lifecycle: ali stari owner ostane clan, kako se uposteva roster limit in kako se obravnavajo aktivne turnirske prijave.
-14. Po pregledu obstojecih podatkov odlociti, ali pravilo ene aktivne ekipe potrebuje DB trigger ali drug atomaren mehanizem cez `teams.captain_profile_id` in `team_members`.
+13. Dolociti, ali transfer ownership potrebuje dodatna pravila ob aktivnih turnirskih prijavah; trenutni model ohrani snapshot registracije in spremeni samo trenutno ekipo.
+14. Po spremljanju produkcijskih podatkov odlociti, ali pravilo ene aktivne ekipe potrebuje DB trigger ali drug atomaren mehanizem cez `teams.captain_profile_id` in `team_members`.
 
 ## 17. Hitri vodic za novega razvijalca
 
@@ -775,7 +792,7 @@ Pregled je vkljuceval repository-wide inventuro in poglobljen pregled glavnih iz
 - `README.md`, `backend/README.md`, `frontend/README.md`, `supabase/README.md`;
 - `docker-compose.yml`, oba `Dockerfile`, oba CI workflowa;
 - `backend/pom.xml`, Spring properties in test properties;
-- vseh 28 Flyway migracij in `supabase/post_flyway_hardening.sql`;
+- vseh 30 Flyway migracij in `supabase/post_flyway_hardening.sql`;
 - `SecurityConfig`, JWT filter/verifier, Steam auth, rate limiter, DB actor context;
 - controllerje, servise in repository razrede za profile, ekipe, turnirje, tekme, OpenDota, analytics, audit in notifications;
 - frontend App Router strani, `AppShell`, `route-access.ts`, `api.ts`, auth in feature adapterje;

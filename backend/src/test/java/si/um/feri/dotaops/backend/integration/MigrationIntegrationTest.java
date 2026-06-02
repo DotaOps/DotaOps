@@ -3,6 +3,7 @@ package si.um.feri.dotaops.backend.integration;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -11,8 +12,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.ResourcePatternResolver;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -241,6 +244,56 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
         assertThat(missingAuditTriggers).isEmpty();
     }
 
+    @Test
+    void captainRosterBackfillReactivatesLatestHistoricalMembershipOrCreatesMissingMembership() {
+        UUID historicalCaptainProfileId = upsertProfile(UUID.randomUUID(), "player");
+        UUID missingCaptainProfileId = upsertProfile(UUID.randomUUID(), "player");
+        UUID historicalTeamId = insertTeam(historicalCaptainProfileId);
+        UUID missingTeamId = insertTeam(missingCaptainProfileId);
+
+        insertInactiveTeamMember(historicalTeamId, historicalCaptainProfileId, "3 days", "2 days");
+        UUID latestHistoricalMemberId = insertInactiveTeamMember(
+                historicalTeamId,
+                historicalCaptainProfileId,
+                "2 days",
+                "1 day");
+
+        new ResourceDatabasePopulator(
+                new ClassPathResource("db/migration/V30__backfill_team_captain_roster_membership.sql"))
+                .execute(jdbcTemplate.getDataSource());
+
+        List<UUID> reactivatedMemberIds = jdbcTemplate.queryForList(
+                """
+                select id
+                from public.team_members
+                where team_id = ?
+                  and profile_id = ?
+                  and is_active
+                """,
+                UUID.class,
+                historicalTeamId,
+                historicalCaptainProfileId);
+        Boolean reactivatedMemberClearedLeftAt = jdbcTemplate.queryForObject(
+                "select left_at is null from public.team_members where id = ?",
+                Boolean.class,
+                latestHistoricalMemberId);
+        Integer insertedActiveMemberships = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from public.team_members
+                where team_id = ?
+                  and profile_id = ?
+                  and is_active
+                """,
+                Integer.class,
+                missingTeamId,
+                missingCaptainProfileId);
+
+        assertThat(reactivatedMemberIds).containsExactly(latestHistoricalMemberId);
+        assertThat(reactivatedMemberClearedLeftAt).isTrue();
+        assertThat(insertedActiveMemberships).isOne();
+    }
+
     private List<String> currentMigrationVersions() throws IOException {
         Resource[] resources = resourcePatternResolver.getResources("classpath*:db/migration/V*.sql");
 
@@ -261,5 +314,56 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                 .isTrue();
 
         return matcher.group(1).replace('_', '.');
+    }
+
+    private UUID insertTeam(UUID captainProfileId) {
+        String suffix = uniqueSuffix();
+
+        return jdbcTemplate.queryForObject(
+                """
+                insert into public.teams (name, slug, captain_profile_id)
+                values (?, ?, ?)
+                returning id
+                """,
+                UUID.class,
+                "Migration Team " + suffix,
+                "migration-team-" + suffix,
+                captainProfileId);
+    }
+
+    private UUID insertInactiveTeamMember(
+            UUID teamId,
+            UUID profileId,
+            String joinedAgo,
+            String leftAgo
+    ) {
+        return jdbcTemplate.queryForObject(
+                """
+                insert into public.team_members (
+                  team_id,
+                  profile_id,
+                  member_role,
+                  is_active,
+                  joined_at,
+                  left_at,
+                  updated_at
+                )
+                values (
+                  ?,
+                  ?,
+                  'support'::public.dotaops_team_member_role,
+                  false,
+                  now() - cast(? as interval),
+                  now() - cast(? as interval),
+                  now() - cast(? as interval)
+                )
+                returning id
+                """,
+                UUID.class,
+                teamId,
+                profileId,
+                joinedAgo,
+                leftAgo,
+                leftAgo);
     }
 }

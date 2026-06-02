@@ -13,11 +13,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedProfile;
+import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.auth.service.SupabasePrincipal;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
 import si.um.feri.dotaops.backend.common.error.ResourceNotFoundException;
+import si.um.feri.dotaops.backend.common.security.DatabaseActorContext;
 import si.um.feri.dotaops.backend.profile.repository.ProfileRepository;
 import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.domain.TeamInvitation;
@@ -31,7 +33,6 @@ import si.um.feri.dotaops.backend.team.repository.TeamInvitationRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamManualPlayerRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
-import si.um.feri.dotaops.backend.team.repository.TeamRosterLimitRepository;
 import si.um.feri.dotaops.backend.team.repository.UpdateTeamManualPlayerCommand;
 import si.um.feri.dotaops.backend.team.web.AddTeamMemberRequest;
 import si.um.feri.dotaops.backend.team.web.CreateTeamInvitationRequest;
@@ -41,9 +42,9 @@ import si.um.feri.dotaops.backend.team.web.TeamInvitationResponse;
 import si.um.feri.dotaops.backend.team.web.TeamManualPlayerResponse;
 import si.um.feri.dotaops.backend.team.web.TeamMemberResponse;
 import si.um.feri.dotaops.backend.team.web.TeamResponse;
+import si.um.feri.dotaops.backend.team.web.TransferTeamOwnershipRequest;
 import si.um.feri.dotaops.backend.team.web.UpdateTeamMemberRequest;
 import si.um.feri.dotaops.backend.team.web.UpdateTeamManualPlayerRequest;
-import si.um.feri.dotaops.backend.tournament.domain.TournamentSettings;
 
 @Service
 public class TeamRosterService {
@@ -52,35 +53,38 @@ public class TeamRosterService {
     private final TeamMemberRepository teamMemberRepository;
     private final TeamManualPlayerRepository teamManualPlayerRepository;
     private final TeamInvitationRepository teamInvitationRepository;
-    private final TeamRosterLimitRepository teamRosterLimitRepository;
+    private final TeamRosterCapacityService teamRosterCapacityService;
     private final ProfileRepository profileRepository;
     private final CurrentUserProvider currentUserProvider;
+    private final DatabaseActorContext databaseActorContext;
 
     public TeamRosterService(
             TeamRepository teamRepository,
             TeamMemberRepository teamMemberRepository,
             TeamManualPlayerRepository teamManualPlayerRepository,
             TeamInvitationRepository teamInvitationRepository,
-            TeamRosterLimitRepository teamRosterLimitRepository,
+            TeamRosterCapacityService teamRosterCapacityService,
             ProfileRepository profileRepository,
-            CurrentUserProvider currentUserProvider
+            CurrentUserProvider currentUserProvider,
+            DatabaseActorContext databaseActorContext
     ) {
         this.teamRepository = teamRepository;
         this.teamMemberRepository = teamMemberRepository;
         this.teamManualPlayerRepository = teamManualPlayerRepository;
         this.teamInvitationRepository = teamInvitationRepository;
-        this.teamRosterLimitRepository = teamRosterLimitRepository;
+        this.teamRosterCapacityService = teamRosterCapacityService;
         this.profileRepository = profileRepository;
         this.currentUserProvider = currentUserProvider;
+        this.databaseActorContext = databaseActorContext;
     }
 
     @Transactional(readOnly = true)
     public List<TeamMemberResponse> listActiveMembers(UUID teamId) {
-        ensureTeamExists(teamId);
+        Team team = ensureTeamExists(teamId);
 
         return teamMemberRepository.findActiveByTeamId(teamId)
                 .stream()
-                .map(TeamMemberResponse::from)
+                .map(member -> TeamMemberResponse.from(member, team.captainProfileId()))
                 .toList();
     }
 
@@ -92,7 +96,7 @@ public class TeamRosterService {
 
         return teamMemberRepository.findActiveByTeamId(team.id())
                 .stream()
-                .map(TeamMemberResponse::from)
+                .map(member -> TeamMemberResponse.from(member, team.captainProfileId()))
                 .toList();
     }
 
@@ -123,7 +127,7 @@ public class TeamRosterService {
 
     @Transactional
     public TeamMemberResponse addMember(UUID teamId, AddTeamMemberRequest request) {
-        Team team = ensureTeamExists(teamId);
+        Team team = ensureTeamExistsForUpdate(teamId);
         AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
         ensureCanManageTeam(currentProfile, team);
 
@@ -131,17 +135,18 @@ public class TeamRosterService {
         profileRepository.findById(targetProfileId)
                 .orElseThrow(() -> new ResourceNotFoundException("Profile", "id", targetProfileId));
 
-        if (teamMemberRepository.existsActive(teamId, targetProfileId)) {
+        if (targetProfileId.equals(team.captainProfileId())
+                || teamMemberRepository.existsActive(teamId, targetProfileId)) {
             throw new BadRequestException("Profile is already an active team member.");
         }
         ensureNoOtherActiveTeam(targetProfileId, teamId);
-        ensureRosterCapacity(teamId, 1);
+        teamRosterCapacityService.ensureCanAdd(team, 1);
 
         try {
             return TeamMemberResponse.from(teamMemberRepository.create(new CreateTeamMemberCommand(
                     teamId,
                     targetProfileId,
-                    resolveMemberRole(request.role()))));
+                    resolveMemberRole(request.role()))), team.captainProfileId());
         } catch (DataIntegrityViolationException exception) {
             throw membershipConstraintException(exception);
         }
@@ -154,27 +159,33 @@ public class TeamRosterService {
         ensureCanManageTeam(currentProfile, team);
 
         return teamMemberRepository.updateRole(teamId, memberId, request.role())
-                .map(TeamMemberResponse::from)
+                .map(member -> TeamMemberResponse.from(member, team.captainProfileId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Active team member", "id", memberId));
     }
 
     @Transactional
     public TeamMemberResponse deactivateMember(UUID teamId, UUID memberId) {
-        Team team = ensureTeamExists(teamId);
+        Team team = ensureTeamExistsForUpdate(teamId);
         AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
         ensureCanManageTeam(currentProfile, team);
+        var member = teamMemberRepository.findById(memberId)
+                .filter(existing -> existing.teamId().equals(teamId) && existing.active())
+                .orElseThrow(() -> new ResourceNotFoundException("Active team member", "id", memberId));
+        if (member.profileId().equals(team.captainProfileId())) {
+            throw new BadRequestException("Transfer ownership before removing the current team owner.");
+        }
 
         return teamMemberRepository.deactivate(teamId, memberId)
-                .map(TeamMemberResponse::from)
+                .map(deactivated -> TeamMemberResponse.from(deactivated, team.captainProfileId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Active team member", "id", memberId));
     }
 
     @Transactional
     public TeamManualPlayerResponse createManualPlayer(UUID teamId, CreateTeamManualPlayerRequest request) {
-        Team team = ensureTeamExists(teamId);
+        Team team = ensureTeamExistsForUpdate(teamId);
         AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
         ensureCanManageTeam(currentProfile, team);
-        ensureRosterCapacity(teamId, 1);
+        teamRosterCapacityService.ensureCanAdd(team, 1);
 
         try {
             return TeamManualPlayerResponse.from(teamManualPlayerRepository.create(new CreateTeamManualPlayerCommand(
@@ -265,6 +276,7 @@ public class TeamRosterService {
         Team team = ensureTeamExists(teamId);
         AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
         ensureCanManageTeam(currentProfile, team);
+        teamRosterCapacityService.ensureHasOpenSlot(team);
 
         UUID inviteeProfileId = request.inviteeProfileId();
         String inviteeEmail = normalizeEmail(request.inviteeEmail());
@@ -280,7 +292,8 @@ public class TeamRosterService {
                 throw new BadRequestException("Invitee profile id and invitee email must reference the same user.");
             }
 
-            if (teamMemberRepository.existsActive(teamId, inviteeProfileId)) {
+            if (inviteeProfileId.equals(team.captainProfileId())
+                    || teamMemberRepository.existsActive(teamId, inviteeProfileId)) {
                 throw new BadRequestException("Profile is already an active team member.");
             }
             ensureNoOtherActiveTeam(inviteeProfileId, teamId);
@@ -315,11 +328,12 @@ public class TeamRosterService {
         ensurePlayerInvitationFlow(currentProfile);
         ensureCanRespondToInvitation(currentProfile, invitation);
         ensurePendingAndNotExpired(invitation);
+        Team team = ensureTeamExistsForUpdate(invitation.teamId());
         if (teamMemberRepository.existsActive(invitation.teamId(), currentProfile.profileId())) {
             throw new BadRequestException("Profile is already an active team member.");
         }
         ensureNoOtherActiveTeam(currentProfile.profileId(), invitation.teamId());
-        ensureRosterCapacity(invitation.teamId(), 1);
+        teamRosterCapacityService.ensureCanAdd(team, 1);
 
         try {
             TeamInvitation accepted = teamInvitationRepository.accept(invitationId, currentProfile.profileId())
@@ -362,6 +376,44 @@ public class TeamRosterService {
                 .orElseThrow(() -> new BadRequestException("Only pending invitations can be cancelled."));
     }
 
+    @Transactional
+    public CurrentTeamResponse transferOwnership(UUID teamId, TransferTeamOwnershipRequest request) {
+        AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
+        if (currentProfile.role() != ProfileRole.PLAYER) {
+            throw new AccessDeniedException("Only players can transfer team ownership.");
+        }
+
+        Team team = ensureTeamExistsForUpdate(teamId);
+        if (!currentProfile.profileId().equals(team.captainProfileId())) {
+            throw new AccessDeniedException("Only the current team owner can transfer ownership.");
+        }
+
+        UUID newOwnerProfileId = request.newOwnerProfileId();
+        if (newOwnerProfileId.equals(team.captainProfileId())) {
+            throw new BadRequestException("Profile is already the team owner.");
+        }
+
+        var newOwner = profileRepository.findById(newOwnerProfileId)
+                .orElseThrow(() -> new ResourceNotFoundException("Profile", "id", newOwnerProfileId));
+        if (newOwner.role() != ProfileRole.PLAYER) {
+            throw new BadRequestException("Team owner must be a player.");
+        }
+        if (!teamMemberRepository.existsActive(teamId, newOwnerProfileId)) {
+            throw new BadRequestException("New team owner must be an active member of this team.");
+        }
+
+        databaseActorContext.apply(new AuthenticatedActor(
+                currentProfile.authUserId(),
+                currentProfile.profileId(),
+                null,
+                null,
+                currentProfile.role()));
+        Team updatedTeam = teamRepository.transferOwnership(teamId, newOwnerProfileId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
+
+        return currentTeamResponse(currentProfile, updatedTeam);
+    }
+
     private Team ensureTeamExists(UUID teamId) {
         return teamRepository.findById(teamId)
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
@@ -383,9 +435,10 @@ public class TeamRosterService {
     private CurrentTeamResponse currentTeamResponse(AuthenticatedProfile profile, Team team) {
         List<TeamMemberResponse> members = teamMemberRepository.findActiveByTeamId(team.id())
                 .stream()
-                .map(TeamMemberResponse::from)
+                .map(member -> TeamMemberResponse.from(member, team.captainProfileId()))
                 .toList();
         List<TeamManualPlayerResponse> manualPlayers = manualPlayersForTeam(team.id());
+        var rosterCapacity = teamRosterCapacityService.resolve(team);
         boolean captain = profile.profileId().equals(team.captainProfileId());
         boolean canManageTeam = canManageTeam(profile, team);
 
@@ -400,8 +453,19 @@ public class TeamRosterService {
                 canManageTeam,
                 canManageTeam,
                 canManageTeam,
+                captain && profile.role() == ProfileRole.PLAYER,
                 profile.role() == ProfileRole.PLAYER,
+                rosterCapacity.participantsCount(),
+                rosterCapacity.capacity(),
+                rosterCapacity.slotsFilled(),
+                rosterCapacity.slotsRemaining(),
+                rosterCapacity.isFull(),
                 captain ? "Resolved from current captain ownership." : "Resolved from active team membership.");
+    }
+
+    private Team ensureTeamExistsForUpdate(UUID teamId) {
+        return teamRepository.findByIdForUpdate(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
     }
 
     private boolean canManageTeam(AuthenticatedProfile profile, Team team) {
@@ -475,18 +539,6 @@ public class TeamRosterService {
                 .stream()
                 .map(TeamManualPlayerResponse::from)
                 .toList();
-    }
-
-    private void ensureRosterCapacity(UUID teamId, int additionalPlayers) {
-        int rosterLimit = teamRosterLimitRepository.resolveRosterLimit(teamId);
-        if (rosterLimit <= 0) {
-            rosterLimit = TournamentSettings.DEFAULT_TEAM_SIZE;
-        }
-        int currentRosterSize = teamMemberRepository.countActiveByTeamId(teamId)
-                + teamManualPlayerRepository.countByTeamId(teamId);
-        if (currentRosterSize + additionalPlayers > rosterLimit) {
-            throw new BadRequestException("Team roster cannot exceed %d players.".formatted(rosterLimit));
-        }
     }
 
     private String normalizeEmail(String value) {

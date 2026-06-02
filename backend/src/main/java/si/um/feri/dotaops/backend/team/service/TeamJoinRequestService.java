@@ -12,7 +12,6 @@ import si.um.feri.dotaops.backend.auth.domain.AuthenticatedProfile;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
-import si.um.feri.dotaops.backend.common.error.ConflictException;
 import si.um.feri.dotaops.backend.common.error.ResourceNotFoundException;
 import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.domain.TeamJoinRequest;
@@ -22,13 +21,10 @@ import si.um.feri.dotaops.backend.team.repository.CreateTeamJoinRequestCommand;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamMemberCommand;
 import si.um.feri.dotaops.backend.team.repository.TeamInvitationRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamJoinRequestRepository;
-import si.um.feri.dotaops.backend.team.repository.TeamManualPlayerRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
-import si.um.feri.dotaops.backend.team.repository.TeamRosterLimitRepository;
 import si.um.feri.dotaops.backend.team.web.CreateTeamJoinRequestRequest;
 import si.um.feri.dotaops.backend.team.web.TeamJoinRequestResponse;
-import si.um.feri.dotaops.backend.tournament.domain.TournamentSettings;
 
 @Service
 public class TeamJoinRequestService {
@@ -36,26 +32,23 @@ public class TeamJoinRequestService {
     private final TeamJoinRequestRepository joinRequestRepository;
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
-    private final TeamManualPlayerRepository teamManualPlayerRepository;
     private final TeamInvitationRepository teamInvitationRepository;
-    private final TeamRosterLimitRepository teamRosterLimitRepository;
+    private final TeamRosterCapacityService teamRosterCapacityService;
     private final CurrentUserProvider currentUserProvider;
 
     public TeamJoinRequestService(
             TeamJoinRequestRepository joinRequestRepository,
             TeamRepository teamRepository,
             TeamMemberRepository teamMemberRepository,
-            TeamManualPlayerRepository teamManualPlayerRepository,
             TeamInvitationRepository teamInvitationRepository,
-            TeamRosterLimitRepository teamRosterLimitRepository,
+            TeamRosterCapacityService teamRosterCapacityService,
             CurrentUserProvider currentUserProvider
     ) {
         this.joinRequestRepository = joinRequestRepository;
         this.teamRepository = teamRepository;
         this.teamMemberRepository = teamMemberRepository;
-        this.teamManualPlayerRepository = teamManualPlayerRepository;
         this.teamInvitationRepository = teamInvitationRepository;
-        this.teamRosterLimitRepository = teamRosterLimitRepository;
+        this.teamRosterCapacityService = teamRosterCapacityService;
         this.currentUserProvider = currentUserProvider;
     }
 
@@ -76,7 +69,7 @@ public class TeamJoinRequestService {
             throw new BadRequestException("Pending invitation already exists for this team and profile.");
         }
 
-        ensureTeamHasOpenRosterSlot(teamId);
+        teamRosterCapacityService.ensureHasOpenSlot(team);
 
         try {
             return TeamJoinRequestResponse.from(joinRequestRepository.create(new CreateTeamJoinRequestCommand(
@@ -115,13 +108,13 @@ public class TeamJoinRequestService {
     @Transactional
     public TeamJoinRequestResponse acceptJoinRequest(UUID requestId) {
         TeamJoinRequest joinRequest = findJoinRequest(requestId);
-        Team team = ensureTeamExists(joinRequest.teamId());
+        Team team = ensureTeamExistsForUpdate(joinRequest.teamId());
         AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
         ensureCaptain(currentProfile, team);
         ensurePending(joinRequest);
         ensureRequesterIsNotMember(team, joinRequest.requesterProfileId());
         ensureRequesterHasNoOtherActiveTeam(team, joinRequest.requesterProfileId());
-        ensureTeamHasOpenRosterSlot(team.id());
+        teamRosterCapacityService.ensureHasOpenSlot(team);
 
         try {
             teamMemberRepository.create(new CreateTeamMemberCommand(
@@ -190,6 +183,11 @@ public class TeamJoinRequestService {
         throw new AccessDeniedException("Only the team captain or an admin can view join requests.");
     }
 
+    private Team ensureTeamExistsForUpdate(UUID teamId) {
+        return teamRepository.findByIdForUpdate(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
+    }
+
     private void ensurePlayerFlow(AuthenticatedProfile profile) {
         if (profile.role() != ProfileRole.PLAYER) {
             throw new AccessDeniedException("Only players can request team membership.");
@@ -213,18 +211,6 @@ public class TeamJoinRequestService {
     private void ensurePending(TeamJoinRequest joinRequest) {
         if (joinRequest.status() != TeamJoinRequestStatus.PENDING) {
             throw new BadRequestException("Only pending join requests can be changed.");
-        }
-    }
-
-    private void ensureTeamHasOpenRosterSlot(UUID teamId) {
-        int rosterLimit = teamRosterLimitRepository.resolveRosterLimit(teamId);
-        if (rosterLimit <= 0) {
-            rosterLimit = TournamentSettings.DEFAULT_TEAM_SIZE;
-        }
-        int currentRosterSize = teamMemberRepository.countActiveByTeamId(teamId)
-                + teamManualPlayerRepository.countByTeamId(teamId);
-        if (currentRosterSize >= rosterLimit) {
-            throw new ConflictException("Team roster is full.");
         }
     }
 

@@ -7,6 +7,7 @@ public record DashboardCapabilitiesResponse(
         boolean canManageTeam,
         boolean canManageRoster,
         boolean canInvitePlayers,
+        boolean canTransferOwnership,
         boolean canViewAnalytics,
         boolean canManageTournament,
         boolean canViewOrganizerDashboard

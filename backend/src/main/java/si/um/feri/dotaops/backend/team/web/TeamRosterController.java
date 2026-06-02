@@ -55,6 +55,14 @@ public class TeamRosterController {
         return ApiResponse.of(teamRosterService.getCurrentTeam());
     }
 
+    @PostMapping("/teams/{teamId}/transfer-ownership")
+    ApiResponse<CurrentTeamResponse> transferOwnership(
+            @PathVariable UUID teamId,
+            @Valid @RequestBody TransferTeamOwnershipRequest request
+    ) {
+        return ApiResponse.of(teamRosterService.transferOwnership(teamId, request));
+    }
+
     @PostMapping("/teams/{teamId}/members")
     ResponseEntity<ApiResponse<TeamMemberResponse>> addMember(
             @PathVariable UUID teamId,

@@ -75,6 +75,15 @@ public class TeamRepository {
                 .findFirst();
     }
 
+    public Optional<Team> findByIdForUpdate(UUID teamId) {
+        return jdbcTemplate.query(
+                        selectTeamSql() + "where t.id = ? limit 1 for update of t",
+                        this::mapTeam,
+                        teamId)
+                .stream()
+                .findFirst();
+    }
+
     public Optional<Team> findBySlug(String slug) {
         return jdbcTemplate.query(
                         selectTeamSql() + "where t.slug = ? limit 1",
@@ -295,6 +304,40 @@ public class TeamRepository {
                         """,
                         this::mapTeam,
                         bannerUrl,
+                        teamId)
+                .stream()
+                .findFirst();
+    }
+
+    public Optional<Team> transferOwnership(UUID teamId, UUID newCaptainProfileId) {
+        return jdbcTemplate.query(
+                        """
+                        update public.teams
+                        set
+                          captain_profile_id = ?,
+                          updated_at = now()
+                        where id = ?
+                        returning
+                          id,
+                          name,
+                          tag,
+                          slug,
+                          captain_profile_id,
+                          (
+                            select p.nickname
+                            from public.profiles p
+                            where p.id = captain_profile_id
+                          ) as captain_nickname,
+                          region,
+                          logo_url,
+                          banner_url,
+                          description,
+                          created_by,
+                          created_at,
+                          updated_at
+                        """,
+                        this::mapTeam,
+                        newCaptainProfileId,
                         teamId)
                 .stream()
                 .findFirst();

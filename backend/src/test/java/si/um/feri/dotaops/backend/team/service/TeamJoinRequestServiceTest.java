@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.access.AccessDeniedException;
 
@@ -52,15 +53,24 @@ class TeamJoinRequestServiceTest {
     private final TeamManualPlayerRepository teamManualPlayerRepository = mock(TeamManualPlayerRepository.class);
     private final TeamInvitationRepository teamInvitationRepository = mock(TeamInvitationRepository.class);
     private final TeamRosterLimitRepository teamRosterLimitRepository = mock(TeamRosterLimitRepository.class);
+    private final TeamRosterCapacityService teamRosterCapacityService = new TeamRosterCapacityService(
+            teamMemberRepository,
+            teamManualPlayerRepository,
+            teamRosterLimitRepository);
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
     private final TeamJoinRequestService service = new TeamJoinRequestService(
             joinRequestRepository,
             teamRepository,
             teamMemberRepository,
-            teamManualPlayerRepository,
             teamInvitationRepository,
-            teamRosterLimitRepository,
+            teamRosterCapacityService,
             currentUserProvider);
+
+    @BeforeEach
+    void setUpNormalizedCaptainMembership() {
+        when(teamRepository.findByIdForUpdate(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(teamMemberRepository.existsActive(TEAM_ID, CAPTAIN_PROFILE_ID)).thenReturn(true);
+    }
 
     @Test
     void playerCanCreateJoinRequest() {
