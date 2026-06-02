@@ -1,4 +1,4 @@
-import { getApi, postApiAuthenticated } from "@/lib/api";
+import { getApi, getApiAuthenticated, postApiAuthenticated } from "@/lib/api";
 
 export interface AnalyticsFilters {
   heroId?: string;
@@ -115,6 +115,65 @@ export interface AnalyticsSnapshot {
   players: PlayerAnalyticsMetric[];
   teams: TeamAnalyticsMetric[];
   tournaments: TournamentAnalyticsMetric[];
+}
+
+export interface AnalyticsMatchHistory {
+  dotaMatchId: string | null;
+  matchGameId: string | null;
+  matchId: string | null;
+}
+
+export interface RoleAnalyticsTeam {
+  captainNickname: string | null;
+  captainProfileId: string | null;
+  id: string;
+  name: string;
+  slug: string | null;
+  tag: string | null;
+}
+
+export interface PlayerAnalyticsResponse {
+  heroPerformance: HeroAnalyticsMetric[];
+  matchHistory: AnalyticsMatchHistory[];
+  metrics: PlayerAnalyticsMetric[];
+}
+
+export interface CurrentTeamAnalyticsResponse {
+  recentTeamMatches: AnalyticsMatchHistory[];
+  rosterPerformance: PlayerAnalyticsMetric[];
+  team: RoleAnalyticsTeam | null;
+  teamSummary: TeamAnalyticsMetric[];
+}
+
+export interface OrganizerAnalyticsResponse {
+  activePublishedTournaments: number;
+  approvedRegistrations: number;
+  importJobs: number;
+  pendingRegistrations: number;
+  processedMatchGames: number;
+  tournaments: number;
+}
+
+export interface RecentImportMetric {
+  completedAt: string | null;
+  createdAt: string | null;
+  dotaMatchId: string | null;
+  errorCode: string | null;
+  id: string;
+  status: string;
+}
+
+export interface OrganizerTournamentAnalyticsResponse {
+  avgDurationSeconds: number | null;
+  gamesProcessed: number;
+  heroMetrics: HeroAnalyticsMetric[];
+  importCoveragePercent: number;
+  matchesWithoutImport: number;
+  recentImports: RecentImportMetric[];
+  teamComparison: TeamAnalyticsMetric[];
+  topTeams: TeamAnalyticsMetric[];
+  tournamentId: string;
+  tournamentSummary: TournamentAnalyticsMetric | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -333,6 +392,95 @@ function mapRefresh(value: unknown): AnalyticsRefreshResult {
   };
 }
 
+function mapMatchHistory(value: unknown): AnalyticsMatchHistory {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    dotaMatchId: nullableText(item.dotaMatchId),
+    matchGameId: nullableText(item.matchGameId),
+    matchId: nullableText(item.matchId)
+  };
+}
+
+function mapRoleAnalyticsTeam(value: unknown): RoleAnalyticsTeam | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    captainNickname: nullableText(value.captainNickname),
+    captainProfileId: nullableText(value.captainProfileId),
+    id: text(value.id, "unknown-team"),
+    name: text(value.name, "Unknown team"),
+    slug: nullableText(value.slug),
+    tag: nullableText(value.tag)
+  };
+}
+
+function mapPlayerAnalyticsResponse(value: unknown): PlayerAnalyticsResponse {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    heroPerformance: (arrayPayload(item.heroPerformance) ?? []).map(mapHero),
+    matchHistory: (arrayPayload(item.matchHistory) ?? []).map(mapMatchHistory),
+    metrics: (arrayPayload(item.metrics) ?? []).map(mapPlayer)
+  };
+}
+
+function mapCurrentTeamAnalyticsResponse(value: unknown): CurrentTeamAnalyticsResponse {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    recentTeamMatches: (arrayPayload(item.recentTeamMatches) ?? []).map(mapMatchHistory),
+    rosterPerformance: (arrayPayload(item.rosterPerformance) ?? []).map(mapPlayer),
+    team: mapRoleAnalyticsTeam(item.team),
+    teamSummary: (arrayPayload(item.teamSummary) ?? []).map(mapTeam)
+  };
+}
+
+function mapOrganizerAnalyticsResponse(value: unknown): OrganizerAnalyticsResponse {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    activePublishedTournaments: numberValue(item.activePublishedTournaments),
+    approvedRegistrations: numberValue(item.approvedRegistrations),
+    importJobs: numberValue(item.importJobs),
+    pendingRegistrations: numberValue(item.pendingRegistrations),
+    processedMatchGames: numberValue(item.processedMatchGames),
+    tournaments: numberValue(item.tournaments)
+  };
+}
+
+function mapRecentImport(value: unknown): RecentImportMetric {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    completedAt: nullableText(item.completedAt),
+    createdAt: nullableText(item.createdAt),
+    dotaMatchId: nullableText(item.dotaMatchId),
+    errorCode: nullableText(item.errorCode),
+    id: text(item.id, "unknown-import"),
+    status: text(item.status, "unknown")
+  };
+}
+
+function mapOrganizerTournamentAnalyticsResponse(value: unknown): OrganizerTournamentAnalyticsResponse {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    avgDurationSeconds: nullableNumber(item.avgDurationSeconds),
+    gamesProcessed: numberValue(item.gamesProcessed),
+    heroMetrics: (arrayPayload(item.heroMetrics) ?? []).map(mapHero),
+    importCoveragePercent: numberValue(item.importCoveragePercent),
+    matchesWithoutImport: numberValue(item.matchesWithoutImport),
+    recentImports: (arrayPayload(item.recentImports) ?? []).map(mapRecentImport),
+    teamComparison: (arrayPayload(item.teamComparison) ?? []).map(mapTeam),
+    topTeams: (arrayPayload(item.topTeams) ?? []).map(mapTeam),
+    tournamentId: text(item.tournamentId, "unknown-tournament"),
+    tournamentSummary: isRecord(item.tournamentSummary) ? mapTournament(item.tournamentSummary) : null
+  };
+}
+
 export async function getPublicPlayerMetrics(filters?: AnalyticsFilters) {
   return analyticsArrayPayload(
     await getApi<unknown>(`/public/analytics/players${queryString(filters)}`),
@@ -381,6 +529,24 @@ export async function getPublicAnalyticsSnapshot(filters?: AnalyticsFilters): Pr
     teams,
     tournaments
   };
+}
+
+export async function getMyPlayerAnalytics() {
+  return mapPlayerAnalyticsResponse(await getApiAuthenticated<unknown>("/me/analytics"));
+}
+
+export async function getMyTeamAnalytics() {
+  return mapCurrentTeamAnalyticsResponse(await getApiAuthenticated<unknown>("/me/team/analytics"));
+}
+
+export async function getOrganizerAnalytics() {
+  return mapOrganizerAnalyticsResponse(await getApiAuthenticated<unknown>("/organizer/analytics"));
+}
+
+export async function getOrganizerTournamentAnalytics(tournamentId: string) {
+  return mapOrganizerTournamentAnalyticsResponse(
+    await getApiAuthenticated<unknown>(`/organizer/tournaments/${tournamentId}/analytics`)
+  );
 }
 
 export async function refreshAnalyticsAdmin() {
