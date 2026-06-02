@@ -1682,10 +1682,7 @@ textarea:focus {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(to bottom, transparent 50%, rgba(0, 221, 221, 0.035) 50%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
-  background-size: 100% 4px, 52px 100%;
+  background: linear-gradient(90deg, transparent 0 86%, rgba(123, 209, 248, 0.045));
   content: "";
   opacity: 0.65;
 }
@@ -2218,10 +2215,7 @@ textarea:focus {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(to bottom, transparent 50%, rgba(255, 84, 78, 0.035) 50%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
-  background-size: 100% 4px, 52px 100%;
+  background: linear-gradient(90deg, transparent 0 86%, rgba(123, 209, 248, 0.04));
   content: "";
   opacity: 0.65;
 }
@@ -2542,10 +2536,8 @@ textarea:focus {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(rgba(176, 135, 131, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(176, 135, 131, 0.08) 1px, transparent 1px),
+    radial-gradient(circle at 18% 22%, rgba(211, 47, 47, 0.1), transparent 34%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 42%);
-  background-size: 32px 32px, 32px 32px, auto;
   content: "";
   opacity: 0.48;
 }
@@ -8335,6 +8327,7 @@ html[data-portal-handoff="active"] .page-loading-overlay {
 
 @media (min-width: 861px) {
   .role-dashboard-captain .role-dashboard-content,
+  .role-dashboard-player .role-dashboard-content,
   .role-dashboard-organizer .role-dashboard-content {
     width: 100%;
     max-width: none;
@@ -9523,9 +9516,8 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(rgba(176, 135, 131, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(176, 135, 131, 0.08) 1px, transparent 1px);
-  background-size: 44px 44px;
+    radial-gradient(circle at 18% 24%, rgba(211, 47, 47, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 48%);
   content: "";
   opacity: 0.42;
 }
@@ -10376,9 +10368,8 @@ html[data-portal-handoff="active"] .page-loading-overlay {
 
 .team-mgmt-hero::before {
   background:
-    linear-gradient(rgba(176, 135, 131, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(176, 135, 131, 0.07) 1px, transparent 1px);
-  background-size: 48px 48px;
+    radial-gradient(circle at 18% 24%, rgba(211, 47, 47, 0.14), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 48%);
   opacity: 0.58;
 }
 
@@ -11158,6 +11149,226 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   font-size: 0.62rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.team-mgmt-transfer-action {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  border-color: rgba(255, 180, 171, 0.35);
+  background: rgba(121, 45, 40, 0.24);
+  color: var(--ops-text);
+}
+
+.team-mgmt-transfer-action:hover {
+  border-color: rgba(255, 180, 171, 0.58);
+  background: rgba(153, 54, 48, 0.34);
+}
+
+.team-mgmt-disband-action {
+  border-color: rgba(255, 94, 86, 0.34);
+  background: rgba(133, 28, 28, 0.22);
+}
+
+.team-mgmt-transfer-action span {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.team-mgmt-transfer-action small {
+  color: var(--ops-secondary);
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.62rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.team-mgmt-modal-backdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 5, 6, 0.76);
+}
+
+.team-mgmt-modal {
+  display: grid;
+  gap: 18px;
+  width: min(100%, 560px);
+  padding: 28px;
+  border-color: rgba(255, 180, 171, 0.34);
+  background:
+    linear-gradient(135deg, rgba(103, 31, 28, 0.28), transparent 54%),
+    #121010;
+}
+
+.team-mgmt-modal-danger {
+  border-color: rgba(255, 94, 86, 0.42);
+  background:
+    linear-gradient(135deg, rgba(133, 28, 28, 0.32), transparent 54%),
+    #121010;
+}
+
+.team-mgmt-modal-heading {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.team-mgmt-modal-heading h2,
+.team-mgmt-modal-heading p,
+.team-mgmt-modal p {
+  margin: 0;
+}
+
+.team-mgmt-modal-heading h2 {
+  color: var(--ops-text);
+  font-size: 1.65rem;
+}
+
+.team-mgmt-modal > p {
+  color: var(--ops-muted);
+  line-height: 1.65;
+}
+
+.team-mgmt-modal > p strong {
+  color: var(--ops-text);
+}
+
+.team-mgmt-modal-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid rgba(255, 180, 171, 0.38);
+  color: #ffb4ab;
+  background: rgba(121, 45, 40, 0.25);
+}
+
+.team-mgmt-modal-select {
+  display: grid;
+  gap: 8px;
+}
+
+.team-mgmt-modal-select span {
+  color: var(--ops-muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.team-mgmt-modal-select select {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgba(255, 180, 171, 0.24);
+  padding: 0 12px;
+  color: var(--ops-text);
+  background: #0c0b0b;
+}
+
+.team-mgmt-modal .team-mgmt-modal-warning {
+  border-left: 2px solid var(--ops-secondary);
+  padding: 10px 12px;
+  color: #e6c877;
+  background: rgba(233, 195, 73, 0.055);
+}
+
+.team-mgmt-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.team-mgmt-profile-action {
+  border-color: rgba(255, 180, 171, 0.24);
+  background: rgba(121, 45, 40, 0.16);
+  color: var(--ops-text);
+}
+
+.team-mgmt-profile-action:not(:disabled):hover {
+  border-color: rgba(255, 180, 171, 0.48);
+  background: rgba(153, 54, 48, 0.24);
+}
+
+.team-mgmt-profile-modal {
+  width: min(100%, 760px);
+}
+
+.team-mgmt-modal-tabs {
+  display: inline-flex;
+  gap: 6px;
+  width: fit-content;
+  padding: 4px;
+  border: 1px solid rgba(255, 180, 171, 0.14);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.team-mgmt-modal-tabs button {
+  min-height: 36px;
+  border: 0;
+  padding: 0 14px;
+  color: var(--ops-muted);
+  background: transparent;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.team-mgmt-modal-tabs button.is-active {
+  color: var(--ops-text);
+  background: rgba(227, 45, 43, 0.24);
+}
+
+.team-mgmt-profile-grid,
+.team-mgmt-profile-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.team-mgmt-profile-grid article {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(255, 180, 171, 0.14);
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.team-mgmt-profile-grid span,
+.team-mgmt-profile-list .ops-label {
+  color: var(--ops-muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.team-mgmt-profile-grid strong {
+  color: var(--ops-text);
+}
+
+.team-mgmt-profile-stats,
+.team-mgmt-profile-list {
+  display: grid;
+  gap: 12px;
+}
+
+.team-mgmt-profile-list {
+  border-top: 1px solid rgba(255, 180, 171, 0.12);
+  padding-top: 14px;
+}
+
+.team-mgmt-profile-list article {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(255, 180, 171, 0.12);
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .team-mgmt-alert,

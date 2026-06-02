@@ -1,5 +1,6 @@
 package si.um.feri.dotaops.backend.team.web;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -54,6 +55,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TeamRosterControllerTest {
 
     private static final UUID AUTH_USER_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
+    private static final UUID ORGANIZER_AUTH_USER_ID = UUID.fromString("12121212-1212-4121-8121-121212121212");
     private static final UUID PROFILE_ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
     private static final UUID TEAM_ID = UUID.fromString("33333333-3333-4333-8333-333333333333");
     private static final UUID MEMBER_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
@@ -74,6 +76,8 @@ class TeamRosterControllerTest {
         Mockito.reset(teamRosterService, authenticatedProfileRepository);
         when(authenticatedProfileRepository.findByAuthUserId(AUTH_USER_ID))
                 .thenReturn(Optional.of(authenticatedProfile()));
+        when(authenticatedProfileRepository.findByAuthUserId(ORGANIZER_AUTH_USER_ID))
+                .thenReturn(Optional.of(organizerAuthenticatedProfile()));
     }
 
     @Test
@@ -155,7 +159,85 @@ class TeamRosterControllerTest {
                 .andExpect(jsonPath("$.data.canManageTeam").value(true))
                 .andExpect(jsonPath("$.data.canManageRoster").value(true))
                 .andExpect(jsonPath("$.data.canInvitePlayers").value(true))
+                .andExpect(jsonPath("$.data.canLeaveTeam").value(false))
+                .andExpect(jsonPath("$.data.canDisbandTeam").value(true))
                 .andExpect(jsonPath("$.data.canViewAnalytics").value(true));
+    }
+
+    @Test
+    void leaveTeamRequiresPlayerJwt() throws Exception {
+        mockMvc.perform(post("/api/me/team/leave"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(post("/api/me/team/leave")
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void leaveTeamReturnsEmptyCurrentTeamState() throws Exception {
+        when(teamRosterService.leaveCurrentTeam()).thenReturn(CurrentTeamResponse.none(true));
+
+        mockMvc.perform(post("/api/me/team/leave")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.team").doesNotExist())
+                .andExpect(jsonPath("$.data.canCreateTeam").value(true))
+                .andExpect(jsonPath("$.data.canLeaveTeam").value(false));
+    }
+
+    @Test
+    void disbandTeamRequiresPlayerJwt() throws Exception {
+        mockMvc.perform(post("/api/teams/" + TEAM_ID + "/disband"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(post("/api/teams/" + TEAM_ID + "/disband")
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void disbandTeamReturnsSoftDeleteMarker() throws Exception {
+        when(teamRosterService.disbandTeam(TEAM_ID)).thenReturn(new DisbandTeamResponse(TEAM_ID, "disbanded", NOW));
+
+        mockMvc.perform(post("/api/teams/" + TEAM_ID + "/disband")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.teamId").value(TEAM_ID.toString()))
+                .andExpect(jsonPath("$.data.status").value("disbanded"))
+                .andExpect(jsonPath("$.data.disbandedAt").exists());
+    }
+
+    @Test
+    void rosterProfileRequiresPlayerJwtAndReturnsStableStatsContract() throws Exception {
+        when(teamRosterService.getRosterProfile(TEAM_ID, PROFILE_ID)).thenReturn(new TeamRosterProfileResponse(
+                PROFILE_ID,
+                "MidPulse",
+                "Mid Pulse",
+                null,
+                TeamMemberRole.SUPPORT,
+                false,
+                NOW,
+                new TeamRosterPlayerStatsResponse(0, 0, 0, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO),
+                List.of(),
+                List.of()));
+
+        mockMvc.perform(get("/api/teams/" + TEAM_ID + "/members/" + PROFILE_ID + "/profile"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(get("/api/teams/" + TEAM_ID + "/members/" + PROFILE_ID + "/profile")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.profileId").value(PROFILE_ID.toString()))
+                .andExpect(jsonPath("$.data.stats.gamesPlayed").value(0))
+                .andExpect(jsonPath("$.data.mostPlayedHeroes").isArray())
+                .andExpect(jsonPath("$.data.recentMatches").isArray());
     }
 
     @Test
@@ -187,8 +269,62 @@ class TeamRosterControllerTest {
                 .andExpect(jsonPath("$.data.acceptedAt").exists());
     }
 
+    @Test
+    void transferOwnershipRequiresJwt() throws Exception {
+        mockMvc.perform(post("/api/teams/" + TEAM_ID + "/transfer-ownership")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "newOwnerProfileId": "44444444-4444-4444-8444-444444444444"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void organizerCannotTransferOwnership() throws Exception {
+        mockMvc.perform(post("/api/teams/" + TEAM_ID + "/transfer-ownership")
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "newOwnerProfileId": "44444444-4444-4444-8444-444444444444"
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void transferOwnershipReturnsUpdatedCurrentTeamCapabilities() throws Exception {
+        when(teamRosterService.transferOwnership(eq(TEAM_ID), any(TransferTeamOwnershipRequest.class)))
+                .thenReturn(new CurrentTeamResponse(
+                        teamResponse(),
+                        List.of(memberResponse(true)),
+                        false,
+                        false,
+                        "Resolved from active team membership."));
+
+        mockMvc.perform(post("/api/teams/" + TEAM_ID + "/transfer-ownership")
+                        .header("Authorization", bearerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "newOwnerProfileId": "44444444-4444-4444-8444-444444444444"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.isTeamOwner").value(false))
+                .andExpect(jsonPath("$.data.canTransferOwnership").value(false));
+    }
+
     private static String bearerToken() throws Exception {
-        return "Bearer " + SupabaseJwtTestSupport.token(AUTH_USER_ID, Instant.now());
+        return bearerToken(AUTH_USER_ID);
+    }
+
+    private static String bearerToken(UUID authUserId) throws Exception {
+        return "Bearer " + SupabaseJwtTestSupport.token(authUserId, Instant.now());
     }
 
     private static AuthenticatedProfile authenticatedProfile() {
@@ -197,6 +333,14 @@ class TeamRosterControllerTest {
                 AUTH_USER_ID,
                 "MidPulse",
                 ProfileRole.PLAYER);
+    }
+
+    private static AuthenticatedProfile organizerAuthenticatedProfile() {
+        return new AuthenticatedProfile(
+                UUID.fromString("13131313-1313-4131-8131-131313131313"),
+                ORGANIZER_AUTH_USER_ID,
+                "Organizer",
+                ProfileRole.ORGANIZER);
     }
 
     private static TeamMemberResponse memberResponse(boolean active) {
@@ -208,6 +352,7 @@ class TeamRosterControllerTest {
                 "Mid Pulse",
                 null,
                 TeamMemberRole.SUPPORT,
+                false,
                 active,
                 NOW,
                 active ? null : NOW,

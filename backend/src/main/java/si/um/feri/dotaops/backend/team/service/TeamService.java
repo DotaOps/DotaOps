@@ -25,8 +25,11 @@ import si.um.feri.dotaops.backend.storage.service.StoredImage;
 import si.um.feri.dotaops.backend.storage.service.SupabaseImageStorageService;
 import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.domain.TeamManualPlayer;
+import si.um.feri.dotaops.backend.team.domain.TeamMemberRole;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamCommand;
+import si.um.feri.dotaops.backend.team.repository.CreateTeamMemberCommand;
 import si.um.feri.dotaops.backend.team.repository.TeamManualPlayerRepository;
+import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
 import si.um.feri.dotaops.backend.team.repository.UpdateTeamCommand;
 import si.um.feri.dotaops.backend.team.web.CreateTeamRequest;
@@ -41,17 +44,20 @@ public class TeamService {
     private static final int MAX_SLUG_LENGTH = 80;
 
     private final TeamRepository teamRepository;
+    private final TeamMemberRepository teamMemberRepository;
     private final TeamManualPlayerRepository teamManualPlayerRepository;
     private final SupabaseImageStorageService imageStorageService;
     private final CurrentUserProvider currentUserProvider;
 
     public TeamService(
             TeamRepository teamRepository,
+            TeamMemberRepository teamMemberRepository,
             TeamManualPlayerRepository teamManualPlayerRepository,
             SupabaseImageStorageService imageStorageService,
             CurrentUserProvider currentUserProvider
     ) {
         this.teamRepository = teamRepository;
+        this.teamMemberRepository = teamMemberRepository;
         this.teamManualPlayerRepository = teamManualPlayerRepository;
         this.imageStorageService = imageStorageService;
         this.currentUserProvider = currentUserProvider;
@@ -112,6 +118,10 @@ public class TeamService {
                     normalizeOptional(request.logoUrl()),
                     normalizeOptional(request.description()),
                     authUserId));
+            teamMemberRepository.create(new CreateTeamMemberCommand(
+                    team.id(),
+                    profile.profileId(),
+                    TeamMemberRole.SUPPORT));
 
             return TeamResponse.from(team);
         } catch (DataIntegrityViolationException exception) {

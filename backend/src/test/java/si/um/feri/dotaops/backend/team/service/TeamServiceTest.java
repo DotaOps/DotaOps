@@ -19,7 +19,9 @@ import si.um.feri.dotaops.backend.storage.service.StoredImage;
 import si.um.feri.dotaops.backend.storage.service.SupabaseImageStorageService;
 import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamCommand;
+import si.um.feri.dotaops.backend.team.repository.CreateTeamMemberCommand;
 import si.um.feri.dotaops.backend.team.repository.TeamManualPlayerRepository;
+import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
 import si.um.feri.dotaops.backend.team.repository.UpdateTeamCommand;
 import si.um.feri.dotaops.backend.team.web.CreateTeamRequest;
@@ -42,11 +44,13 @@ class TeamServiceTest {
     private static final UUID TEAM_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
 
     private final TeamRepository teamRepository = mock(TeamRepository.class);
+    private final TeamMemberRepository teamMemberRepository = mock(TeamMemberRepository.class);
     private final TeamManualPlayerRepository teamManualPlayerRepository = mock(TeamManualPlayerRepository.class);
     private final SupabaseImageStorageService imageStorageService = mock(SupabaseImageStorageService.class);
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
     private final TeamService teamService = new TeamService(
             teamRepository,
+            teamMemberRepository,
             teamManualPlayerRepository,
             imageStorageService,
             currentUserProvider);
@@ -66,6 +70,8 @@ class TeamServiceTest {
 
         ArgumentCaptor<CreateTeamCommand> captor = ArgumentCaptor.forClass(CreateTeamCommand.class);
         verify(teamRepository).create(captor.capture());
+        ArgumentCaptor<CreateTeamMemberCommand> memberCaptor = ArgumentCaptor.forClass(CreateTeamMemberCommand.class);
+        verify(teamMemberRepository).create(memberCaptor.capture());
 
         assertThat(captor.getValue().name()).isEqualTo("Ancient Stack");
         assertThat(captor.getValue().tag()).isEqualTo("AS");
@@ -74,6 +80,8 @@ class TeamServiceTest {
         assertThat(captor.getValue().createdBy()).isEqualTo(AUTH_USER_ID);
         assertThat(captor.getValue().region()).isEqualTo("EU");
         assertThat(captor.getValue().description()).isEqualTo("Tier two squad");
+        assertThat(memberCaptor.getValue().profileId()).isEqualTo(CAPTAIN_PROFILE_ID);
+        assertThat(memberCaptor.getValue().role()).isEqualTo(si.um.feri.dotaops.backend.team.domain.TeamMemberRole.SUPPORT);
     }
 
     @Test

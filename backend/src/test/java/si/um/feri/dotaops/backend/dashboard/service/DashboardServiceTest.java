@@ -42,6 +42,8 @@ class DashboardServiceTest {
         assertThat(response.role()).isEqualTo("player");
         assertThat(response.capabilities().canCreateTeam()).isTrue();
         assertThat(response.capabilities().canManageTeam()).isFalse();
+        assertThat(response.capabilities().canLeaveTeam()).isFalse();
+        assertThat(response.capabilities().canDisbandTeam()).isFalse();
         assertThat(response.capabilities().canViewAnalytics()).isTrue();
         assertThat(response.player().pendingInvitations()).isEqualTo(2);
         assertThat(response.player().tournamentRegistrations()).isZero();

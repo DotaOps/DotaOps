@@ -14,7 +14,7 @@ export function OrganizerCommandHeader({
   activeChecklistItems
 }: OrganizerCommandHeaderProps) {
   return (
-    <section className="organizer-command-header ops-panel ops-command-grid">
+    <section className="organizer-command-header ops-panel">
       <div className="organizer-command-copy">
         <p className="ops-label">Organizer operations</p>
         <h1>Organizer Command Center</h1>

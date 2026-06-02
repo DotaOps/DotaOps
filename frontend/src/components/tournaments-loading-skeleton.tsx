@@ -10,7 +10,7 @@ export function TournamentsLoadingSkeleton() {
       className="tournament-command tournament-loading-skeleton"
       role="status"
     >
-      <section aria-hidden="true" className="tournament-command-header ops-panel ops-command-grid">
+      <section aria-hidden="true" className="tournament-command-header ops-panel">
         <div className="tournament-command-copy tournament-skeleton-command-copy">
           <SkeletonItem className="tournament-skeleton-kicker" />
           <div className="tournament-command-title-row">

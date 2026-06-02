@@ -157,6 +157,36 @@ class AdminAuditLogServiceTest {
     }
 
     @Test
+    void teamMembershipAuditProjectsLeaveFieldsWithoutSensitiveValues() {
+        AdminAuditLogFilters filters = new AdminAuditLogFilters(
+                "public.team_members", RECORD_ID, null, null, null, null, null);
+        when(auditLogRepository.findAuditLogs(filters, 20, 0)).thenReturn(List.of(new AdminAuditLogRecord(
+                AUDIT_ID,
+                TO,
+                PROFILE_ID,
+                "Operator",
+                "Tournament Operator",
+                "admin",
+                AdminAuditAction.UPDATE,
+                "public.team_members",
+                RECORD_ID,
+                """
+                {"is_active": true, "left_at": null, "token": "must-not-leak"}
+                """,
+                """
+                {"is_active": false, "left_at": "2026-06-01T00:00:00Z", "token": "must-not-leak"}
+                """)));
+        when(auditLogRepository.countAuditLogs(filters)).thenReturn(1L);
+
+        var response = auditLogService.listAuditLogs(
+                "team_members", RECORD_ID, null, null, null, null, null, 0, 20);
+
+        assertThat(response.items().getFirst().summary()).isEqualTo("Team member updated");
+        assertThat(response.items().getFirst().changedFields()).containsExactly("is_active", "left_at");
+        assertThat(response.items().getFirst().newRow()).doesNotContainKey("token");
+    }
+
+    @Test
     void invalidActionIsRejectedBeforeRepositoryCall() {
         assertThatThrownBy(() -> auditLogService.listAuditLogs(
                 null, null, null, null, "export", null, null, 0, 20))
