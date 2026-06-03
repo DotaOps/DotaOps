@@ -1,5 +1,6 @@
 package si.um.feri.dotaops.backend.analytics.repository;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -17,6 +18,8 @@ class AnalyticsRepositoryTest {
     private static final UUID TEAM_ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
     private static final UUID PROFILE_ID = UUID.fromString("33333333-3333-4333-8333-333333333333");
     private static final UUID HERO_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
+    private static final OffsetDateTime FROM = OffsetDateTime.parse("2026-05-01T00:00:00Z");
+    private static final OffsetDateTime TO = OffsetDateTime.parse("2026-06-01T00:00:00Z");
 
     private final CapturingJdbcTemplate jdbcTemplate = new CapturingJdbcTemplate();
     private final AnalyticsRepository repository = new AnalyticsRepository(jdbcTemplate);
@@ -59,6 +62,16 @@ class AnalyticsRepositoryTest {
         assertThat(jdbcTemplate.sql).contains("where true");
         assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true");
         assertThat(jdbcTemplate.parameters).containsExactly(PROFILE_ID, 10);
+    }
+
+    @Test
+    void metricsQuerySupportsInclusiveFromAndExclusiveToTimeFilters() {
+        repository.findPlayerMetrics(new AnalyticsFilters(null, null, null, null, FROM, TO, 10));
+
+        assertThat(jdbcTemplate.sql).contains("coalesce(mg.started_at");
+        assertThat(jdbcTemplate.sql).contains(">= ?");
+        assertThat(jdbcTemplate.sql).contains("< ?");
+        assertThat(jdbcTemplate.parameters).containsExactly(FROM, TO, 10);
     }
 
     private static class CapturingJdbcTemplate extends JdbcTemplate {

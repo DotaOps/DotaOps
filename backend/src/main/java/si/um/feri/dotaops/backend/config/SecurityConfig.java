@@ -56,11 +56,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/steam/logout").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/steam/link").authenticated()
                         .requestMatchers(HttpMethod.GET,
+                                "/api/analytics/compare/**",
+                                "/api/teams/*/lookups/players").authenticated()
+                        .requestMatchers(HttpMethod.GET,
                                 "/api/teams/*/invitations",
                                 "/api/teams/*/join-requests",
                                 "/api/teams/*/tournament-registrations",
                                 "/api/teams/*/invitations/**").authenticated()
                         .requestMatchers(HttpMethod.GET,
+                                "/api/lookups/heroes",
                                 "/api/public/analytics/**",
                                 "/api/public/tournaments/**",
                                 "/api/tournament-groups/*/teams",

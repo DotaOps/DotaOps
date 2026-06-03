@@ -1,11 +1,13 @@
 package si.um.feri.dotaops.backend.analytics.web;
 
 import java.util.List;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -38,7 +40,11 @@ public class PublicAnalyticsController {
             @RequestParam(name = "profile_id", required = false) UUID profileIdSnake,
             @RequestParam(required = false) UUID heroId,
             @RequestParam(name = "hero_id", required = false) UUID heroIdSnake,
-            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime to,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit
     ) {
         return ApiResponse.of(analyticsQueryService.playerMetrics(filters(
                 tournamentId,
@@ -49,6 +55,8 @@ public class PublicAnalyticsController {
                 profileIdSnake,
                 heroId,
                 heroIdSnake,
+                from,
+                to,
                 limit)));
     }
 
@@ -62,7 +70,11 @@ public class PublicAnalyticsController {
             @RequestParam(name = "profile_id", required = false) UUID profileIdSnake,
             @RequestParam(required = false) UUID heroId,
             @RequestParam(name = "hero_id", required = false) UUID heroIdSnake,
-            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime to,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit
     ) {
         return ApiResponse.of(analyticsQueryService.teamMetrics(filters(
                 tournamentId,
@@ -73,6 +85,8 @@ public class PublicAnalyticsController {
                 profileIdSnake,
                 heroId,
                 heroIdSnake,
+                from,
+                to,
                 limit)));
     }
 
@@ -86,7 +100,11 @@ public class PublicAnalyticsController {
             @RequestParam(name = "profile_id", required = false) UUID profileIdSnake,
             @RequestParam(required = false) UUID heroId,
             @RequestParam(name = "hero_id", required = false) UUID heroIdSnake,
-            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime to,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit
     ) {
         return ApiResponse.of(analyticsQueryService.heroMetrics(filters(
                 tournamentId,
@@ -97,6 +115,8 @@ public class PublicAnalyticsController {
                 profileIdSnake,
                 heroId,
                 heroIdSnake,
+                from,
+                to,
                 limit)));
     }
 
@@ -110,7 +130,11 @@ public class PublicAnalyticsController {
             @RequestParam(name = "profile_id", required = false) UUID profileIdSnake,
             @RequestParam(required = false) UUID heroId,
             @RequestParam(name = "hero_id", required = false) UUID heroIdSnake,
-            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime to,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit
     ) {
         return ApiResponse.of(analyticsQueryService.tournamentMetrics(filters(
                 tournamentId,
@@ -121,6 +145,8 @@ public class PublicAnalyticsController {
                 profileIdSnake,
                 heroId,
                 heroIdSnake,
+                from,
+                to,
                 limit)));
     }
 
@@ -138,6 +164,8 @@ public class PublicAnalyticsController {
             UUID profileIdSnake,
             UUID heroId,
             UUID heroIdSnake,
+            OffsetDateTime from,
+            OffsetDateTime to,
             int limit
     ) {
         return new AnalyticsFilters(
@@ -145,6 +173,8 @@ public class PublicAnalyticsController {
                 firstNonNull(teamId, teamIdSnake),
                 firstNonNull(profileId, profileIdSnake),
                 firstNonNull(heroId, heroIdSnake),
+                from,
+                to,
                 limit);
     }
 

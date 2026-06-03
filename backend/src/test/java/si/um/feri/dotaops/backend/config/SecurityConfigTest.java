@@ -145,6 +145,22 @@ class SecurityConfigTest {
     }
 
     @Test
+    void comparisonAnalyticsRequiresAuthenticationBeforePublicAnalyticsMatcher() throws Exception {
+        mockMvc.perform(get("/api/analytics/compare/teams")
+                        .queryParam("teamAId", "11111111-1111-4111-8111-111111111111")
+                        .queryParam("teamBId", "22222222-2222-4222-8222-222222222222"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void teamPlayerLookupRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/teams/11111111-1111-4111-8111-111111111111/lookups/players"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
     void invalidJwtReturnsUnauthorizedContract() throws Exception {
         mockMvc.perform(get("/api/me/security-test")
                         .header("Authorization", "Bearer invalid"))

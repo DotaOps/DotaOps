@@ -15,12 +15,14 @@ import si.um.feri.dotaops.backend.analytics.repository.RoleBasedAnalyticsReposit
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
+import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
 import si.um.feri.dotaops.backend.tournament.repository.TournamentRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -36,12 +38,14 @@ class RoleBasedAnalyticsServiceTest {
     private final AnalyticsQueryService analyticsQueryService = mock(AnalyticsQueryService.class);
     private final RoleBasedAnalyticsRepository roleBasedAnalyticsRepository = mock(RoleBasedAnalyticsRepository.class);
     private final TeamRepository teamRepository = mock(TeamRepository.class);
+    private final TeamMemberRepository teamMemberRepository = mock(TeamMemberRepository.class);
     private final TournamentRepository tournamentRepository = mock(TournamentRepository.class);
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
     private final RoleBasedAnalyticsService service = new RoleBasedAnalyticsService(
             analyticsQueryService,
             roleBasedAnalyticsRepository,
             teamRepository,
+            teamMemberRepository,
             tournamentRepository,
             currentUserProvider);
 
@@ -49,14 +53,38 @@ class RoleBasedAnalyticsServiceTest {
     void playerAnalyticsAreScopedToCurrentProfileAndHaveStableEmptyHistory() {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
 
-        var response = service.currentPlayerAnalytics();
+        var response = service.currentPlayerAnalytics(new AnalyticsFilters(
+                null,
+                null,
+                PROFILE_ID,
+                null,
+                OffsetDateTime.parse("2026-05-01T00:00:00Z"),
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                25));
 
         ArgumentCaptor<AnalyticsFilters> filters = ArgumentCaptor.forClass(AnalyticsFilters.class);
         verify(analyticsQueryService).protectedPlayerMetrics(filters.capture());
         assertThat(filters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filters.getValue().from()).isEqualTo(OffsetDateTime.parse("2026-05-01T00:00:00Z"));
+        assertThat(filters.getValue().to()).isEqualTo(OffsetDateTime.parse("2026-06-01T00:00:00Z"));
+        assertThat(filters.getValue().limit()).isEqualTo(25);
         assertThat(response.metrics()).isEmpty();
         assertThat(response.heroPerformance()).isEmpty();
         assertThat(response.matchHistory()).isEmpty();
+    }
+
+    @Test
+    void playerAnalyticsRejectAnotherProfileFilter() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> service.currentPlayerAnalytics(new AnalyticsFilters(
+                null,
+                null,
+                UUID.fromString("99999999-9999-4999-8999-999999999999"),
+                null,
+                10)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Players can only view their own private analytics.");
     }
 
     @Test
@@ -75,7 +103,7 @@ class RoleBasedAnalyticsServiceTest {
     @Test
     void organizerAnalyticsReturnOwnedTournamentCounts() {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
-        when(roleBasedAnalyticsRepository.findOrganizerCounts(PROFILE_ID, false))
+        when(roleBasedAnalyticsRepository.findOrganizerCounts(eq(PROFILE_ID), eq(false), any(AnalyticsFilters.class)))
                 .thenReturn(new RoleBasedAnalyticsRepository.OrganizerAnalyticsCounts(3, 2, 1, 2, 4, 5));
 
         var response = service.organizerAnalytics();
@@ -104,14 +132,15 @@ class RoleBasedAnalyticsServiceTest {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
         when(tournamentRepository.findById(TOURNAMENT_ID)).thenReturn(Optional.of(tournament()));
         when(tournamentRepository.canManage(TOURNAMENT_ID, PROFILE_ID, false)).thenReturn(true);
-        when(roleBasedAnalyticsRepository.findTournamentOperationalMetrics(TOURNAMENT_ID))
+        when(roleBasedAnalyticsRepository.findTournamentOperationalMetrics(eq(TOURNAMENT_ID), any(AnalyticsFilters.class)))
                 .thenReturn(new RoleBasedAnalyticsRepository.TournamentOperationalMetrics(
                         4,
                         1,
                         new BigDecimal("80.00"),
                         2400));
-        when(roleBasedAnalyticsRepository.findRecentImports(TOURNAMENT_ID, 10)).thenReturn(List.of());
-        when(analyticsQueryService.protectedTournamentMetrics(TOURNAMENT_ID)).thenReturn(Optional.empty());
+        when(roleBasedAnalyticsRepository.findRecentImports(eq(TOURNAMENT_ID), any(AnalyticsFilters.class)))
+                .thenReturn(List.of());
+        when(analyticsQueryService.protectedTournamentMetrics(any(AnalyticsFilters.class))).thenReturn(Optional.empty());
 
         var response = service.organizerTournamentAnalytics(TOURNAMENT_ID);
 

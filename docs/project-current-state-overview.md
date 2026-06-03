@@ -575,7 +575,8 @@ Zacasni PostgreSQL container je bil po testu odstranjen.
 - Supabase RLS in column grants omejujejo neposreden browser dostop.
 - `V28` omeji team create na `PLAYER`; organizer nima vec RLS bypassa za team update, roster, invitations ali manual players.
 - Public analytics filtrira samo `tournaments.is_public = true`.
-- Protected analytics loci osebne player/team metrike od organizer agregatov in preveri tournament ownership.
+- Protected analytics loci osebne player/team metrike od organizer agregatov, preveri tournament ownership in podpira standardne FE-15 filtre `tournamentId`, `teamId`, `profileId`, `heroId`, `from`, `to`, `limit`.
+- Analytics lookup in comparison endpointi so dokumentirani v `docs/backend-analytics-api.md`; `/api/analytics/compare/**` je zasciten pred starejsim javnim `/api/analytics/**` matcherjem.
 - Public view-i so `security_invoker`.
 - Raw OpenDota payload ni v javnih DTO-jih.
 - Admin audit DTO ne vraca polnih raw `previous_row` in `new_row`, ampak samo sanitizirano allowlist projekcijo spremenjenih polj; nested tokeni, gesla, secrets, API kljuci, session in webhook vrednosti so redacted.
@@ -682,7 +683,8 @@ Root `README.md` omenja root `.env.example`, vendar ta datoteka v trenutnem repo
 - OpenDota match import z retryjem, eventi in normalizacijo;
 - javna analitika;
 - role-based dashboard z realnimi stevci in capability DTO-ji;
-- protected player/team in organizer analytics endpointi;
+- protected player/team in organizer analytics endpointi z FE-15 filtri;
+- analytics lookup endpointi in protected team/player comparison endpointi;
 - audit triggerji in admin audit API/UI;
 - durable notification outbox backend;
 - javni turnirski prikazi in organizer UI;
@@ -703,7 +705,7 @@ Trenutno iz repozitorija ni razvidno, da bi bilo dokoncanje naslednjih delov imp
 - trajen queue za asinhroni profile bootstrap in analytics refresh;
 - frontend unit/component/E2E testi;
 - popoln root `.env.example`;
-- frontend povezava na `GET /api/me/dashboard` in protected analytics endpoint-e;
+- frontend povezava na `GET /api/me/dashboard` in nove FE-15 protected analytics/lookup/comparison endpoint-e;
 - varen captain transfer tok; trenutni model ne doloca, ali nekdanji captain po prenosu ostane roster clan;
 - match-history seznam za protected player/team analytics; DTO je stabilen, vendar trenutno vrne prazen seznam;
 - referee/analyst write tokovi; `V14` jih izrecno odlozi;
