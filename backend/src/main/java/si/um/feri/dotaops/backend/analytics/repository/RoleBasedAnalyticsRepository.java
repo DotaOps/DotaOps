@@ -345,7 +345,7 @@ public class RoleBasedAnalyticsRepository {
     }
 
     private String analyticsTimestampExpression(String matchGameAlias, String matchAlias) {
-        return "coalesce("
+        return " coalesce("
                 + matchGameAlias + ".started_at, "
                 + matchGameAlias + ".finished_at, "
                 + matchAlias + ".started_at, "
