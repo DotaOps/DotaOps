@@ -5,9 +5,13 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +32,7 @@ import si.um.feri.dotaops.backend.config.properties.SupabaseStorageProperties;
 public class SupabaseImageStorageService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SupabaseImageStorageService.class);
+    private static final long SIGNED_UPLOAD_TTL_SECONDS = 2L * 60L * 60L;
     private static final long MAX_IMAGE_BYTES = 5L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "image/gif",
@@ -41,6 +46,7 @@ public class SupabaseImageStorageService {
 
     private final SupabaseStorageProperties properties;
     private final RestClient restClient;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public SupabaseImageStorageService(
             SupabaseStorageProperties properties,
@@ -74,6 +80,49 @@ public class SupabaseImageStorageService {
 
     public StoredImage storeImage(String folderPath, MultipartFile image) {
         return storeImage(folderPath, "Image", image);
+    }
+
+    public SignedStorageUpload createSignedUploadUrl(String bucket, String path) {
+        StorageTarget target = storageTarget(bucket);
+        String normalizedPath = normalizeObjectPath(path);
+
+        try {
+            String responseBody = restClient.post()
+                    .uri(signedUploadUri(target, normalizedPath))
+                    .header("apikey", target.serviceRoleKey())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + target.serviceRoleKey())
+                    .header("x-upsert", "true")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of())
+                    .retrieve()
+                    .body(String.class);
+            JsonNode response = parseJson(responseBody);
+            String signedUrl = resolveSignedUploadUrl(target, response);
+            String token = textValue(response, "token");
+            if (!StringUtils.hasText(token)) {
+                token = tokenFromSignedUrl(signedUrl);
+            }
+            if (!StringUtils.hasText(token)) {
+                throw new ConflictException("Supabase signed upload token was not returned.");
+            }
+
+            return new SignedStorageUpload(
+                    target.bucket(),
+                    normalizedPath,
+                    signedUrl,
+                    token,
+                    publicUrl(target, normalizedPath),
+                    SIGNED_UPLOAD_TTL_SECONDS);
+        } catch (RestClientException exception) {
+            LOGGER.warn("Supabase signed upload URL creation failed for bucket {} and path {}.",
+                    target.bucket(), normalizedPath, exception);
+            throw new ConflictException("Supabase signed upload URL could not be created.");
+        }
+    }
+
+    public String publicUrl(String bucket, String path) {
+        StorageTarget target = storageTarget(bucket);
+        return publicUrl(target, normalizeObjectPath(path));
     }
 
     private StoredImage storeImage(String folderPath, String label, MultipartFile image) {
@@ -151,21 +200,33 @@ public class SupabaseImageStorageService {
     }
 
     private StorageTarget storageTarget() {
+        return storageTarget(properties.imagesBucket());
+    }
+
+    private StorageTarget storageTarget(String bucket) {
         if (!StringUtils.hasText(properties.url())
                 || !StringUtils.hasText(properties.serviceRoleKey())
-                || !StringUtils.hasText(properties.imagesBucket())) {
+                || !StringUtils.hasText(bucket)) {
             throw new ConflictException("Supabase image storage is not configured.");
         }
 
         return new StorageTarget(
                 properties.url(),
                 properties.serviceRoleKey(),
-                properties.imagesBucket());
+                bucket);
     }
 
     private URI uploadUri(StorageTarget target, String path) {
         return URI.create(target.url()
                 + "/storage/v1/object/"
+                + encodePath(target.bucket())
+                + "/"
+                + encodePath(path));
+    }
+
+    private URI signedUploadUri(StorageTarget target, String path) {
+        return URI.create(target.url()
+                + "/storage/v1/object/upload/sign/"
                 + encodePath(target.bucket())
                 + "/"
                 + encodePath(path));
@@ -199,6 +260,85 @@ public class SupabaseImageStorageService {
         }
 
         return String.join("/", segments);
+    }
+
+    private String resolveSignedUploadUrl(StorageTarget target, JsonNode response) {
+        String signedUrl = textValue(response, "signedUrl");
+        if (!StringUtils.hasText(signedUrl)) {
+            signedUrl = textValue(response, "signedURL");
+        }
+        if (!StringUtils.hasText(signedUrl)) {
+            signedUrl = textValue(response, "url");
+        }
+        if (!StringUtils.hasText(signedUrl)) {
+            throw new ConflictException("Supabase signed upload URL was not returned.");
+        }
+
+        return resolveStorageUrl(target.url(), signedUrl);
+    }
+
+    private JsonNode parseJson(String responseBody) {
+        try {
+            JsonNode response = objectMapper.readTree(responseBody);
+            if (response == null || !response.isObject()) {
+                throw new ConflictException("Supabase signed upload URL response is invalid.");
+            }
+
+            return response;
+        } catch (ConflictException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new ConflictException("Supabase signed upload URL response is invalid.");
+        }
+    }
+
+    private String resolveStorageUrl(String baseUrl, String value) {
+        String normalized = value.trim();
+        if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+            return normalized;
+        }
+        if (normalized.startsWith("/storage/v1/")) {
+            return baseUrl + normalized;
+        }
+        if (normalized.startsWith("/object/")) {
+            return baseUrl + "/storage/v1" + normalized;
+        }
+        if (normalized.startsWith("object/")) {
+            return baseUrl + "/storage/v1/" + normalized;
+        }
+        if (normalized.startsWith("/")) {
+            return baseUrl + normalized;
+        }
+
+        return baseUrl + "/storage/v1/" + normalized;
+    }
+
+    private String textValue(JsonNode response, String field) {
+        if (response == null || !response.hasNonNull(field)) {
+            return null;
+        }
+
+        String value = response.get(field).asText();
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private String tokenFromSignedUrl(String signedUrl) {
+        URI uri = URI.create(signedUrl);
+        String query = uri.getRawQuery();
+        if (!StringUtils.hasText(query)) {
+            return null;
+        }
+
+        for (String parameter : query.split("&")) {
+            int separator = parameter.indexOf('=');
+            String name = separator >= 0 ? parameter.substring(0, separator) : parameter;
+            if ("token".equals(name)) {
+                String value = separator >= 0 ? parameter.substring(separator + 1) : "";
+                return UriUtils.decode(value, StandardCharsets.UTF_8);
+            }
+        }
+
+        return null;
     }
 
     private String encodePath(String path) {

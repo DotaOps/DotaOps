@@ -70,7 +70,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST,
                                 "/api/me/team/leave",
                                 "/api/teams/*/disband",
-                                "/api/teams/*/transfer-ownership").hasRole("PLAYER")
+                                "/api/teams/*/transfer-ownership",
+                                "/api/teams/*/logo/upload-url",
+                                "/api/teams/*/logo/confirm",
+                                "/api/teams/*/banner/upload-url",
+                                "/api/teams/*/banner/confirm").hasRole("PLAYER")
                         .requestMatchers(HttpMethod.GET, "/api/teams/*/members/*/profile").hasRole("PLAYER")
                         .requestMatchers(HttpMethod.POST,
                                 "/api/teams/*/join-requests",

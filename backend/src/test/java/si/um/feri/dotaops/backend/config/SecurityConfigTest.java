@@ -216,6 +216,22 @@ class SecurityConfigTest {
     }
 
     @Test
+    void organizerCannotUseTeamStorageUploadRoutes() throws Exception {
+        mockMvc.perform(post("/api/teams/77777777-7777-4777-8777-777777777777/logo/upload-url")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fileName": "logo.png",
+                                  "contentType": "image/png",
+                                  "fileSizeBytes": 1024
+                                }
+                                """)
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
     void steamSessionCookieCreatesCurrentUserContext() throws Exception {
         mockMvc.perform(get("/api/me/security-test")
                         .cookie(steamSessionCookie()))

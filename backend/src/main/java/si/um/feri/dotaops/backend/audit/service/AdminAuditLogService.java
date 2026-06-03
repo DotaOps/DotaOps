@@ -30,9 +30,11 @@ import si.um.feri.dotaops.backend.common.pagination.PageResponse;
 public class AdminAuditLogService {
 
     private static final Map<String, Set<String>> SAFE_CHANGED_FIELDS = Map.of(
+            "public.profiles", Set.of(
+                    "nickname", "display_name", "role", "avatar_url", "avatar_path", "updated_at"),
             "public.teams", Set.of(
-                    "name", "slug", "tag", "region", "description", "captain_profile_id", "disbanded_at",
-                    "updated_at"),
+                    "name", "slug", "tag", "region", "description", "captain_profile_id", "logo_url", "logo_path",
+                    "banner_url", "banner_path", "disbanded_at", "updated_at"),
             "public.team_members", Set.of(
                     "team_id", "profile_id", "member_role", "is_active", "joined_at", "left_at", "updated_at"),
             "public.tournaments", Set.of(
@@ -57,6 +59,7 @@ public class AdminAuditLogService {
                     "updated_at"));
 
     private static final Map<String, String> TABLE_LABELS = Map.of(
+            "public.profiles", "Profile",
             "public.teams", "Team",
             "public.team_members", "Team member",
             "public.tournaments", "Tournament",
