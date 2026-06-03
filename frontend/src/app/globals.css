@@ -4184,6 +4184,7 @@ textarea:focus {
 .analytics-filter-grid input,
 .analytics-filter-grid select,
 .analytics-drilldown-form input,
+.analytics-drilldown-form select,
 .analytics-comparison-controls select,
 .analytics-disabled-filters input {
   width: 100%;
@@ -4199,6 +4200,7 @@ textarea:focus {
 .analytics-filter-grid input:focus,
 .analytics-filter-grid select:focus,
 .analytics-drilldown-form input:focus,
+.analytics-drilldown-form select:focus,
 .analytics-comparison-controls select:focus {
   border-color: rgba(0, 221, 221, 0.5);
   outline: none;

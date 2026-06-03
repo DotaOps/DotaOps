@@ -1,10 +1,12 @@
 import { getApi, getApiAuthenticated, postApiAuthenticated } from "@/lib/api";
 
 export interface AnalyticsFilters {
+  from?: string;
   heroId?: string;
   limit?: number;
   profileId?: string;
   teamId?: string;
+  to?: string;
   tournamentId?: string;
 }
 
@@ -121,6 +123,14 @@ export interface AnalyticsMatchHistory {
   dotaMatchId: string | null;
   matchGameId: string | null;
   matchId: string | null;
+  playedAt: string | null;
+  teamAId: string | null;
+  teamAName: string | null;
+  teamBId: string | null;
+  teamBName: string | null;
+  tournamentId: string | null;
+  tournamentName: string | null;
+  winnerTeamId: string | null;
 }
 
 export interface RoleAnalyticsTeam {
@@ -174,6 +184,82 @@ export interface OrganizerTournamentAnalyticsResponse {
   topTeams: TeamAnalyticsMetric[];
   tournamentId: string;
   tournamentSummary: TournamentAnalyticsMetric | null;
+}
+
+export interface OrganizerTournamentLookup {
+  status: string;
+  title: string;
+  tournamentId: string;
+}
+
+export interface TeamLookup {
+  name: string;
+  tag: string | null;
+  teamId: string;
+}
+
+export interface TeamPlayerLookup {
+  displayName: string;
+  nickname: string;
+  profileId: string;
+  teamId: string;
+  teamName: string;
+}
+
+export interface HeroLookup {
+  dotaHeroId: number | null;
+  heroId: string;
+  iconUrl: string | null;
+  imageUrl: string | null;
+  localizedName: string;
+  name: string;
+}
+
+export interface AnalyticsComparisonFiltersResponse {
+  accessScope: "protected" | "public" | string;
+  from: string | null;
+  heroId: string | null;
+  limit: number;
+  profileId: string | null;
+  teamId: string | null;
+  to: string | null;
+  tournamentId: string | null;
+}
+
+export interface TeamComparisonResponse {
+  filters: AnalyticsComparisonFiltersResponse;
+  heroMetrics: HeroAnalyticsMetric[];
+  recentMatches: AnalyticsMatchHistory[];
+  teamA: TeamAnalyticsMetric | null;
+  teamAId: string;
+  teamB: TeamAnalyticsMetric | null;
+  teamBId: string;
+  teams: TeamAnalyticsMetric[];
+}
+
+export interface PlayerComparisonResponse {
+  filters: AnalyticsComparisonFiltersResponse;
+  playerA: PlayerAnalyticsMetric | null;
+  playerB: PlayerAnalyticsMetric | null;
+  players: PlayerAnalyticsMetric[];
+  profileAId: string;
+  profileAHeroPerformance: HeroAnalyticsMetric[];
+  profileBHeroPerformance: HeroAnalyticsMetric[];
+  profileBId: string;
+  recentMatches: AnalyticsMatchHistory[];
+  sharedHeroes: HeroAnalyticsMetric[];
+}
+
+export interface CompareAnalyticsTeamsInput {
+  filters?: AnalyticsFilters;
+  teamAId: string;
+  teamBId: string;
+}
+
+export interface CompareAnalyticsPlayersInput {
+  filters?: AnalyticsFilters;
+  profileAId: string;
+  profileBId: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -239,28 +325,33 @@ function nullableNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function queryString(filters?: AnalyticsFilters) {
+function setStringParam(params: URLSearchParams, key: string, value?: string | null) {
+  const cleanValue = value?.trim();
+
+  if (cleanValue) {
+    params.set(key, cleanValue);
+  }
+}
+
+function setLimitParam(params: URLSearchParams, value?: number | null) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    params.set("limit", String(value));
+  }
+}
+
+function queryString(filters?: AnalyticsFilters, options?: { omitTournamentId?: boolean }) {
   const params = new URLSearchParams();
 
-  if (filters?.tournamentId) {
-    params.set("tournamentId", filters.tournamentId);
+  if (!options?.omitTournamentId) {
+    setStringParam(params, "tournamentId", filters?.tournamentId);
   }
 
-  if (filters?.teamId) {
-    params.set("teamId", filters.teamId);
-  }
-
-  if (filters?.profileId) {
-    params.set("profileId", filters.profileId);
-  }
-
-  if (filters?.heroId) {
-    params.set("heroId", filters.heroId);
-  }
-
-  if (filters?.limit) {
-    params.set("limit", String(filters.limit));
-  }
+  setStringParam(params, "teamId", filters?.teamId);
+  setStringParam(params, "profileId", filters?.profileId);
+  setStringParam(params, "heroId", filters?.heroId);
+  setStringParam(params, "from", filters?.from);
+  setStringParam(params, "to", filters?.to);
+  setLimitParam(params, filters?.limit);
 
   const value = params.toString();
   return value ? `?${value}` : "";
@@ -398,7 +489,75 @@ function mapMatchHistory(value: unknown): AnalyticsMatchHistory {
   return {
     dotaMatchId: nullableText(item.dotaMatchId),
     matchGameId: nullableText(item.matchGameId),
-    matchId: nullableText(item.matchId)
+    matchId: nullableText(item.matchId),
+    playedAt: nullableText(item.playedAt),
+    teamAId: nullableText(item.teamAId),
+    teamAName: nullableText(item.teamAName),
+    teamBId: nullableText(item.teamBId),
+    teamBName: nullableText(item.teamBName),
+    tournamentId: nullableText(item.tournamentId),
+    tournamentName: nullableText(item.tournamentName),
+    winnerTeamId: nullableText(item.winnerTeamId)
+  };
+}
+
+function mapOrganizerTournamentLookup(value: unknown): OrganizerTournamentLookup {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    status: text(item.status, "unknown"),
+    title: text(item.title, "Unknown tournament"),
+    tournamentId: text(item.tournamentId, "unknown-tournament")
+  };
+}
+
+function mapTeamLookup(value: unknown): TeamLookup {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    name: text(item.name, "Unknown team"),
+    tag: nullableText(item.tag),
+    teamId: text(item.teamId, "unknown-team")
+  };
+}
+
+function mapTeamPlayerLookup(value: unknown): TeamPlayerLookup {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    displayName: text(item.displayName, "Unknown player"),
+    nickname: text(item.nickname, "Unknown player"),
+    profileId: text(item.profileId, "unknown-player"),
+    teamId: text(item.teamId, "unknown-team"),
+    teamName: text(item.teamName, "Unknown team")
+  };
+}
+
+function mapHeroLookup(value: unknown): HeroLookup {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    dotaHeroId: nullableNumber(item.dotaHeroId),
+    heroId: text(item.heroId, "unknown-hero"),
+    iconUrl: nullableText(item.iconUrl),
+    imageUrl: nullableText(item.imageUrl),
+    localizedName: text(item.localizedName, text(item.name, "Unknown hero")),
+    name: text(item.name, "unknown_hero")
+  };
+}
+
+function mapComparisonFilters(value: unknown): AnalyticsComparisonFiltersResponse {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    accessScope: text(item.accessScope, "public"),
+    from: nullableText(item.from),
+    heroId: nullableText(item.heroId),
+    limit: numberValue(item.limit),
+    profileId: nullableText(item.profileId),
+    teamId: nullableText(item.teamId),
+    to: nullableText(item.to),
+    tournamentId: nullableText(item.tournamentId)
   };
 }
 
@@ -481,6 +640,38 @@ function mapOrganizerTournamentAnalyticsResponse(value: unknown): OrganizerTourn
   };
 }
 
+function mapTeamComparisonResponse(value: unknown): TeamComparisonResponse {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    filters: mapComparisonFilters(item.filters),
+    heroMetrics: (arrayPayload(item.heroMetrics) ?? []).map(mapHero),
+    recentMatches: (arrayPayload(item.recentMatches) ?? []).map(mapMatchHistory),
+    teamA: isRecord(item.teamA) ? mapTeam(item.teamA) : null,
+    teamAId: text(item.teamAId, "unknown-team-a"),
+    teamB: isRecord(item.teamB) ? mapTeam(item.teamB) : null,
+    teamBId: text(item.teamBId, "unknown-team-b"),
+    teams: (arrayPayload(item.teams) ?? []).map(mapTeam)
+  };
+}
+
+function mapPlayerComparisonResponse(value: unknown): PlayerComparisonResponse {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    filters: mapComparisonFilters(item.filters),
+    playerA: isRecord(item.playerA) ? mapPlayer(item.playerA) : null,
+    playerB: isRecord(item.playerB) ? mapPlayer(item.playerB) : null,
+    players: (arrayPayload(item.players) ?? []).map(mapPlayer),
+    profileAId: text(item.profileAId, "unknown-profile-a"),
+    profileAHeroPerformance: (arrayPayload(item.profileAHeroPerformance) ?? []).map(mapHero),
+    profileBHeroPerformance: (arrayPayload(item.profileBHeroPerformance) ?? []).map(mapHero),
+    profileBId: text(item.profileBId, "unknown-profile-b"),
+    recentMatches: (arrayPayload(item.recentMatches) ?? []).map(mapMatchHistory),
+    sharedHeroes: (arrayPayload(item.sharedHeroes) ?? []).map(mapHero)
+  };
+}
+
 export async function getPublicPlayerMetrics(filters?: AnalyticsFilters) {
   return analyticsArrayPayload(
     await getApi<unknown>(`/public/analytics/players${queryString(filters)}`),
@@ -531,21 +722,87 @@ export async function getPublicAnalyticsSnapshot(filters?: AnalyticsFilters): Pr
   };
 }
 
-export async function getMyPlayerAnalytics() {
-  return mapPlayerAnalyticsResponse(await getApiAuthenticated<unknown>("/me/analytics"));
+export async function getMyPlayerAnalytics(filters?: AnalyticsFilters) {
+  return mapPlayerAnalyticsResponse(await getApiAuthenticated<unknown>(`/me/analytics${queryString(filters)}`));
 }
 
-export async function getMyTeamAnalytics() {
-  return mapCurrentTeamAnalyticsResponse(await getApiAuthenticated<unknown>("/me/team/analytics"));
+export async function getMyTeamAnalytics(filters?: AnalyticsFilters) {
+  return mapCurrentTeamAnalyticsResponse(await getApiAuthenticated<unknown>(`/me/team/analytics${queryString(filters)}`));
 }
 
-export async function getOrganizerAnalytics() {
-  return mapOrganizerAnalyticsResponse(await getApiAuthenticated<unknown>("/organizer/analytics"));
+export async function getOrganizerAnalytics(filters?: AnalyticsFilters) {
+  return mapOrganizerAnalyticsResponse(await getApiAuthenticated<unknown>(`/organizer/analytics${queryString(filters)}`));
 }
 
-export async function getOrganizerTournamentAnalytics(tournamentId: string) {
+export async function getOrganizerTournamentAnalytics(tournamentId: string, filters?: AnalyticsFilters) {
   return mapOrganizerTournamentAnalyticsResponse(
-    await getApiAuthenticated<unknown>(`/organizer/tournaments/${tournamentId}/analytics`)
+    await getApiAuthenticated<unknown>(
+      `/organizer/tournaments/${tournamentId}/analytics${queryString(filters, { omitTournamentId: true })}`
+    )
+  );
+}
+
+export async function getOrganizerTournamentLookups(limit?: number) {
+  return analyticsArrayPayload(
+    await getApiAuthenticated<unknown>(`/organizer/lookups/tournaments${queryString({ limit })}`),
+    "organizer tournament lookups"
+  ).map(mapOrganizerTournamentLookup);
+}
+
+export async function getMyTeamLookups(limit?: number) {
+  return analyticsArrayPayload(
+    await getApiAuthenticated<unknown>(`/me/lookups/teams${queryString({ limit })}`),
+    "team lookups"
+  ).map(mapTeamLookup);
+}
+
+export async function getTeamPlayerLookups(teamId: string, limit?: number) {
+  return analyticsArrayPayload(
+    await getApiAuthenticated<unknown>(`/teams/${teamId}/lookups/players${queryString({ limit })}`),
+    "team player lookups"
+  ).map(mapTeamPlayerLookup);
+}
+
+export async function getHeroLookups(limit?: number) {
+  return analyticsArrayPayload(
+    await getApi<unknown>(`/lookups/heroes${queryString({ limit })}`),
+    "hero lookups"
+  ).map(mapHeroLookup);
+}
+
+export async function compareAnalyticsTeams({ filters, teamAId, teamBId }: CompareAnalyticsTeamsInput) {
+  const params = new URLSearchParams();
+
+  setStringParam(params, "teamAId", teamAId);
+  setStringParam(params, "teamBId", teamBId);
+  setStringParam(params, "tournamentId", filters?.tournamentId);
+  setStringParam(params, "teamId", filters?.teamId);
+  setStringParam(params, "profileId", filters?.profileId);
+  setStringParam(params, "heroId", filters?.heroId);
+  setStringParam(params, "from", filters?.from);
+  setStringParam(params, "to", filters?.to);
+  setLimitParam(params, filters?.limit);
+
+  return mapTeamComparisonResponse(
+    await getApiAuthenticated<unknown>(`/analytics/compare/teams?${params.toString()}`)
+  );
+}
+
+export async function compareAnalyticsPlayers({ filters, profileAId, profileBId }: CompareAnalyticsPlayersInput) {
+  const params = new URLSearchParams();
+
+  setStringParam(params, "profileAId", profileAId);
+  setStringParam(params, "profileBId", profileBId);
+  setStringParam(params, "tournamentId", filters?.tournamentId);
+  setStringParam(params, "teamId", filters?.teamId);
+  setStringParam(params, "profileId", filters?.profileId);
+  setStringParam(params, "heroId", filters?.heroId);
+  setStringParam(params, "from", filters?.from);
+  setStringParam(params, "to", filters?.to);
+  setLimitParam(params, filters?.limit);
+
+  return mapPlayerComparisonResponse(
+    await getApiAuthenticated<unknown>(`/analytics/compare/players?${params.toString()}`)
   );
 }
 

@@ -19,23 +19,35 @@ import { TelemetryCard } from "@/components/telemetry-card";
 import { useTournamentLiveRefresh } from "@/hooks/use-tournament-live-refresh";
 import { ApiRequestError } from "@/lib/api";
 import {
+  compareAnalyticsPlayers,
+  compareAnalyticsTeams,
   getMyPlayerAnalytics,
   getMyTeamAnalytics,
+  getMyTeamLookups,
   getOrganizerAnalytics,
   getOrganizerTournamentAnalytics,
+  getOrganizerTournamentLookups,
   getPublicAnalyticsSnapshot,
+  getHeroLookups,
+  getTeamPlayerLookups,
   refreshAnalyticsAdmin,
   type AnalyticsFilters,
   type AnalyticsMatchHistory,
   type AnalyticsRefreshResult,
   type AnalyticsSnapshot,
   type CurrentTeamAnalyticsResponse,
+  type HeroLookup,
   type HeroAnalyticsMetric,
   type OrganizerAnalyticsResponse,
+  type OrganizerTournamentLookup,
   type OrganizerTournamentAnalyticsResponse,
+  type PlayerComparisonResponse,
   type PlayerAnalyticsMetric,
   type PlayerAnalyticsResponse,
   type RecentImportMetric,
+  type TeamComparisonResponse,
+  type TeamLookup,
+  type TeamPlayerLookup,
   type TeamAnalyticsMetric,
   type TournamentAnalyticsMetric
 } from "@/lib/analytics-data";
@@ -62,18 +74,22 @@ type RoleAnalyticsState =
     };
 
 type AnalyticsFilterForm = {
+  from: string;
   heroId: string;
   limit: number;
   profileId: string;
   teamId: string;
+  to: string;
   tournamentId: string;
 };
 
 const DEFAULT_PUBLIC_FILTERS: AnalyticsFilterForm = {
+  from: "",
   heroId: "",
   limit: 50,
   profileId: "",
   teamId: "",
+  to: "",
   tournamentId: ""
 };
 
@@ -167,12 +183,23 @@ function allEmpty(snapshot: AnalyticsSnapshot) {
   );
 }
 
+function toAnalyticsIsoDateTime(value: string) {
+  if (!value.trim()) {
+    return undefined;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
 function filtersFromForm(form: AnalyticsFilterForm): AnalyticsFilters {
   return {
+    from: toAnalyticsIsoDateTime(form.from),
     heroId: form.heroId.trim() || undefined,
     limit: form.limit,
     profileId: form.profileId.trim() || undefined,
     teamId: form.teamId.trim() || undefined,
+    to: toAnalyticsIsoDateTime(form.to),
     tournamentId: form.tournamentId.trim() || undefined
   };
 }
@@ -183,6 +210,8 @@ function hasPublicFilters(form: AnalyticsFilterForm) {
     form.profileId.trim() ||
     form.teamId.trim() ||
     form.tournamentId.trim() ||
+    form.from.trim() ||
+    form.to.trim() ||
     form.limit !== DEFAULT_PUBLIC_FILTERS.limit
   );
 }
@@ -233,11 +262,11 @@ function roleMetricValue(state: RoleAnalyticsState | null, publicSummaryMatches:
   return publicSummaryMatches;
 }
 
-async function loadRoleAnalytics(profile: CurrentUserProfile | null): Promise<RoleAnalyticsState> {
+async function loadRoleAnalytics(profile: CurrentUserProfile | null, filters?: AnalyticsFilters): Promise<RoleAnalyticsState> {
   if (profile?.role === "player") {
     const [personal, team] = await Promise.all([
-      getMyPlayerAnalytics(),
-      getMyTeamAnalytics()
+      getMyPlayerAnalytics(filters),
+      getMyTeamAnalytics(filters)
     ]);
 
     return {
@@ -250,14 +279,14 @@ async function loadRoleAnalytics(profile: CurrentUserProfile | null): Promise<Ro
   if (profile?.role === "organizer") {
     return {
       kind: "organizer",
-      organizer: await getOrganizerAnalytics()
+      organizer: await getOrganizerAnalytics(filters)
     };
   }
 
   if (profile?.role === "admin") {
     return {
       kind: "admin",
-      organizer: await getOrganizerAnalytics()
+      organizer: await getOrganizerAnalytics(filters)
     };
   }
 
@@ -288,7 +317,7 @@ export function AnalyticsDashboard() {
 
   const loadAnalytics = useCallback(async () => {
     const currentProfile = await getCurrentUserProfile();
-    const nextRoleAnalytics = await loadRoleAnalytics(currentProfile);
+    const nextRoleAnalytics = await loadRoleAnalytics(currentProfile, appliedPublicFilters);
 
     let nextSnapshot = emptySnapshot();
     let nextPublicAggregateError: string | null = null;
@@ -484,6 +513,7 @@ export function AnalyticsDashboard() {
       {!error && roleAnalytics ? (
         <AnalyticsTabContent
           activeTab={activeTab}
+          appliedFilters={appliedPublicFilters}
           canRefreshAnalytics={canRefreshAnalytics}
           filterDraft={filterDraft}
           isRefreshing={isRefreshing}
@@ -532,6 +562,7 @@ function AnalyticsSectionTabs({
 
 function AnalyticsTabContent({
   activeTab,
+  appliedFilters,
   canRefreshAnalytics,
   filterDraft,
   isRefreshing,
@@ -548,6 +579,7 @@ function AnalyticsTabContent({
   tournamentDrilldown
 }: {
   activeTab: string;
+  appliedFilters: AnalyticsFilters;
   canRefreshAnalytics: boolean;
   filterDraft: AnalyticsFilterForm;
   isRefreshing: boolean;
@@ -588,6 +620,8 @@ function AnalyticsTabContent({
         onApply={onApplyFilters}
         onChange={onChangeFilters}
         onReset={onResetFilters}
+        roleAnalytics={roleAnalytics}
+        tournamentDrilldown={tournamentDrilldown}
       />
     );
   }
@@ -596,6 +630,7 @@ function AnalyticsTabContent({
     return (
       <PlayerRoleAnalyticsPanel
         activeTab={activeTab}
+        appliedFilters={appliedFilters}
         personal={roleAnalytics.personal}
         team={roleAnalytics.team}
       />
@@ -607,6 +642,7 @@ function AnalyticsTabContent({
       <OrganizerRoleAnalyticsPanel
         activeTab={activeTab}
         analytics={roleAnalytics.organizer}
+        appliedFilters={appliedFilters}
         canRefreshAnalytics={canRefreshAnalytics}
         isRefreshing={isRefreshing}
         mode="organizer"
@@ -623,6 +659,7 @@ function AnalyticsTabContent({
       <OrganizerRoleAnalyticsPanel
         activeTab={activeTab}
         analytics={roleAnalytics.organizer}
+        appliedFilters={appliedFilters}
         canRefreshAnalytics={canRefreshAnalytics}
         isRefreshing={isRefreshing}
         mode="admin"
@@ -644,10 +681,12 @@ function AnalyticsTabContent({
 
 function PlayerRoleAnalyticsPanel({
   activeTab,
+  appliedFilters,
   personal,
   team
 }: {
   activeTab: string;
+  appliedFilters: AnalyticsFilters;
   personal: PlayerAnalyticsResponse;
   team: CurrentTeamAnalyticsResponse;
 }) {
@@ -812,7 +851,7 @@ function PlayerRoleAnalyticsPanel({
   }
 
   if (activeTab === "compare") {
-    return <PlayerRosterComparison players={team.rosterPerformance} />;
+    return <PlayerRosterComparison appliedFilters={appliedFilters} fallbackPlayers={team.rosterPerformance} />;
   }
 
   return (
@@ -826,6 +865,7 @@ function PlayerRoleAnalyticsPanel({
 function OrganizerRoleAnalyticsPanel({
   activeTab,
   analytics,
+  appliedFilters,
   canRefreshAnalytics,
   isRefreshing,
   mode,
@@ -836,6 +876,7 @@ function OrganizerRoleAnalyticsPanel({
 }: {
   activeTab: string;
   analytics: OrganizerAnalyticsResponse;
+  appliedFilters: AnalyticsFilters;
   canRefreshAnalytics: boolean;
   isRefreshing: boolean;
   mode: "admin" | "organizer";
@@ -848,6 +889,7 @@ function OrganizerRoleAnalyticsPanel({
     return (
       <OrganizerTournamentDrilldown
         analytics={tournamentDrilldown}
+        appliedFilters={appliedFilters}
         onAnalyticsChange={onTournamentDrilldownChange}
       />
     );
@@ -855,7 +897,7 @@ function OrganizerRoleAnalyticsPanel({
 
   if (activeTab === "compare") {
     return tournamentDrilldown ? (
-      <TeamComparisonPanel teams={tournamentDrilldown.teamComparison} />
+      <TeamComparisonPanel appliedFilters={appliedFilters} analytics={tournamentDrilldown} />
     ) : (
       <section className="analytics-terminal-panel analytics-data-panel ops-panel">
         <SectionHeader
@@ -974,14 +1016,25 @@ function AdvancedAnalyticsFilters({
   hasActiveFilters,
   onApply,
   onChange,
-  onReset
+  onReset,
+  roleAnalytics,
+  tournamentDrilldown
 }: {
   draft: AnalyticsFilterForm;
   hasActiveFilters: boolean;
   onApply: (filters: AnalyticsFilterForm) => void;
   onChange: (filters: AnalyticsFilterForm) => void;
   onReset: () => void;
+  roleAnalytics: RoleAnalyticsState;
+  tournamentDrilldown: OrganizerTournamentAnalyticsResponse | null;
 }) {
+  const [heroLookups, setHeroLookups] = useState<HeroLookup[]>([]);
+  const [isLoadingLookups, setIsLoadingLookups] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [playerLookups, setPlayerLookups] = useState<TeamPlayerLookup[]>([]);
+  const [teamLookups, setTeamLookups] = useState<TeamLookup[]>([]);
+  const [tournamentLookups, setTournamentLookups] = useState<OrganizerTournamentLookup[]>([]);
+
   function updateField(field: keyof AnalyticsFilterForm, value: string) {
     onChange({
       ...draft,
@@ -989,13 +1042,101 @@ function AdvancedAnalyticsFilters({
     });
   }
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLookups() {
+      setIsLoadingLookups(true);
+      setLookupError(null);
+
+      try {
+        const [heroes, tournaments, teams] = await Promise.all([
+          getHeroLookups(100),
+          roleAnalytics.kind === "organizer" || roleAnalytics.kind === "admin"
+            ? getOrganizerTournamentLookups(100)
+            : Promise.resolve([]),
+          roleAnalytics.kind === "player" ? getMyTeamLookups(100) : Promise.resolve([])
+        ]);
+
+        if (!cancelled) {
+          setHeroLookups(heroes);
+          setTournamentLookups(tournaments);
+          setTeamLookups(teams);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setLookupError(analyticsErrorMessage(caught));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingLookups(false);
+        }
+      }
+    }
+
+    void loadLookups();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [roleAnalytics.kind]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPlayers() {
+      if (roleAnalytics.kind !== "player" || !draft.teamId.trim()) {
+        setPlayerLookups([]);
+        return;
+      }
+
+      try {
+        const players = await getTeamPlayerLookups(draft.teamId.trim(), 100);
+
+        if (!cancelled) {
+          setPlayerLookups(players);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setPlayerLookups([]);
+          setLookupError(analyticsErrorMessage(caught));
+        }
+      }
+    }
+
+    void loadPlayers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.teamId, roleAnalytics.kind]);
+
+  const organizerTeamOptions = useMemo(() => {
+    const rows = [
+      ...(tournamentDrilldown?.teamComparison ?? []),
+      ...(tournamentDrilldown?.topTeams ?? [])
+    ];
+    const unique = new Map<string, TeamAnalyticsMetric>();
+
+    for (const team of rows) {
+      unique.set(team.teamId, team);
+    }
+
+    return [...unique.values()];
+  }, [tournamentDrilldown]);
+
+  const showOrganizerTournamentLookup = roleAnalytics.kind === "organizer" || roleAnalytics.kind === "admin";
+  const showPlayerTeamLookup = roleAnalytics.kind === "player";
+
   return (
     <section className="analytics-terminal-panel analytics-data-panel analytics-filter-panel ops-panel">
       <SectionHeader
         eyebrow="Advanced analytics filters"
-        title="Public Aggregate Filters"
-        description="Filters apply to public aggregate metrics. Role-based analytics endpoints do not support query filters yet."
+        title="Analytics Filters"
+        description="Filter analytics by tournament, team, player, hero, and time range."
       />
+      {lookupError ? <AnalyticsEmptyBlock title="Lookup data unavailable." detail={lookupError} /> : null}
+      {isLoadingLookups ? <p className="analytics-slow-query">Loading filter options...</p> : null}
       <form
         className="analytics-filter-grid"
         onSubmit={(event) => {
@@ -1004,44 +1145,87 @@ function AdvancedAnalyticsFilters({
         }}
       >
         <label>
-          <span>Tournament ID</span>
-          <input
-            autoComplete="off"
-            placeholder="UUID"
-            type="text"
-            value={draft.tournamentId}
-            onChange={(event) => updateField("tournamentId", event.target.value)}
-          />
+          <span>Tournament</span>
+          {showOrganizerTournamentLookup ? (
+            <select value={draft.tournamentId} onChange={(event) => updateField("tournamentId", event.target.value)}>
+              <option value="">All manageable tournaments</option>
+              {tournamentLookups.map((tournament) => (
+                <option key={tournament.tournamentId} value={tournament.tournamentId}>
+                  {tournament.title} ({tournament.status})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              autoComplete="off"
+              placeholder="Optional tournament UUID"
+              type="text"
+              value={draft.tournamentId}
+              onChange={(event) => updateField("tournamentId", event.target.value)}
+            />
+          )}
         </label>
         <label>
-          <span>Team ID</span>
-          <input
-            autoComplete="off"
-            placeholder="UUID"
-            type="text"
-            value={draft.teamId}
-            onChange={(event) => updateField("teamId", event.target.value)}
-          />
+          <span>Team</span>
+          {showPlayerTeamLookup ? (
+            <select value={draft.teamId} onChange={(event) => updateField("teamId", event.target.value)}>
+              <option value="">Current player scope</option>
+              {teamLookups.map((team) => (
+                <option key={team.teamId} value={team.teamId}>
+                  {team.name}{team.tag ? ` (${team.tag})` : ""}
+                </option>
+              ))}
+            </select>
+          ) : organizerTeamOptions.length > 0 ? (
+            <select value={draft.teamId} onChange={(event) => updateField("teamId", event.target.value)}>
+              <option value="">All teams in selected drilldown</option>
+              {organizerTeamOptions.map((team) => (
+                <option key={team.teamId} value={team.teamId}>
+                  {team.teamName}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              autoComplete="off"
+              placeholder="Optional team UUID"
+              type="text"
+              value={draft.teamId}
+              onChange={(event) => updateField("teamId", event.target.value)}
+            />
+          )}
         </label>
         <label>
-          <span>Player/Profile ID</span>
-          <input
-            autoComplete="off"
-            placeholder="UUID"
-            type="text"
-            value={draft.profileId}
-            onChange={(event) => updateField("profileId", event.target.value)}
-          />
+          <span>Player</span>
+          {showPlayerTeamLookup && draft.teamId.trim() ? (
+            <select value={draft.profileId} onChange={(event) => updateField("profileId", event.target.value)}>
+              <option value="">All team players</option>
+              {playerLookups.map((player) => (
+                <option key={player.profileId} value={player.profileId}>
+                  {player.displayName || player.nickname}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              autoComplete="off"
+              placeholder="Optional profile UUID"
+              type="text"
+              value={draft.profileId}
+              onChange={(event) => updateField("profileId", event.target.value)}
+            />
+          )}
         </label>
         <label>
-          <span>Hero ID</span>
-          <input
-            autoComplete="off"
-            placeholder="UUID"
-            type="text"
-            value={draft.heroId}
-            onChange={(event) => updateField("heroId", event.target.value)}
-          />
+          <span>Hero</span>
+          <select value={draft.heroId} onChange={(event) => updateField("heroId", event.target.value)}>
+            <option value="">All heroes</option>
+            {heroLookups.map((hero) => (
+              <option key={hero.heroId} value={hero.heroId}>
+                {hero.localizedName}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           <span>Limit</span>
@@ -1053,12 +1237,32 @@ function AdvancedAnalyticsFilters({
             ))}
           </select>
         </label>
-        <fieldset className="analytics-disabled-filters" disabled>
+        <fieldset className="analytics-disabled-filters">
           <legend>Time range</legend>
-          <input aria-label="From date" placeholder="From" type="text" />
-          <input aria-label="To date" placeholder="To" type="text" />
-          <span>Backend required</span>
+          <input
+            aria-label="From date"
+            type="datetime-local"
+            value={draft.from}
+            onChange={(event) => updateField("from", event.target.value)}
+          />
+          <input
+            aria-label="To date"
+            type="datetime-local"
+            value={draft.to}
+            onChange={(event) => updateField("to", event.target.value)}
+          />
+          <span>Optional backend time filter</span>
         </fieldset>
+        <label>
+          <span>Advanced Tournament ID</span>
+          <input
+            autoComplete="off"
+            placeholder="UUID fallback"
+            type="text"
+            value={draft.tournamentId}
+            onChange={(event) => updateField("tournamentId", event.target.value)}
+          />
+        </label>
         <div className="analytics-filter-actions">
           <button className="button ops-button-primary" type="submit">
             <Filter size={16} />
@@ -1068,7 +1272,7 @@ function AdvancedAnalyticsFilters({
             Reset filters
           </button>
           <span className="ops-mono">
-            {hasActiveFilters ? "Filtered public aggregate" : "Default public aggregate"}
+            {hasActiveFilters ? "Filtered analytics workspace" : "Default analytics workspace"}
           </span>
         </div>
       </form>
@@ -1078,21 +1282,57 @@ function AdvancedAnalyticsFilters({
 
 function OrganizerTournamentDrilldown({
   analytics,
+  appliedFilters,
   onAnalyticsChange
 }: {
   analytics: OrganizerTournamentAnalyticsResponse | null;
+  appliedFilters: AnalyticsFilters;
   onAnalyticsChange: (analytics: OrganizerTournamentAnalyticsResponse | null) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingLookups, setIsLoadingLookups] = useState(false);
   const [isSlowLoading, setIsSlowLoading] = useState(false);
   const [tournamentId, setTournamentId] = useState("");
+  const [tournamentLookups, setTournamentLookups] = useState<OrganizerTournamentLookup[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTournamentLookups() {
+      setIsLoadingLookups(true);
+      setError(null);
+
+      try {
+        const lookups = await getOrganizerTournamentLookups(100);
+
+        if (!cancelled) {
+          setTournamentLookups(lookups);
+          setTournamentId((current) => current || lookups[0]?.tournamentId || "");
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setError(analyticsErrorMessage(caught));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingLookups(false);
+        }
+      }
+    }
+
+    void loadTournamentLookups();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function loadTournamentAnalytics() {
     const cleanTournamentId = tournamentId.trim();
 
     if (!cleanTournamentId) {
-      setError("Enter a tournament ID to load organizer tournament analytics.");
+      setError("Select a tournament to load organizer tournament analytics.");
       onAnalyticsChange(null);
       return;
     }
@@ -1103,7 +1343,7 @@ function OrganizerTournamentDrilldown({
     const slowTimer = window.setTimeout(() => setIsSlowLoading(true), 900);
 
     try {
-      const response = await getOrganizerTournamentAnalytics(cleanTournamentId);
+      const response = await getOrganizerTournamentAnalytics(cleanTournamentId, appliedFilters);
       onAnalyticsChange(response);
     } catch (caught) {
       onAnalyticsChange(null);
@@ -1130,31 +1370,46 @@ function OrganizerTournamentDrilldown({
         }}
       >
         <label>
-          <span>Tournament ID</span>
-          <input
-            autoComplete="off"
-            placeholder="Managed tournament UUID"
-            type="text"
+          <span>Tournament</span>
+          <select
+            disabled={isLoadingLookups || tournamentLookups.length === 0}
             value={tournamentId}
             onChange={(event) => setTournamentId(event.target.value)}
-          />
+          >
+            <option value="">
+              {isLoadingLookups ? "Loading tournaments..." : "Select tournament"}
+            </option>
+            {tournamentLookups.map((tournament) => (
+              <option key={tournament.tournamentId} value={tournament.tournamentId}>
+                {tournament.title} ({tournament.status})
+              </option>
+            ))}
+          </select>
         </label>
         <button className="button ops-button-primary" disabled={isLoading} type="submit">
           {isLoading ? "Loading..." : "Apply drilldown"}
         </button>
-        <p className="ops-mono">Lookup dropdown requires backend-supported analytics lookups.</p>
+        <p className="ops-mono">Uses your manageable tournament lookup.</p>
       </form>
+      {!isLoadingLookups && tournamentLookups.length === 0 && !error ? (
+        <AnalyticsEmptyBlock
+          title="No manageable tournaments found."
+          detail="Tournament analytics drilldown becomes available after you create or manage a tournament."
+        />
+      ) : null}
       {isSlowLoading ? <p className="analytics-slow-query">Still loading analytics...</p> : null}
       {error ? <AnalyticsEmptyBlock title="Tournament analytics unavailable." detail={error} /> : null}
-      {analytics ? <OrganizerTournamentAnalyticsView analytics={analytics} /> : null}
+      {analytics ? <OrganizerTournamentAnalyticsView analytics={analytics} appliedFilters={appliedFilters} /> : null}
     </section>
   );
 }
 
 function OrganizerTournamentAnalyticsView({
-  analytics
+  analytics,
+  appliedFilters
 }: {
   analytics: OrganizerTournamentAnalyticsResponse;
+  appliedFilters: AnalyticsFilters;
 }) {
   return (
     <div className="analytics-drilldown-results">
@@ -1217,7 +1472,7 @@ function OrganizerTournamentAnalyticsView({
         </div>
       </section>
 
-      <TeamComparisonPanel teams={analytics.teamComparison} />
+      <TeamComparisonPanel analytics={analytics} appliedFilters={appliedFilters} />
 
       <section className="analytics-terminal-panel analytics-data-panel ops-panel">
         <SectionHeader
@@ -1340,43 +1595,202 @@ function PublicAggregatePanel({
   );
 }
 
-function PlayerRosterComparison({ players }: { players: PlayerAnalyticsMetric[] }) {
+function PlayerRosterComparison({
+  appliedFilters,
+  fallbackPlayers
+}: {
+  appliedFilters: AnalyticsFilters;
+  fallbackPlayers: PlayerAnalyticsMetric[];
+}) {
+  const [comparison, setComparison] = useState<PlayerComparisonResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isComparing, setIsComparing] = useState(false);
+  const [isLoadingLookups, setIsLoadingLookups] = useState(false);
   const [leftId, setLeftId] = useState("");
+  const [playerLookups, setPlayerLookups] = useState<TeamPlayerLookup[]>([]);
   const [rightId, setRightId] = useState("");
+  const [selectedTeamId, setSelectedTeamId] = useState(appliedFilters.teamId ?? "");
+  const [teamLookups, setTeamLookups] = useState<TeamLookup[]>([]);
 
-  if (players.length < 2) {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTeams() {
+      setIsLoadingLookups(true);
+      setError(null);
+
+      try {
+        const teams = await getMyTeamLookups(100);
+
+        if (!cancelled) {
+          setTeamLookups(teams);
+          setSelectedTeamId((current) => current || teams[0]?.teamId || "");
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setError(analyticsErrorMessage(caught));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingLookups(false);
+        }
+      }
+    }
+
+    void loadTeams();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPlayers() {
+      if (!selectedTeamId) {
+        setPlayerLookups([]);
+        return;
+      }
+
+      setIsLoadingLookups(true);
+      setError(null);
+
+      try {
+        const players = await getTeamPlayerLookups(selectedTeamId, 100);
+
+        if (!cancelled) {
+          setPlayerLookups(players);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setPlayerLookups([]);
+          setError(analyticsErrorMessage(caught));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingLookups(false);
+        }
+      }
+    }
+
+    void loadPlayers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTeamId]);
+
+  const players = playerLookups.length > 0
+    ? playerLookups.map((player) => ({
+      displayName: player.displayName,
+      profileId: player.profileId
+    }))
+    : fallbackPlayers.map((player) => ({
+      displayName: player.displayName,
+      profileId: player.profileId
+    }));
+  const effectiveLeftId = leftId || players[0]?.profileId || "";
+  const effectiveRightId =
+    (rightId && rightId !== effectiveLeftId ? rightId : "") ||
+    players.find((player) => player.profileId !== effectiveLeftId)?.profileId ||
+    "";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function runComparison() {
+      if (!effectiveLeftId || !effectiveRightId || effectiveLeftId === effectiveRightId || !selectedTeamId) {
+        setComparison(null);
+        return;
+      }
+
+      setIsComparing(true);
+      setError(null);
+
+      try {
+        const response = await compareAnalyticsPlayers({
+          filters: {
+            from: appliedFilters.from,
+            heroId: appliedFilters.heroId,
+            limit: appliedFilters.limit,
+            teamId: selectedTeamId,
+            to: appliedFilters.to,
+            tournamentId: appliedFilters.tournamentId
+          },
+          profileAId: effectiveLeftId,
+          profileBId: effectiveRightId
+        });
+
+        if (!cancelled) {
+          setComparison(response);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setComparison(null);
+          setError(analyticsErrorMessage(caught));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsComparing(false);
+        }
+      }
+    }
+
+    void runComparison();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appliedFilters.from, appliedFilters.heroId, appliedFilters.limit, appliedFilters.to, appliedFilters.tournamentId, effectiveLeftId, effectiveRightId, selectedTeamId]);
+
+  if (teamLookups.length === 0 && fallbackPlayers.length < 2 && !isLoadingLookups) {
     return (
       <section className="analytics-terminal-panel analytics-data-panel ops-panel">
         <SectionHeader
           eyebrow="Roster comparison"
           title="Player vs Player"
-          description="Compare two analyzed players from the current team roster."
+          description="Compare players from your team roster."
         />
         <AnalyticsEmptyBlock
-          title="Player comparison requires at least two analyzed roster players."
-          detail="The backend must return at least two roster performance rows for this team."
+          title="Player comparison requires a team roster."
+          detail="Join or create a team with at least two players to compare player analytics."
         />
       </section>
     );
   }
 
-  const leftPlayer = players.find((player) => player.profileId === leftId) ?? players[0];
-  const rightPlayer =
-    players.find((player) => player.profileId === rightId && player.profileId !== leftPlayer.profileId) ??
-    players.find((player) => player.profileId !== leftPlayer.profileId) ??
-    players[1];
+  const leftPlayer = comparison?.playerA ?? null;
+  const rightPlayer = comparison?.playerB ?? null;
 
   return (
     <section className="analytics-terminal-panel analytics-data-panel ops-panel">
       <SectionHeader
         eyebrow="Roster comparison"
         title="Player vs Player"
-        description="This comparison uses only rosterPerformance rows returned by /api/me/team/analytics."
+        description="Compare players from your team roster."
       />
       <div className="analytics-comparison-controls">
         <label>
+          <span>Team</span>
+          <select value={selectedTeamId} onChange={(event) => {
+            setSelectedTeamId(event.target.value);
+            setLeftId("");
+            setRightId("");
+            setComparison(null);
+          }}>
+            <option value="">Select team</option>
+            {teamLookups.map((team) => (
+              <option key={team.teamId} value={team.teamId}>
+                {team.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           <span>Player A</span>
-          <select value={leftPlayer.profileId} onChange={(event) => setLeftId(event.target.value)}>
+          <select value={effectiveLeftId} onChange={(event) => setLeftId(event.target.value)}>
+            <option value="">Select player</option>
             {players.map((player) => (
               <option key={`left-${player.profileId}`} value={player.profileId}>
                 {player.displayName}
@@ -1386,9 +1800,10 @@ function PlayerRosterComparison({ players }: { players: PlayerAnalyticsMetric[] 
         </label>
         <label>
           <span>Player B</span>
-          <select value={rightPlayer.profileId} onChange={(event) => setRightId(event.target.value)}>
+          <select value={effectiveRightId} onChange={(event) => setRightId(event.target.value)}>
+            <option value="">Select player</option>
             {players
-              .filter((player) => player.profileId !== leftPlayer.profileId)
+              .filter((player) => player.profileId !== effectiveLeftId)
               .map((player) => (
                 <option key={`right-${player.profileId}`} value={player.profileId}>
                   {player.displayName}
@@ -1397,25 +1812,128 @@ function PlayerRosterComparison({ players }: { players: PlayerAnalyticsMetric[] 
           </select>
         </label>
       </div>
-      <ComparisonCards
-        left={{
-          metrics: playerComparisonMetrics(leftPlayer),
-          name: leftPlayer.displayName,
-          subtitle: leftPlayer.teamName ?? "Current roster"
-        }}
-        right={{
-          metrics: playerComparisonMetrics(rightPlayer),
-          name: rightPlayer.displayName,
-          subtitle: rightPlayer.teamName ?? "Current roster"
-        }}
-      />
+      {isLoadingLookups ? <p className="analytics-slow-query">Loading roster options...</p> : null}
+      {isComparing ? <p className="analytics-slow-query">Comparing players...</p> : null}
+      {error ? <AnalyticsEmptyBlock title="Player comparison unavailable." detail={error} /> : null}
+      {!error && players.length < 2 ? (
+        <AnalyticsEmptyBlock
+          title="Player comparison requires at least two players."
+          detail="The selected team roster lookup returned fewer than two players."
+        />
+      ) : null}
+      {!error && comparison && leftPlayer && rightPlayer ? (
+        <>
+          <span className="ops-badge">Access scope: {comparison.filters.accessScope}</span>
+          <ComparisonCards
+            left={{
+              metrics: playerComparisonMetrics(leftPlayer),
+              name: leftPlayer.displayName,
+              subtitle: leftPlayer.teamName ?? "Selected player"
+            }}
+            right={{
+              metrics: playerComparisonMetrics(rightPlayer),
+              name: rightPlayer.displayName,
+              subtitle: rightPlayer.teamName ?? "Selected player"
+            }}
+          />
+          <section className="analytics-terminal-grid analytics-terminal-grid-secondary">
+            <div className="analytics-terminal-panel analytics-data-panel ops-panel">
+              <SectionHeader
+                eyebrow="Shared hero pool"
+                title="Shared Heroes"
+                description="Hero overlap returned by the player comparison endpoint."
+              />
+              <HeroMatrix heroes={comparison.sharedHeroes} />
+            </div>
+            <div className="analytics-terminal-panel analytics-data-panel ops-panel">
+              <SectionHeader
+                eyebrow="Recent matches"
+                title="Shared Match History"
+                description="Matches where both compared players appear in normalized analytics data."
+              />
+              <MatchHistoryList emptyText="No shared matches returned." matches={comparison.recentMatches} />
+            </div>
+          </section>
+        </>
+      ) : null}
     </section>
   );
 }
 
-function TeamComparisonPanel({ teams }: { teams: TeamAnalyticsMetric[] }) {
+function TeamComparisonPanel({
+  analytics,
+  appliedFilters
+}: {
+  analytics: OrganizerTournamentAnalyticsResponse;
+  appliedFilters: AnalyticsFilters;
+}) {
+  const [comparison, setComparison] = useState<TeamComparisonResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isComparing, setIsComparing] = useState(false);
   const [leftId, setLeftId] = useState("");
   const [rightId, setRightId] = useState("");
+  const teams = useMemo(() => {
+    const unique = new Map<string, TeamAnalyticsMetric>();
+
+    for (const team of [...analytics.teamComparison, ...analytics.topTeams]) {
+      unique.set(team.teamId, team);
+    }
+
+    return [...unique.values()];
+  }, [analytics.teamComparison, analytics.topTeams]);
+
+  const effectiveLeftId = leftId || teams[0]?.teamId || "";
+  const effectiveRightId =
+    (rightId && rightId !== effectiveLeftId ? rightId : "") ||
+    teams.find((team) => team.teamId !== effectiveLeftId)?.teamId ||
+    "";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function runComparison() {
+      if (!effectiveLeftId || !effectiveRightId || effectiveLeftId === effectiveRightId) {
+        setComparison(null);
+        return;
+      }
+
+      setIsComparing(true);
+      setError(null);
+
+      try {
+        const response = await compareAnalyticsTeams({
+          filters: {
+            from: appliedFilters.from,
+            heroId: appliedFilters.heroId,
+            limit: appliedFilters.limit,
+            to: appliedFilters.to,
+            tournamentId: analytics.tournamentId
+          },
+          teamAId: effectiveLeftId,
+          teamBId: effectiveRightId
+        });
+
+        if (!cancelled) {
+          setComparison(response);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setComparison(null);
+          setError(analyticsErrorMessage(caught));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsComparing(false);
+        }
+      }
+    }
+
+    void runComparison();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [analytics.tournamentId, appliedFilters.from, appliedFilters.heroId, appliedFilters.limit, appliedFilters.to, effectiveLeftId, effectiveRightId]);
 
   if (teams.length < 2) {
     return (
@@ -1423,33 +1941,30 @@ function TeamComparisonPanel({ teams }: { teams: TeamAnalyticsMetric[] }) {
         <SectionHeader
           eyebrow="Team comparison"
           title="Team vs Team"
-          description="Compare two analyzed teams from the selected tournament response."
+          description="Compare two teams from the selected tournament."
         />
         <AnalyticsEmptyBlock
           title="Team comparison requires at least two analyzed teams."
-          detail="The selected tournament analytics response returned fewer than two teamComparison rows."
+          detail="The selected tournament analytics response returned fewer than two team rows."
         />
       </section>
     );
   }
 
-  const leftTeam = teams.find((team) => team.teamId === leftId) ?? teams[0];
-  const rightTeam =
-    teams.find((team) => team.teamId === rightId && team.teamId !== leftTeam.teamId) ??
-    teams.find((team) => team.teamId !== leftTeam.teamId) ??
-    teams[1];
+  const leftTeam = comparison?.teamA ?? null;
+  const rightTeam = comparison?.teamB ?? null;
 
   return (
     <section className="analytics-terminal-panel analytics-data-panel ops-panel">
       <SectionHeader
         eyebrow="Team comparison"
         title="Team vs Team"
-        description="This comparison uses only teamComparison rows returned by the organizer tournament analytics endpoint."
+        description="Compare two teams from the selected tournament."
       />
       <div className="analytics-comparison-controls">
         <label>
           <span>Team A</span>
-          <select value={leftTeam.teamId} onChange={(event) => setLeftId(event.target.value)}>
+          <select value={effectiveLeftId} onChange={(event) => setLeftId(event.target.value)}>
             {teams.map((team) => (
               <option key={`left-${team.teamId}`} value={team.teamId}>
                 {team.teamName}
@@ -1459,9 +1974,9 @@ function TeamComparisonPanel({ teams }: { teams: TeamAnalyticsMetric[] }) {
         </label>
         <label>
           <span>Team B</span>
-          <select value={rightTeam.teamId} onChange={(event) => setRightId(event.target.value)}>
+          <select value={effectiveRightId} onChange={(event) => setRightId(event.target.value)}>
             {teams
-              .filter((team) => team.teamId !== leftTeam.teamId)
+              .filter((team) => team.teamId !== effectiveLeftId)
               .map((team) => (
                 <option key={`right-${team.teamId}`} value={team.teamId}>
                   {team.teamName}
@@ -1470,18 +1985,33 @@ function TeamComparisonPanel({ teams }: { teams: TeamAnalyticsMetric[] }) {
           </select>
         </label>
       </div>
-      <ComparisonCards
-        left={{
-          metrics: teamComparisonMetrics(leftTeam),
-          name: leftTeam.teamName,
-          subtitle: leftTeam.tournamentName ?? "Selected tournament"
-        }}
-        right={{
-          metrics: teamComparisonMetrics(rightTeam),
-          name: rightTeam.teamName,
-          subtitle: rightTeam.tournamentName ?? "Selected tournament"
-        }}
-      />
+      {isComparing ? <p className="analytics-slow-query">Comparing teams...</p> : null}
+      {error ? <AnalyticsEmptyBlock title="Team comparison unavailable." detail={error} /> : null}
+      {!error && comparison && leftTeam && rightTeam ? (
+        <>
+          <span className="ops-badge">Access scope: {comparison.filters.accessScope}</span>
+          <ComparisonCards
+            left={{
+              metrics: teamComparisonMetrics(leftTeam),
+              name: leftTeam.teamName,
+              subtitle: leftTeam.tournamentName ?? "Selected tournament"
+            }}
+            right={{
+              metrics: teamComparisonMetrics(rightTeam),
+              name: rightTeam.teamName,
+              subtitle: rightTeam.tournamentName ?? "Selected tournament"
+            }}
+          />
+          <section className="analytics-terminal-panel analytics-data-panel ops-panel">
+            <SectionHeader
+              eyebrow="Recent matches"
+              title="Team Match History"
+              description="Recent matches returned by the team comparison endpoint."
+            />
+            <MatchHistoryList emptyText="No recent team matches returned." matches={comparison.recentMatches} />
+          </section>
+        </>
+      ) : null}
     </section>
   );
 }
