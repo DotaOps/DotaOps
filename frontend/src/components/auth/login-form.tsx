@@ -53,7 +53,7 @@ export function LoginForm() {
     setIsLoading(true);
 
     try {
-      const result = await loginWithEmailPassword({ email, password });
+      const result = await loginWithEmailPassword({ email, password, remember });
       try {
         localStorage.setItem("dotaops:just_signed_in", String(Date.now()));
       } catch {
