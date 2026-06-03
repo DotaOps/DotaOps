@@ -38,6 +38,11 @@ with checks as (
     6
   union all
   select
+    'dota hero reference catalog exists',
+    (select count(*) from public.heroes),
+    127
+  union all
+  select
     'demo public tournaments exist',
     (select count(*) from public.tournaments where slug in (
       'dotaops-demo-cup',

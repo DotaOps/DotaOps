@@ -20,6 +20,9 @@ class DemoSeedScriptTest {
                 .contains("DO NOT RUN ON PRODUCTION")
                 .contains("@dotaops.local")
                 .contains("DotaOps Demo Cup")
+                .contains("npc_dota_hero_ringmaster")
+                .contains("npc_dota_hero_kez")
+                .contains("npc_dota_hero_largo")
                 .contains("on conflict")
                 .contains("private.refresh_dotaops_analytics()");
         assertThat(seed)
@@ -47,6 +50,7 @@ class DemoSeedScriptTest {
         assertThat(verify)
                 .contains("demo organizer profile exists")
                 .contains("approved demo cup registrations exist")
+                .contains("dota hero reference catalog exists")
                 .contains("playoff bracket matches exist")
                 .contains("match games exist")
                 .contains("match players exist")

@@ -23,7 +23,7 @@ Seed ne ustvarja `auth.users`, ker projekt uporablja Supabase Auth. Demo profili
 - 12 `match_games` zapisov z `import_status = ready`
 - 12 `match_imports` in import evente
 - 120 `match_players` zapisov z razlicnimi K/D/A, GPM, XPM, damage in hero podatki
-- minimalen hero reference set za 10 Dota herojev
+- celoten OpenDota `/api/heroes` reference katalog za Dota 2 heroje, 127 herojev ob zadnji osvezitvi seeda
 - pending team invitation in pending join request za team flow
 
 ## En ukaz za seed
@@ -156,7 +156,7 @@ Role-based analytics
 Lookup dropdowns
 - endpoint: GET /api/organizer/lookups/tournaments, GET /api/me/lookups/teams, GET /api/teams/{id}/lookups/players, GET /api/lookups/heroes
 - potrebuje: manageable tournaments, active teams, active team players, heroes
-- seed: demo organizer tournaments, team memberships, 10 hero records
+- seed: demo organizer tournaments, team memberships, celoten OpenDota hero reference katalog
 - tabele: tournaments, tournament_staff, teams, team_members, profiles, heroes
 
 Team vs team comparison
