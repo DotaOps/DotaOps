@@ -7498,12 +7498,20 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   gap: 24px;
 }
 
+.public-tournament-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
 .public-event-card,
 .public-glass-card,
 .public-match-row,
 .public-intel-card,
 .public-bracket-grid article,
 .public-team-card,
+.public-tournament-card,
+.public-empty-card,
 .auth-card,
 .auth-register-benefits article {
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -7517,7 +7525,9 @@ html[data-portal-handoff="active"] .page-loading-overlay {
 .public-match-row,
 .public-intel-card,
 .public-bracket-grid article,
-.public-team-card {
+.public-team-card,
+.public-tournament-card,
+.public-empty-card {
   transition:
     border-color 180ms ease,
     background 180ms ease,
@@ -7528,11 +7538,119 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   .public-event-card:hover,
   .public-glass-card:hover,
   .public-match-row:hover,
-  .public-team-card:hover {
+  .public-team-card:hover,
+  .public-tournament-card:hover {
     border-color: rgba(255, 179, 172, 0.22);
     background: rgba(24, 18, 18, 0.78);
     transform: translateY(-2px);
   }
+}
+
+.public-tournament-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
+  gap: 15px;
+  min-height: 100%;
+  padding: 20px;
+  border-left: 3px solid #d32f2f;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(44, 27, 26, 0.84), rgba(10, 10, 10, 0.82)),
+    rgba(18, 18, 18, 0.68);
+}
+
+.public-tournament-card::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(211, 47, 47, 0.16), transparent 38%),
+    radial-gradient(circle at 95% 12%, rgba(123, 209, 248, 0.08), transparent 36%);
+  content: "";
+}
+
+.public-tournament-card > * {
+  position: relative;
+}
+
+.public-tournament-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  color: #ffb3ac;
+}
+
+.public-tournament-card-head span {
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 179, 172, 0.28);
+  border-radius: 3px;
+  background: rgba(211, 47, 47, 0.16);
+  color: #f9dcd9;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.public-tournament-card h3 {
+  display: -webkit-box;
+  min-height: 2.6em;
+  overflow: hidden;
+  color: #f9dcd9;
+  font-size: 1.2rem;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.public-tournament-card p {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #e4beba;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.public-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin-top: auto;
+  color: #ffb3ac;
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.public-empty-card {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+  padding: 26px;
+  color: #e4beba;
+}
+
+.public-empty-card svg {
+  color: #ffb3ac;
+}
+
+.public-empty-card h3 {
+  color: #f9dcd9;
+}
+
+.public-empty-card p {
+  max-width: 620px;
+  color: #e4beba;
+  line-height: 1.6;
+}
+
+.public-empty-card-compact {
+  min-height: 178px;
 }
 
 .public-event-card {
@@ -7663,6 +7781,24 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   margin: 0 auto;
 }
 
+.public-landing-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+  gap: 28px;
+  width: min(1440px, 100%);
+  margin: 0 auto;
+}
+
+.public-registration-panel,
+.public-analytics-panel {
+  padding: 26px;
+  border: 1px solid rgba(171, 137, 133, 0.22);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(211, 47, 47, 0.12), transparent 34%),
+    rgba(18, 18, 18, 0.54);
+}
+
 .public-two-column h2 {
   display: flex;
   align-items: center;
@@ -7709,10 +7845,42 @@ html[data-portal-handoff="active"] .page-loading-overlay {
 }
 
 .public-match-row small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: #ab8985;
   font-size: 0.72rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.public-analytics-preview-premium {
+  display: grid;
+  gap: 14px;
+}
+
+.public-analytics-preview-premium .public-glass-card {
+  display: grid;
+  gap: 9px;
+  min-height: 0;
+  padding: 20px;
+  border-left: 3px solid rgba(123, 209, 248, 0.72);
+  background:
+    linear-gradient(135deg, rgba(10, 10, 10, 0.78), rgba(24, 10, 9, 0.68)),
+    rgba(18, 18, 18, 0.68);
+}
+
+.public-analytics-preview-premium .public-glass-card span {
+  color: #7bd1f8;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.public-analytics-preview-premium .public-glass-card h3 {
+  color: #f9dcd9;
+  font-size: 1.42rem;
 }
 
 .public-intel-card {
@@ -7815,7 +7983,19 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   display: grid;
   justify-items: center;
   padding: 110px 20px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(211, 47, 47, 0.24), transparent 36%),
+    linear-gradient(180deg, #180a09, #0a0a0a);
   text-align: center;
+}
+
+.public-final-cta-kicker {
+  margin-bottom: 14px;
+  color: #ffb3ac;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .public-final-cta h2 {
@@ -8482,7 +8662,8 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   .public-event-card:hover,
   .public-glass-card:hover,
   .public-match-row:hover,
-  .public-team-card:hover {
+  .public-team-card:hover,
+  .public-tournament-card:hover {
     transform: none;
     transition-duration: 1ms;
   }
@@ -8491,8 +8672,13 @@ html[data-portal-handoff="active"] .page-loading-overlay {
 @media (max-width: 1180px) {
   .public-spotlight-grid,
   .public-two-column,
+  .public-landing-split,
   .auth-register-main {
     grid-template-columns: 1fr;
+  }
+
+  .public-tournament-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .public-team-grid {
@@ -8551,10 +8737,16 @@ html[data-portal-handoff="active"] .page-loading-overlay {
   .public-match-row,
   .public-bracket-grid,
   .public-team-grid,
+  .public-tournament-grid,
   .auth-form-grid,
   .auth-role-grid,
   .auth-register-benefits {
     grid-template-columns: 1fr;
+  }
+
+  .public-registration-panel,
+  .public-analytics-panel {
+    padding: 18px;
   }
 
   .public-match-row {

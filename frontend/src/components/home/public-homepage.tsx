@@ -3,44 +3,117 @@ import {
   ArrowRight,
   BarChart3,
   CalendarDays,
-  DatabaseZap,
-  RadioTower,
+  Clock,
   Shield,
-  Trophy,
-  UsersRound
+  Trophy
 } from "lucide-react";
 import Link from "next/link";
 import { AnimatedHomepageBackground } from "@/components/home/animated-homepage-background";
 import { HeaderProfileLink } from "@/components/header-profile-link";
+import type { PublicHomepageData } from "@/lib/homepage-data";
+import type { Tournament } from "@/lib/types";
 
-const upcomingOps = [
-  { left: "Liquid", regionA: "EUW", right: "Falcons", regionB: "MENA", time: "18:00" },
-  { left: "OG", regionA: "EUW", right: "Tundra", regionB: "EUW", time: "21:00" }
-];
+function formatCount(value: number | null) {
+  return value === null ? "No data" : String(value);
+}
 
-const topTeams = [
-  { name: "Team Liquid", rating: "1,942", tags: ["Global #1", "Rematch 78%"] },
-  { name: "Falcons", rating: "1,915", tags: ["Global #2", "Winrate 67%"] },
-  { name: "Xtreme Gaming", rating: "1,888", tags: ["Global #3", "Rematch 66%"] },
-  { name: "Gaimin Gladiators", rating: "1,865", tags: ["Global #5", "Winrate 62%"] }
-];
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return "Schedule pending";
+  }
 
-const platformStats = [
-  { icon: Trophy, label: "Active Tournaments", value: "14" },
-  { icon: Activity, label: "Live Matches", value: "42" },
-  { icon: RadioTower, label: "API Latency", value: "24ms" },
-  { icon: DatabaseZap, label: "Data Points/sec", value: "1,240,492" }
-];
+  return new Intl.DateTimeFormat("en", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(value));
+}
+
+function formatDuration(seconds: number | null) {
+  if (seconds === null) {
+    return "No data";
+  }
+
+  const minutes = Math.round(seconds / 60);
+  return `${minutes} min`;
+}
+
+function statusLabel(status: Tournament["status"]) {
+  return status
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function registrationLabel(tournament: Tournament) {
+  if (tournament.teamsCount > 0) {
+    return `${tournament.registrationsCount}/${tournament.teamsCount} teams`;
+  }
+
+  return `${tournament.registrationsCount} registered`;
+}
 
 export function PublicHomepage({
   avatarUrl = null,
   displayName = "Profile",
+  homepageData,
   isAuthenticated = false
 }: {
   avatarUrl?: string | null;
   displayName?: string;
+  homepageData: PublicHomepageData;
   isAuthenticated?: boolean;
 }) {
+  const platformStats = [
+    {
+      icon: Trophy,
+      label: "Public tournaments",
+      value: formatCount(homepageData.publicTournamentCount)
+    },
+    {
+      icon: CalendarDays,
+      label: "Registrations open",
+      value: formatCount(homepageData.registrationOpenCount)
+    },
+    {
+      icon: Activity,
+      label: "Active or published",
+      value: formatCount(homepageData.activeOrPublishedCount)
+    },
+    {
+      icon: BarChart3,
+      label: "Analyzed matches",
+      value: formatCount(homepageData.analyzedMatchesCount)
+    }
+  ];
+  const featuredList = homepageData.featuredTournaments.slice(0, 6);
+  const analyticsHighlights = [
+    {
+      label: "Top hero",
+      value: homepageData.topHeroPreview?.localizedName ?? "No data",
+      meta: homepageData.topHeroPreview
+        ? `${homepageData.topHeroPreview.gamesPlayed} games | ${homepageData.topHeroPreview.winRate.toFixed(1)}% win rate`
+        : "Hero analytics will appear after match imports."
+    },
+    {
+      label: "Top team metric",
+      value: homepageData.topTeamPreview?.teamName ?? "No data",
+      meta: homepageData.topTeamPreview
+        ? `${homepageData.topTeamPreview.gamesPlayed} games | ${homepageData.topTeamPreview.winRate.toFixed(1)}% win rate`
+        : "Team insights will appear after tournament matches are available."
+    },
+    {
+      label: "Average duration",
+      value: formatDuration(homepageData.averageDurationSeconds),
+      meta:
+        homepageData.averageDurationSeconds === null
+          ? "Tournament duration metrics are not available yet."
+          : "Based on processed public match results."
+    }
+  ];
+
   return (
     <div className="public-home">
       <AnimatedHomepageBackground />
@@ -68,28 +141,30 @@ export function PublicHomepage({
           <div className="public-hero-radar" aria-hidden="true" />
           <div className="public-hero-particles" aria-hidden="true" />
           <div className="public-hero-copy">
-            <span>Dominate the Draft</span>
+            <span>Public Operations Hub</span>
             <h1>
               Dota 2 tournament operations <strong>&amp; analytics</strong>
             </h1>
             <p>
-              The elite analytical engine for professional teams and tournament organizers.
-              Real-time data synthesis, tactical prediction models, and full-spectrum operation
-              management.
+              A public command center for Dota 2 tournaments, team registration windows, and
+              match insights. Browse the tournament catalog, then create an account when your
+              roster is ready to operate.
             </p>
             <div className="public-hero-actions">
               <Link
                 className="public-button public-button-primary"
-                href={isAuthenticated ? "/dashboard" : "/login"}
+                href={isAuthenticated ? "/dashboard" : "/register"}
               >
-                {isAuthenticated ? "Dashboard" : "Login"}
+                {isAuthenticated ? "Open Dashboard" : "Create account"}
               </Link>
-              <Link
-                className="public-button public-button-secondary"
-                href={isAuthenticated ? "/profile" : "/register"}
-              >
-                {isAuthenticated ? "Profile" : "Register"}
+              <Link className="public-button public-button-secondary" href="/turnirji">
+                Browse tournaments
               </Link>
+              {!isAuthenticated && (
+                <Link className="public-button public-button-secondary" href="/login">
+                  Login
+                </Link>
+              )}
             </div>
           </div>
         </section>
@@ -115,165 +190,142 @@ export function PublicHomepage({
         <section className="public-section public-spotlight">
           <div className="public-section-heading">
             <div>
-              <span>Spotlight Event</span>
-              <h2>Riyadh Masters 2024</h2>
+              <span>Featured Public Tournaments</span>
+              <h2>{featuredList.length > 0 ? "Featured tournament circuits" : "Tournament feed warming up"}</h2>
+              <p>
+                {featuredList.length > 0
+                  ? "Discover active Dota 2 tournaments, registration windows, and competitive formats."
+                  : "No public tournaments are published yet."}
+              </p>
             </div>
             <Link href="/turnirji">
-              Full event hub <ArrowRight size={16} />
+              Full tournament hub <ArrowRight size={16} />
             </Link>
           </div>
 
-          <div className="public-spotlight-grid">
-            <article className="public-event-card">
-              <div className="public-event-visual">
-                <Trophy size={72} />
-              </div>
-              <div>
-                <span>Grand Finals</span>
-                <span>Live Now</span>
-              </div>
-              <h3>Team Spirit vs Gaimin Gladiators</h3>
-              <p>Series Score: 1 - 1 | Game 3 in Progress</p>
+          {featuredList.length > 0 ? (
+            <div className="public-tournament-grid">
+              {featuredList.map((tournament) => (
+                <article className="public-tournament-card" key={tournament.id}>
+                  <div className="public-tournament-card-head">
+                    <span>{statusLabel(tournament.status)}</span>
+                    <Trophy size={22} />
+                  </div>
+                  <h3>{tournament.title}</h3>
+                  <p>{tournament.description || "No tournament description available."}</p>
+                  <dl className="public-stat-list">
+                    <div>
+                      <dt>Format</dt>
+                      <dd>{tournament.format}</dd>
+                    </div>
+                    <div>
+                      <dt>Schedule</dt>
+                      <dd>{formatDate(tournament.startsAt)}</dd>
+                    </div>
+                    <div>
+                      <dt>Registration</dt>
+                      <dd>{registrationLabel(tournament)}</dd>
+                    </div>
+                  </dl>
+                  <Link className="public-card-link" href={`/turnirji/${tournament.slug}`}>
+                    View tournament <ArrowRight size={15} />
+                  </Link>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <article className="public-empty-card">
+              <Trophy size={32} />
+              <h3>No public tournaments published yet.</h3>
+              <p>Published tournament circuits will appear here as soon as organizers make them public.</p>
+              <Link className="public-button public-button-secondary" href="/turnirji">
+                Open tournaments
+              </Link>
             </article>
-
-            <aside className="public-analytics-stack">
-              <article className="public-glass-card">
-                <h3>Win Probability</h3>
-                <div className="public-probability">
-                  <span style={{ height: "92%" }}>54%</span>
-                  <span style={{ height: "78%" }}>46%</span>
-                </div>
-                <p>Spirit holds a slight gold advantage at 20 minutes with a scaling late-game draft.</p>
-              </article>
-              <article className="public-glass-card">
-                <h3>Match Analytics</h3>
-                <dl className="public-stat-list">
-                  <div>
-                    <dt>Gold Diff</dt>
-                    <dd>+2.4k</dd>
-                  </div>
-                  <div>
-                    <dt>XPM Lead</dt>
-                    <dd>+410</dd>
-                  </div>
-                  <div>
-                    <dt>Towers Remaining</dt>
-                    <dd>11 : 9</dd>
-                  </div>
-                </dl>
-              </article>
-            </aside>
-          </div>
+          )}
         </section>
 
         <section className="public-section public-ops-section">
-          <div className="public-two-column">
-            <div>
+          <div className="public-landing-split">
+            <div className="public-registration-panel">
               <h2>
-                <CalendarDays size={22} /> Upcoming Ops
+                <CalendarDays size={22} /> Registration Windows
               </h2>
-              <div className="public-match-list">
-                {upcomingOps.map((match) => (
-                  <Link className="public-match-row" href="/turnirji" key={`${match.time}-${match.left}`}>
-                    <span>{match.time}</span>
-                    <strong>
-                      {match.left} <em>{match.regionA}</em>
-                    </strong>
-                    <small>vs</small>
-                    <strong>
-                      {match.right} <em>{match.regionB}</em>
-                    </strong>
-                  </Link>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h2>
-                <BarChart3 size={22} /> Recent Intel
-              </h2>
-              <article className="public-intel-card">
-                <span>Completed</span>
-                <div>
-                  <strong>Xtreme Gaming</strong>
-                  <strong>2</strong>
-                </div>
-                <div>
-                  <strong>BetBoom</strong>
-                  <strong>1</strong>
-                </div>
-                <p>Duration: 02:44:12</p>
-              </article>
-            </div>
-          </div>
-        </section>
-
-        <section className="public-section public-bracket-section">
-          <h2>Playoff Progression</h2>
-          <div className="public-bracket-grid">
-            <div>
-              <span>Quarters</span>
-              <article>Team Spirit 2 - Cloud9 0</article>
-              <article>Falcons 2 - Aurora 1</article>
-            </div>
-            <div>
-              <span>Semis</span>
-              <article>Team Spirit - Falcons</article>
-            </div>
-            <div>
-              <span>Grand Final</span>
-              <article className="is-final">
-                <Trophy size={24} />
-                TBD Championship Match
-              </article>
-            </div>
-          </div>
-        </section>
-
-        <section className="public-section public-teams-section">
-          <div className="public-section-heading">
-            <div>
-              <h2>Top Seeded Teams</h2>
-              <p>Elite organizations dominating the current professional circuit.</p>
-            </div>
-          </div>
-          <div className="public-team-grid">
-            {topTeams.map((team) => (
-              <article className="public-team-card" key={team.name}>
-                <div className="public-team-portrait">
-                  <UsersRound size={34} />
-                </div>
-                <h3>{team.name}</h3>
-                <div>
-                  <span>ELO Rating</span>
-                  <strong>{team.rating}</strong>
-                </div>
-                <footer>
-                  {team.tags.map((tag) => (
-                    <span key={tag}>{tag}</span>
+              {homepageData.upcomingTournaments.length > 0 ? (
+                <div className="public-match-list">
+                  {homepageData.upcomingTournaments.map((tournament) => (
+                    <Link
+                      className="public-match-row public-tournament-row"
+                      href={`/turnirji/${tournament.slug}`}
+                      key={tournament.id}
+                    >
+                      <span>{statusLabel(tournament.status)}</span>
+                      <strong>
+                        {tournament.title} <em>{tournament.format}</em>
+                      </strong>
+                      <small>
+                        <Clock size={13} /> {formatDate(tournament.startsAt)}
+                      </small>
+                      <strong>
+                        {registrationLabel(tournament)} <em>{tournament.organizer}</em>
+                      </strong>
+                    </Link>
                   ))}
-                </footer>
-              </article>
-            ))}
+                </div>
+              ) : (
+                <article className="public-empty-card public-empty-card-compact">
+                  <h3>No upcoming public tournaments.</h3>
+                  <p>Registration windows and published tournament schedules will be listed here.</p>
+                </article>
+              )}
+            </div>
+
+            <div className="public-analytics-panel">
+              <h2>
+                <BarChart3 size={22} /> Analytics Preview
+              </h2>
+              {homepageData.hasAnalyticsData ? (
+                <div className="public-analytics-preview public-analytics-preview-premium">
+                  {analyticsHighlights.map((item) => (
+                    <article className="public-glass-card" key={item.label}>
+                      <span>{item.label}</span>
+                      <h3>{item.value}</h3>
+                      <p>{item.meta}</p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <article className="public-empty-card public-empty-card-compact">
+                  <h3>Analytics will appear after tournament matches are available.</h3>
+                  <p>Match insights will surface here once tournament results have been processed.</p>
+                </article>
+              )}
+            </div>
           </div>
         </section>
 
         <section className="public-final-cta">
+          <span className="public-final-cta-kicker">Team-ready tournament operations</span>
           <h2>Ready to join the operations?</h2>
           <p>
-            Step into the tactical hub. Whether you are a tournament organizer, a team analyst,
-            or a data-driven fan, DotaOps has the intel you need.
+            Create an account to manage a team workspace, register for tournaments, or operate
+            tournament circuits with structured team and tournament workflows.
           </p>
           <div>
             <Link
               className="public-button public-button-primary"
               href={isAuthenticated ? "/dashboard" : "/register"}
             >
-              {isAuthenticated ? "Open Dashboard" : "Get Started Free"}
+              {isAuthenticated ? "Open Dashboard" : "Create account"}
             </Link>
             <Link className="public-button public-button-secondary" href="/turnirji">
               Public Tournaments
             </Link>
+            {!isAuthenticated && (
+              <Link className="public-button public-button-secondary" href="/login">
+                Login
+              </Link>
+            )}
           </div>
         </section>
       </main>
@@ -281,7 +333,7 @@ export function PublicHomepage({
       <footer className="public-footer">
         <div>
           <strong>DotaOps</strong>
-          <p>(c) 2024 DotaOps Analytics Engine. All rights reserved.</p>
+          <p>(c) 2026 DotaOps Analytics Engine. All rights reserved.</p>
         </div>
         <nav aria-label="Footer links">
           <Link href="/turnirji">Public Tournaments</Link>
@@ -297,7 +349,7 @@ export function PublicHomepage({
             </>
           )}
           <span>
-            <Shield size={16} /> System Status
+            <Shield size={16} /> Public hub
           </span>
         </nav>
       </footer>

@@ -1,4 +1,5 @@
 import { PublicHomepage } from "@/components/home/public-homepage";
+import { getPublicHomepageData } from "@/lib/homepage-data";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -30,10 +31,13 @@ export default async function Home() {
     displayName = profile?.display_name || profile?.nickname || displayName;
   }
 
+  const homepageData = await getPublicHomepageData();
+
   return (
     <PublicHomepage
       avatarUrl={avatarUrl}
       displayName={displayName}
+      homepageData={homepageData}
       isAuthenticated={Boolean(data?.claims)}
     />
   );
