@@ -3783,6 +3783,43 @@ textarea:focus {
     rgba(18, 18, 18, 0.74);
 }
 
+.analytics-section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ops-space-2);
+  padding: var(--ops-space-2);
+  border: 1px solid var(--ops-line-soft);
+  border-radius: var(--ops-radius);
+  background:
+    linear-gradient(90deg, rgba(255, 84, 78, 0.06), transparent 48%),
+    rgba(18, 18, 18, 0.7);
+}
+
+.analytics-section-tabs button {
+  border: 1px solid transparent;
+  border-radius: var(--ops-radius-sm);
+  padding: 10px 13px;
+  background: transparent;
+  color: var(--ops-muted-strong);
+  cursor: pointer;
+  font-family: var(--ops-font-mono);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.analytics-section-tabs button:hover {
+  border-color: var(--ops-line);
+  color: var(--ops-text);
+}
+
+.analytics-section-tabs button.active {
+  border-color: rgba(255, 84, 78, 0.55);
+  background: rgba(255, 84, 78, 0.16);
+  color: var(--ops-text);
+}
+
 .analytics-data-panel {
   position: relative;
   overflow: hidden;
@@ -4089,6 +4126,192 @@ textarea:focus {
 
 .analytics-refresh-result strong {
   color: var(--ops-text);
+}
+
+.analytics-overview-note {
+  display: grid;
+  gap: var(--ops-space-2);
+  margin-top: var(--ops-space-4);
+  padding: var(--ops-space-4);
+  border: 1px solid var(--ops-line-soft);
+  border-left: 3px solid var(--ops-secondary);
+  border-radius: var(--ops-radius);
+  background: rgba(233, 195, 73, 0.045);
+}
+
+.analytics-overview-note strong {
+  color: var(--ops-text);
+}
+
+.analytics-overview-note p {
+  color: var(--ops-muted-strong);
+  line-height: 1.55;
+}
+
+.analytics-filter-panel,
+.analytics-drilldown-panel {
+  display: grid;
+  gap: var(--ops-space-4);
+}
+
+.analytics-filter-grid,
+.analytics-drilldown-form,
+.analytics-comparison-controls {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--ops-space-3);
+  align-items: end;
+}
+
+.analytics-filter-grid label,
+.analytics-drilldown-form label,
+.analytics-comparison-controls label {
+  display: grid;
+  gap: var(--ops-space-2);
+  min-width: 0;
+}
+
+.analytics-filter-grid label span,
+.analytics-drilldown-form label span,
+.analytics-comparison-controls label span {
+  color: var(--ops-muted-strong);
+  font-family: var(--ops-font-mono);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.analytics-filter-grid input,
+.analytics-filter-grid select,
+.analytics-drilldown-form input,
+.analytics-comparison-controls select,
+.analytics-disabled-filters input {
+  width: 100%;
+  border: 1px solid var(--ops-line-soft);
+  border-radius: var(--ops-radius-sm);
+  padding: 11px 12px;
+  background: rgba(10, 10, 10, 0.58);
+  color: var(--ops-text);
+  font-family: var(--ops-font-mono);
+  font-size: 0.82rem;
+}
+
+.analytics-filter-grid input:focus,
+.analytics-filter-grid select:focus,
+.analytics-drilldown-form input:focus,
+.analytics-comparison-controls select:focus {
+  border-color: rgba(0, 221, 221, 0.5);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 221, 221, 0.12);
+}
+
+.analytics-disabled-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ops-space-2);
+  margin: 0;
+  border: 1px dashed rgba(233, 195, 73, 0.32);
+  border-radius: var(--ops-radius-sm);
+  padding: var(--ops-space-3);
+  background: rgba(233, 195, 73, 0.045);
+}
+
+.analytics-disabled-filters legend,
+.analytics-disabled-filters span {
+  color: var(--ops-secondary);
+  font-family: var(--ops-font-mono);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.analytics-disabled-filters span {
+  grid-column: 1 / -1;
+}
+
+.analytics-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: var(--ops-space-3);
+  align-items: center;
+}
+
+.analytics-filter-actions .ops-mono,
+.analytics-drilldown-form .ops-mono,
+.analytics-slow-query {
+  color: var(--ops-secondary);
+  font-size: 0.78rem;
+}
+
+.analytics-drilldown-form {
+  grid-template-columns: minmax(280px, 1fr) auto minmax(220px, 0.8fr);
+}
+
+.analytics-drilldown-results {
+  display: grid;
+  gap: var(--ops-space-4);
+}
+
+.analytics-comparison-controls {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  margin-bottom: var(--ops-space-4);
+}
+
+.analytics-comparison-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ops-space-4);
+}
+
+.analytics-comparison-card {
+  display: grid;
+  gap: var(--ops-space-4);
+  padding: var(--ops-space-4);
+  border: 1px solid var(--ops-line-soft);
+  border-left: 3px solid rgba(0, 221, 221, 0.62);
+  border-radius: var(--ops-radius);
+  background:
+    linear-gradient(90deg, rgba(0, 221, 221, 0.055), transparent 52%),
+    rgba(255, 255, 255, 0.035);
+}
+
+.analytics-comparison-card strong {
+  display: block;
+  margin-top: var(--ops-space-1);
+  color: var(--ops-text);
+  font-size: 1.05rem;
+}
+
+.analytics-comparison-card dl {
+  display: grid;
+  gap: var(--ops-space-2);
+  margin: 0;
+}
+
+.analytics-comparison-card dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--ops-space-3);
+  border-bottom: 1px solid var(--ops-line-soft);
+  padding-bottom: var(--ops-space-2);
+}
+
+.analytics-comparison-card dt {
+  color: var(--ops-muted);
+  font-family: var(--ops-font-mono);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.analytics-comparison-card dd {
+  margin: 0;
+  color: var(--ops-text);
+  font-family: var(--ops-font-mono);
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-align: right;
 }
 
 .analytics-empty-copy {
@@ -4669,6 +4892,15 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
+  .analytics-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analytics-drilldown-form,
+  .analytics-comparison-controls {
+    grid-template-columns: 1fr;
+  }
+
   .hero-performance-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -4829,6 +5061,21 @@ textarea:focus {
 
   .analytics-terminal-panel {
     padding: var(--ops-space-4);
+  }
+
+  .analytics-section-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: var(--ops-space-2);
+  }
+
+  .analytics-section-tabs button {
+    white-space: nowrap;
+  }
+
+  .analytics-filter-grid,
+  .analytics-comparison-cards {
+    grid-template-columns: 1fr;
   }
 
   .tournament-analytics-source {
