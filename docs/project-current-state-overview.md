@@ -86,6 +86,8 @@ frontend/src/
 
 Flyway migracije so v `backend/src/main/resources/db/migration/`. Mapa `supabase/` ni lastnik sheme; vsebuje Supabase konfiguracijo in rocni `post_flyway_hardening.sql`.
 
+Demo seed za local/dev/demo okolja je locen od Flyway migracij v `backend/src/main/resources/db/demo/`. Zagon je dokumentiran v `docs/backend-demo-seed.md` in gre prek `scripts/seed-demo.ps1 -ConfirmDemoSeed`, zato se ne izvaja samodejno v produkcijskem runtime-u.
+
 ## 4. Backend arhitektura
 
 ### Organizacija slojev
