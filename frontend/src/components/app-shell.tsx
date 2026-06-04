@@ -43,6 +43,7 @@ const navItems: Array<{
   { href: "/organizator", label: "Organizer", icon: Brackets, organizerOnly: true },
   { href: "/ekipe", label: "My Team", icon: UsersRound, hideForOrganizer: true },
   { href: "/analitika", label: "Analytics", icon: BarChart3 },
+  { href: "/draft-simulation", label: "Draft Simulation", icon: Swords },
   { href: "/profile", label: "Profile", icon: UserRound },
   { href: "/admin/audit", label: "Audit Log", icon: ScrollText, adminOnly: true }
 ];
@@ -53,6 +54,7 @@ const publicContentNavItems: Array<{
   label: string;
 }> = [
   { href: "/turnirji", label: "Tournaments", icon: Trophy },
+  { href: "/draft-simulation", label: "Draft Simulation", icon: Swords },
   { href: "/login", label: "Login", icon: LogIn },
   { href: "/register", label: "Register", icon: UserPlus }
 ];
