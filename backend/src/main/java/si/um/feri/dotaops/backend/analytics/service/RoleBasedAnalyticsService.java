@@ -77,7 +77,7 @@ public class RoleBasedAnalyticsService {
         return new PlayerAnalyticsResponse(
                 analyticsQueryService.protectedPlayerMetrics(filters),
                 analyticsQueryService.protectedHeroMetrics(filters),
-                List.of());
+                analyticsQueryService.recentMatchesForPlayer(profileId, filters, false));
     }
 
     @Transactional(readOnly = true)
@@ -105,7 +105,7 @@ public class RoleBasedAnalyticsService {
                             TeamResponse.from(team),
                             analyticsQueryService.protectedTeamMetrics(filters),
                             analyticsQueryService.protectedPlayerMetrics(filters),
-                            List.of());
+                            analyticsQueryService.recentMatchesForTeam(team.id(), filters, false));
                 })
                 .orElseGet(() -> {
                     if (requestedFilters.teamId() != null) {

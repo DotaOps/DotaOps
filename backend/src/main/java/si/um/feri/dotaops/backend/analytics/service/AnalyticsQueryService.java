@@ -148,6 +148,18 @@ public class AnalyticsQueryService {
     }
 
     @Transactional(readOnly = true)
+    public List<AnalyticsMatchHistoryResponse> recentMatchesForPlayer(
+            UUID profileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findRecentMatchesForPlayer(profileId, filters, publicOnly)
+                .stream()
+                .map(AnalyticsMatchHistoryResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<AnalyticsMatchHistoryResponse> recentMatchesForTeams(
             UUID firstTeamId,
             UUID secondTeamId,
@@ -155,6 +167,18 @@ public class AnalyticsQueryService {
             boolean publicOnly
     ) {
         return analyticsRepository.findRecentMatchesForTeams(firstTeamId, secondTeamId, filters, publicOnly)
+                .stream()
+                .map(AnalyticsMatchHistoryResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AnalyticsMatchHistoryResponse> recentMatchesForTeam(
+            UUID teamId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findRecentMatchesForTeam(teamId, filters, publicOnly)
                 .stream()
                 .map(AnalyticsMatchHistoryResponse::from)
                 .toList();

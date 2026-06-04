@@ -12,9 +12,11 @@ import org.springframework.security.access.AccessDeniedException;
 
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.repository.RoleBasedAnalyticsRepository;
+import si.um.feri.dotaops.backend.analytics.web.AnalyticsMatchHistoryResponse;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
+import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
 import si.um.feri.dotaops.backend.tournament.repository.TournamentRepository;
@@ -32,8 +34,13 @@ class RoleBasedAnalyticsServiceTest {
 
     private static final UUID AUTH_USER_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
     private static final UUID PROFILE_ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
+    private static final UUID TEAM_ID = UUID.fromString("33333333-3333-4333-8333-333333333333");
     private static final UUID TOURNAMENT_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
+    private static final UUID MATCH_ID = UUID.fromString("55555555-5555-4555-8555-555555555555");
+    private static final UUID MATCH_GAME_ID = UUID.fromString("66666666-6666-4666-8666-666666666666");
+    private static final UUID OPPONENT_TEAM_ID = UUID.fromString("77777777-7777-4777-8777-777777777777");
     private static final OffsetDateTime NOW = OffsetDateTime.parse("2026-05-12T00:00:00Z");
+    private static final OffsetDateTime PLAYED_AT = OffsetDateTime.parse("2026-05-11T18:30:00Z");
 
     private final AnalyticsQueryService analyticsQueryService = mock(AnalyticsQueryService.class);
     private final RoleBasedAnalyticsRepository roleBasedAnalyticsRepository = mock(RoleBasedAnalyticsRepository.class);
@@ -52,6 +59,8 @@ class RoleBasedAnalyticsServiceTest {
     @Test
     void playerAnalyticsAreScopedToCurrentProfileAndHaveStableEmptyHistory() {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.recentMatchesForPlayer(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of());
 
         var response = service.currentPlayerAnalytics(new AnalyticsFilters(
                 null,
@@ -68,9 +77,46 @@ class RoleBasedAnalyticsServiceTest {
         assertThat(filters.getValue().from()).isEqualTo(OffsetDateTime.parse("2026-05-01T00:00:00Z"));
         assertThat(filters.getValue().to()).isEqualTo(OffsetDateTime.parse("2026-06-01T00:00:00Z"));
         assertThat(filters.getValue().limit()).isEqualTo(25);
+        verify(analyticsQueryService).recentMatchesForPlayer(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false));
         assertThat(response.metrics()).isEmpty();
         assertThat(response.heroPerformance()).isEmpty();
         assertThat(response.matchHistory()).isEmpty();
+    }
+
+    @Test
+    void playerAnalyticsReturnRecentMatchHistoryWhenDataExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.recentMatchesForPlayer(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(matchHistory()));
+
+        var response = service.currentPlayerAnalytics(new AnalyticsFilters(
+                TOURNAMENT_ID,
+                TEAM_ID,
+                PROFILE_ID,
+                null,
+                OffsetDateTime.parse("2026-05-01T00:00:00Z"),
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                25));
+
+        ArgumentCaptor<AnalyticsFilters> filters = ArgumentCaptor.forClass(AnalyticsFilters.class);
+        verify(analyticsQueryService).recentMatchesForPlayer(eq(PROFILE_ID), filters.capture(), eq(false));
+        assertThat(filters.getValue().tournamentId()).isEqualTo(TOURNAMENT_ID);
+        assertThat(filters.getValue().teamId()).isEqualTo(TEAM_ID);
+        assertThat(filters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filters.getValue().limit()).isEqualTo(25);
+        assertThat(response.matchHistory()).singleElement().satisfies(match -> {
+            assertThat(match.matchId()).isEqualTo(MATCH_ID);
+            assertThat(match.matchGameId()).isEqualTo(MATCH_GAME_ID);
+            assertThat(match.dotaMatchId()).isEqualTo("7894561230");
+            assertThat(match.tournamentId()).isEqualTo(TOURNAMENT_ID);
+            assertThat(match.tournamentName()).isEqualTo("Mid Wars");
+            assertThat(match.playedAt()).isEqualTo(PLAYED_AT);
+            assertThat(match.teamAId()).isEqualTo(TEAM_ID);
+            assertThat(match.teamAName()).isEqualTo("Radiant Ops");
+            assertThat(match.teamBId()).isEqualTo(OPPONENT_TEAM_ID);
+            assertThat(match.teamBName()).isEqualTo("Dire Ops");
+            assertThat(match.winnerTeamId()).isEqualTo(TEAM_ID);
+        });
     }
 
     @Test
@@ -98,6 +144,56 @@ class RoleBasedAnalyticsServiceTest {
         assertThat(response.teamSummary()).isEmpty();
         assertThat(response.rosterPerformance()).isEmpty();
         assertThat(response.recentTeamMatches()).isEmpty();
+    }
+
+    @Test
+    void currentTeamAnalyticsReturnEmptyMatchHistoryWhenNoMatchDataExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(teamRepository.findCurrentTeamForProfile(PROFILE_ID)).thenReturn(Optional.of(team()));
+        when(analyticsQueryService.recentMatchesForTeam(eq(TEAM_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of());
+
+        var response = service.currentTeamAnalytics();
+
+        assertThat(response.team()).isNotNull();
+        assertThat(response.teamSummary()).isEmpty();
+        assertThat(response.rosterPerformance()).isEmpty();
+        assertThat(response.recentTeamMatches()).isEmpty();
+    }
+
+    @Test
+    void currentTeamAnalyticsReturnRecentMatchHistoryWhenDataExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(teamRepository.findCurrentTeamForProfile(PROFILE_ID)).thenReturn(Optional.of(team()));
+        when(analyticsQueryService.recentMatchesForTeam(eq(TEAM_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(matchHistory()));
+
+        var response = service.currentTeamAnalytics(new AnalyticsFilters(
+                TOURNAMENT_ID,
+                TEAM_ID,
+                PROFILE_ID,
+                null,
+                OffsetDateTime.parse("2026-05-01T00:00:00Z"),
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                25));
+
+        ArgumentCaptor<AnalyticsFilters> filters = ArgumentCaptor.forClass(AnalyticsFilters.class);
+        verify(analyticsQueryService).recentMatchesForTeam(eq(TEAM_ID), filters.capture(), eq(false));
+        assertThat(filters.getValue().tournamentId()).isEqualTo(TOURNAMENT_ID);
+        assertThat(filters.getValue().teamId()).isEqualTo(TEAM_ID);
+        assertThat(filters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filters.getValue().limit()).isEqualTo(25);
+        assertThat(response.recentTeamMatches()).singleElement().satisfies(match -> {
+            assertThat(match.matchId()).isEqualTo(MATCH_ID);
+            assertThat(match.matchGameId()).isEqualTo(MATCH_GAME_ID);
+            assertThat(match.dotaMatchId()).isEqualTo("7894561230");
+            assertThat(match.tournamentId()).isEqualTo(TOURNAMENT_ID);
+            assertThat(match.tournamentName()).isEqualTo("Mid Wars");
+            assertThat(match.playedAt()).isEqualTo(PLAYED_AT);
+            assertThat(match.teamAName()).isEqualTo("Radiant Ops");
+            assertThat(match.teamBName()).isEqualTo("Dire Ops");
+            assertThat(match.winnerTeamId()).isEqualTo(TEAM_ID);
+        });
     }
 
     @Test
@@ -156,6 +252,37 @@ class RoleBasedAnalyticsServiceTest {
 
     private AuthenticatedActor actor(ProfileRole role) {
         return new AuthenticatedActor(AUTH_USER_ID, PROFILE_ID, "profile@example.test", null, role);
+    }
+
+    private AnalyticsMatchHistoryResponse matchHistory() {
+        return new AnalyticsMatchHistoryResponse(
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                TOURNAMENT_ID,
+                "Mid Wars",
+                PLAYED_AT,
+                TEAM_ID,
+                "Radiant Ops",
+                OPPONENT_TEAM_ID,
+                "Dire Ops",
+                TEAM_ID);
+    }
+
+    private Team team() {
+        return new Team(
+                TEAM_ID,
+                "Radiant Ops",
+                "RAD",
+                "radiant-ops",
+                PROFILE_ID,
+                "Captain",
+                "EU",
+                null,
+                null,
+                AUTH_USER_ID,
+                NOW,
+                NOW);
     }
 
     private si.um.feri.dotaops.backend.tournament.domain.Tournament tournament() {

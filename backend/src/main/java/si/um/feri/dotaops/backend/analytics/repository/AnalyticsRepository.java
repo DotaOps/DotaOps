@@ -423,6 +423,31 @@ public class AnalyticsRepository {
                 parameters.toArray());
     }
 
+    public List<AnalyticsMatchHistory> findRecentMatchesForPlayer(
+            UUID profileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        AnalyticsFilters scopedFilters = new AnalyticsFilters(
+                filters.tournamentId(),
+                filters.teamId(),
+                null,
+                filters.heroId(),
+                filters.from(),
+                filters.to(),
+                filters.limit());
+        QueryParts queryParts = filteredWhere(scopedFilters, "mp", "m");
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(profileId);
+        parameters.addAll(queryParts.parameters());
+        parameters.add(scopedFilters.limit());
+
+        return jdbcTemplate.query(
+                recentMatchesSql("mp.profile_id = ?", "mp.profile_id", queryParts.sql(), publicOnly, 1),
+                this::mapMatchHistory,
+                parameters.toArray());
+    }
+
     public List<AnalyticsMatchHistory> findRecentMatchesForTeams(
             UUID firstTeamId,
             UUID secondTeamId,
@@ -446,6 +471,31 @@ public class AnalyticsRepository {
 
         return jdbcTemplate.query(
                 recentMatchesSql("mp.team_id in (?, ?)", "mp.team_id", queryParts.sql(), publicOnly),
+                this::mapMatchHistory,
+                parameters.toArray());
+    }
+
+    public List<AnalyticsMatchHistory> findRecentMatchesForTeam(
+            UUID teamId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        AnalyticsFilters scopedFilters = new AnalyticsFilters(
+                filters.tournamentId(),
+                null,
+                filters.profileId(),
+                filters.heroId(),
+                filters.from(),
+                filters.to(),
+                filters.limit());
+        QueryParts queryParts = filteredWhere(scopedFilters, "mp", "m");
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(teamId);
+        parameters.addAll(queryParts.parameters());
+        parameters.add(scopedFilters.limit());
+
+        return jdbcTemplate.query(
+                recentMatchesSql("mp.team_id = ?", "mp.team_id", queryParts.sql(), publicOnly, 1),
                 this::mapMatchHistory,
                 parameters.toArray());
     }
@@ -618,6 +668,16 @@ public class AnalyticsRepository {
             String filteredWhere,
             boolean publicOnly
     ) {
+        return recentMatchesSql(subjectCondition, subjectDistinctColumn, filteredWhere, publicOnly, 2);
+    }
+
+    private String recentMatchesSql(
+            String subjectCondition,
+            String subjectDistinctColumn,
+            String filteredWhere,
+            boolean publicOnly,
+            int requiredSubjectCount
+    ) {
         return """
                 select
                   m.id as match_id,
@@ -638,9 +698,9 @@ public class AnalyticsRepository {
                 join public.tournaments t on t.id = m.tournament_id
                 left join public.teams ta on ta.id = m.team_a_id
                 left join public.teams tb on tb.id = m.team_b_id
-                where """ + tournamentVisibilityCondition(publicOnly) + """
-                  and """ + subjectCondition + """
-                """ + filteredWhere + """
+                """ + "where " + tournamentVisibilityCondition(publicOnly).trim() + "\n"
+                + "  and " + subjectCondition + "\n"
+                + filteredWhere + """
                 group by
                   m.id,
                   mg.id,
@@ -661,8 +721,7 @@ public class AnalyticsRepository {
                   tb.name,
                   mg.winner_team_id,
                   m.winner_team_id
-                having count(distinct """ + subjectDistinctColumn + """
-                ) = 2
+                """ + "having count(distinct " + subjectDistinctColumn + ") = " + requiredSubjectCount + "\n" + """
                 order by played_at desc nulls last, m.id desc, mg.id desc nulls last
                 limit ?
                 """;

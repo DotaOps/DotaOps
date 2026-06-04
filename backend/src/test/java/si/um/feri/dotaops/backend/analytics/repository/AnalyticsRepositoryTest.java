@@ -74,6 +74,44 @@ class AnalyticsRepositoryTest {
         assertThat(jdbcTemplate.parameters).containsExactly(FROM, TO, 10);
     }
 
+    @Test
+    void protectedRecentPlayerMatchesUseSingleProfileSubjectAndBoundFilters() {
+        repository.findRecentMatchesForPlayer(
+                PROFILE_ID,
+                new AnalyticsFilters(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO, 25),
+                false);
+
+        assertThat(jdbcTemplate.sql).contains("where true");
+        assertThat(jdbcTemplate.sql).contains("and mp.profile_id = ?");
+        assertThat(jdbcTemplate.sql).contains("m.tournament_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.team_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.hero_id = ?");
+        assertThat(jdbcTemplate.sql).contains("having count(distinct mp.profile_id");
+        assertThat(jdbcTemplate.sql).contains(") = 1");
+        assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true", "raw_response", "normalized_payload", "raw_player");
+        assertThat(jdbcTemplate.parameters)
+                .containsExactly(PROFILE_ID, TOURNAMENT_ID, TEAM_ID, HERO_ID, FROM, TO, 25);
+    }
+
+    @Test
+    void protectedRecentTeamMatchesUseSingleTeamSubjectAndBoundFilters() {
+        repository.findRecentMatchesForTeam(
+                TEAM_ID,
+                new AnalyticsFilters(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO, 25),
+                false);
+
+        assertThat(jdbcTemplate.sql).contains("where true");
+        assertThat(jdbcTemplate.sql).contains("and mp.team_id = ?");
+        assertThat(jdbcTemplate.sql).contains("m.tournament_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.profile_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.hero_id = ?");
+        assertThat(jdbcTemplate.sql).contains("having count(distinct mp.team_id");
+        assertThat(jdbcTemplate.sql).contains(") = 1");
+        assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true", "raw_response", "normalized_payload", "raw_player");
+        assertThat(jdbcTemplate.parameters)
+                .containsExactly(TEAM_ID, TOURNAMENT_ID, PROFILE_ID, HERO_ID, FROM, TO, 25);
+    }
+
     private static class CapturingJdbcTemplate extends JdbcTemplate {
 
         private String sql;
