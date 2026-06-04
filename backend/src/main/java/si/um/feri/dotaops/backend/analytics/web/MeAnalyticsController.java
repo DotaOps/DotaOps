@@ -1,6 +1,7 @@
 package si.um.feri.dotaops.backend.analytics.web;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.constraints.Max;
@@ -45,6 +46,36 @@ public class MeAnalyticsController {
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit
     ) {
         return ApiResponse.of(roleBasedAnalyticsService.currentPlayerAnalytics(filters(
+                tournamentId,
+                tournamentIdSnake,
+                teamId,
+                teamIdSnake,
+                profileId,
+                profileIdSnake,
+                heroId,
+                heroIdSnake,
+                from,
+                to,
+                limit)));
+    }
+
+    @GetMapping("/analytics/progress")
+    ApiResponse<List<PlayerProgressPointResponse>> currentPlayerProgress(
+            @RequestParam(required = false) UUID tournamentId,
+            @RequestParam(name = "tournament_id", required = false) UUID tournamentIdSnake,
+            @RequestParam(required = false) UUID teamId,
+            @RequestParam(name = "team_id", required = false) UUID teamIdSnake,
+            @RequestParam(required = false) UUID profileId,
+            @RequestParam(name = "profile_id", required = false) UUID profileIdSnake,
+            @RequestParam(required = false) UUID heroId,
+            @RequestParam(name = "hero_id", required = false) UUID heroIdSnake,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime to,
+            @RequestParam(defaultValue = "25") @Min(1) @Max(100) int limit
+    ) {
+        return ApiResponse.of(roleBasedAnalyticsService.currentPlayerProgress(filters(
                 tournamentId,
                 tournamentIdSnake,
                 teamId,

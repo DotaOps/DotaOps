@@ -13,6 +13,7 @@ import org.springframework.security.access.AccessDeniedException;
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.repository.RoleBasedAnalyticsRepository;
 import si.um.feri.dotaops.backend.analytics.web.AnalyticsMatchHistoryResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerProgressPointResponse;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
@@ -39,6 +40,7 @@ class RoleBasedAnalyticsServiceTest {
     private static final UUID MATCH_ID = UUID.fromString("55555555-5555-4555-8555-555555555555");
     private static final UUID MATCH_GAME_ID = UUID.fromString("66666666-6666-4666-8666-666666666666");
     private static final UUID OPPONENT_TEAM_ID = UUID.fromString("77777777-7777-4777-8777-777777777777");
+    private static final UUID HERO_ID = UUID.fromString("88888888-8888-4888-8888-888888888888");
     private static final OffsetDateTime NOW = OffsetDateTime.parse("2026-05-12T00:00:00Z");
     private static final OffsetDateTime PLAYED_AT = OffsetDateTime.parse("2026-05-11T18:30:00Z");
 
@@ -124,6 +126,77 @@ class RoleBasedAnalyticsServiceTest {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
 
         assertThatThrownBy(() -> service.currentPlayerAnalytics(new AnalyticsFilters(
+                null,
+                null,
+                UUID.fromString("99999999-9999-4999-8999-999999999999"),
+                null,
+                10)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Players can only view their own private analytics.");
+    }
+
+    @Test
+    void currentPlayerProgressScopesToCurrentProfileAndReturnsProgressRows() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(progressPoint()));
+
+        var response = service.currentPlayerProgress(new AnalyticsFilters(
+                TOURNAMENT_ID,
+                TEAM_ID,
+                PROFILE_ID,
+                HERO_ID,
+                OffsetDateTime.parse("2026-05-01T00:00:00Z"),
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                25));
+
+        ArgumentCaptor<AnalyticsFilters> filters = ArgumentCaptor.forClass(AnalyticsFilters.class);
+        verify(analyticsQueryService).playerProgress(eq(PROFILE_ID), filters.capture(), eq(false));
+        assertThat(filters.getValue().tournamentId()).isEqualTo(TOURNAMENT_ID);
+        assertThat(filters.getValue().teamId()).isEqualTo(TEAM_ID);
+        assertThat(filters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filters.getValue().heroId()).isEqualTo(HERO_ID);
+        assertThat(filters.getValue().limit()).isEqualTo(25);
+        assertThat(response).singleElement().satisfies(point -> {
+            assertThat(point.playedAt()).isEqualTo(PLAYED_AT);
+            assertThat(point.matchId()).isEqualTo(MATCH_ID);
+            assertThat(point.matchGameId()).isEqualTo(MATCH_GAME_ID);
+            assertThat(point.dotaMatchId()).isEqualTo("7894561230");
+            assertThat(point.heroId()).isEqualTo(HERO_ID);
+            assertThat(point.dotaHeroId()).isEqualTo(1);
+            assertThat(point.heroName()).isEqualTo("Anti-Mage");
+            assertThat(point.kills()).isEqualTo(12);
+            assertThat(point.deaths()).isEqualTo(3);
+            assertThat(point.assists()).isEqualTo(14);
+            assertThat(point.kda()).isEqualByComparingTo("8.67");
+            assertThat(point.goldPerMin()).isEqualTo(640);
+            assertThat(point.xpPerMin()).isEqualTo(720);
+            assertThat(point.heroDamage()).isEqualTo(28000);
+            assertThat(point.towerDamage()).isEqualTo(5400);
+            assertThat(point.heroHealing()).isEqualTo(0);
+            assertThat(point.lastHits()).isEqualTo(320);
+            assertThat(point.denies()).isEqualTo(12);
+            assertThat(point.won()).isTrue();
+        });
+    }
+
+    @Test
+    void currentPlayerProgressReturnsEmptyListWhenNoMatchDataExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of());
+
+        var response = service.currentPlayerProgress(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        verify(analyticsQueryService).playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false));
+        assertThat(response).isEmpty();
+    }
+
+    @Test
+    void currentPlayerProgressRejectsAnotherProfileFilter() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> service.currentPlayerProgress(new AnalyticsFilters(
                 null,
                 null,
                 UUID.fromString("99999999-9999-4999-8999-999999999999"),
@@ -267,6 +340,29 @@ class RoleBasedAnalyticsServiceTest {
                 OPPONENT_TEAM_ID,
                 "Dire Ops",
                 TEAM_ID);
+    }
+
+    private PlayerProgressPointResponse progressPoint() {
+        return new PlayerProgressPointResponse(
+                PLAYED_AT,
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                HERO_ID,
+                1,
+                "Anti-Mage",
+                12,
+                3,
+                14,
+                new BigDecimal("8.67"),
+                640,
+                720,
+                28000,
+                5400,
+                0,
+                320,
+                12,
+                true);
     }
 
     private Team team() {

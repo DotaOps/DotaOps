@@ -133,6 +133,28 @@ export interface AnalyticsMatchHistory {
   winnerTeamId: string | null;
 }
 
+export interface PlayerProgressPoint {
+  assists: number;
+  deaths: number;
+  denies: number | null;
+  dotaHeroId: number | null;
+  dotaMatchId: string | null;
+  goldPerMin: number | null;
+  heroDamage: number | null;
+  heroHealing: number | null;
+  heroId: string | null;
+  heroName: string | null;
+  kda: number;
+  kills: number;
+  lastHits: number | null;
+  matchGameId: string | null;
+  matchId: string | null;
+  playedAt: string | null;
+  towerDamage: number | null;
+  won: boolean | null;
+  xpPerMin: number | null;
+}
+
 export interface RoleAnalyticsTeam {
   captainNickname: string | null;
   captainProfileId: string | null;
@@ -146,6 +168,7 @@ export interface PlayerAnalyticsResponse {
   heroPerformance: HeroAnalyticsMetric[];
   matchHistory: AnalyticsMatchHistory[];
   metrics: PlayerAnalyticsMetric[];
+  progress: PlayerProgressPoint[];
 }
 
 export interface CurrentTeamAnalyticsResponse {
@@ -325,6 +348,10 @@ function nullableNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function nullableBoolean(value: unknown) {
+  return typeof value === "boolean" ? value : null;
+}
+
 function setStringParam(params: URLSearchParams, key: string, value?: string | null) {
   const cleanValue = value?.trim();
 
@@ -501,6 +528,32 @@ function mapMatchHistory(value: unknown): AnalyticsMatchHistory {
   };
 }
 
+function mapPlayerProgressPoint(value: unknown): PlayerProgressPoint {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    assists: numberValue(item.assists),
+    deaths: numberValue(item.deaths),
+    denies: nullableNumber(item.denies),
+    dotaHeroId: nullableNumber(item.dotaHeroId),
+    dotaMatchId: nullableText(item.dotaMatchId),
+    goldPerMin: nullableNumber(item.goldPerMin),
+    heroDamage: nullableNumber(item.heroDamage),
+    heroHealing: nullableNumber(item.heroHealing),
+    heroId: nullableText(item.heroId),
+    heroName: nullableText(item.heroName),
+    kda: numberValue(item.kda),
+    kills: numberValue(item.kills),
+    lastHits: nullableNumber(item.lastHits),
+    matchGameId: nullableText(item.matchGameId),
+    matchId: nullableText(item.matchId),
+    playedAt: nullableText(item.playedAt),
+    towerDamage: nullableNumber(item.towerDamage),
+    won: nullableBoolean(item.won),
+    xpPerMin: nullableNumber(item.xpPerMin)
+  };
+}
+
 function mapOrganizerTournamentLookup(value: unknown): OrganizerTournamentLookup {
   const item = isRecord(value) ? value : {};
 
@@ -582,7 +635,8 @@ function mapPlayerAnalyticsResponse(value: unknown): PlayerAnalyticsResponse {
   return {
     heroPerformance: (arrayPayload(item.heroPerformance) ?? []).map(mapHero),
     matchHistory: (arrayPayload(item.matchHistory) ?? []).map(mapMatchHistory),
-    metrics: (arrayPayload(item.metrics) ?? []).map(mapPlayer)
+    metrics: (arrayPayload(item.metrics) ?? []).map(mapPlayer),
+    progress: (arrayPayload(item.progress) ?? []).map(mapPlayerProgressPoint)
   };
 }
 
@@ -722,8 +776,23 @@ export async function getPublicAnalyticsSnapshot(filters?: AnalyticsFilters): Pr
   };
 }
 
+export async function getMyPlayerProgress(filters?: AnalyticsFilters) {
+  return analyticsArrayPayload(
+    await getApiAuthenticated<unknown>(`/me/analytics/progress${queryString(filters)}`),
+    "player progress"
+  ).map(mapPlayerProgressPoint);
+}
+
 export async function getMyPlayerAnalytics(filters?: AnalyticsFilters) {
-  return mapPlayerAnalyticsResponse(await getApiAuthenticated<unknown>(`/me/analytics${queryString(filters)}`));
+  const [analytics, progress] = await Promise.all([
+    getApiAuthenticated<unknown>(`/me/analytics${queryString(filters)}`),
+    getMyPlayerProgress(filters)
+  ]);
+
+  return {
+    ...mapPlayerAnalyticsResponse(analytics),
+    progress
+  };
 }
 
 export async function getMyTeamAnalytics(filters?: AnalyticsFilters) {

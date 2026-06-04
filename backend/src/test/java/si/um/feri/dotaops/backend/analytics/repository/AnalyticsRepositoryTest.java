@@ -149,6 +149,33 @@ class AnalyticsRepositoryTest {
                 .containsExactly(TEAM_ID, OTHER_TEAM_ID, TOURNAMENT_ID, PROFILE_ID, HERO_ID, FROM, TO, 25);
     }
 
+    @Test
+    void protectedPlayerProgressUsesCurrentProfileFiltersAndChronologicalRecentRows() {
+        repository.findPlayerProgress(
+                PROFILE_ID,
+                new AnalyticsFilters(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO, 25),
+                false);
+
+        assertThat(jdbcTemplate.sql).contains("where true");
+        assertThat(jdbcTemplate.sql).contains("mp.profile_id = ?");
+        assertThat(jdbcTemplate.sql).contains("m.tournament_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.team_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.hero_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.gold_per_min");
+        assertThat(jdbcTemplate.sql).contains("mp.xp_per_min");
+        assertThat(jdbcTemplate.sql).contains("mp.hero_damage");
+        assertThat(jdbcTemplate.sql).contains("mp.tower_damage");
+        assertThat(jdbcTemplate.sql).contains("mp.hero_healing");
+        assertThat(jdbcTemplate.sql).contains("mp.last_hits");
+        assertThat(jdbcTemplate.sql).contains("mp.denies");
+        assertThat(jdbcTemplate.sql).contains("mp.is_winner as won");
+        assertThat(jdbcTemplate.sql).contains("order by played_at desc nulls last");
+        assertThat(jdbcTemplate.sql).contains("order by played_at asc nulls last");
+        assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true", "raw_response", "normalized_payload", "raw_player");
+        assertThat(jdbcTemplate.parameters)
+                .containsExactly(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO, 25);
+    }
+
     private void assertLiveNormalizedAnalyticsQuery() {
         assertThat(jdbcTemplate.sql).contains("from public.match_players mp");
         assertThat(jdbcTemplate.sql).contains("join public.matches m");

@@ -44,6 +44,7 @@ import {
   type PlayerComparisonResponse,
   type PlayerAnalyticsMetric,
   type PlayerAnalyticsResponse,
+  type PlayerProgressPoint,
   type RecentImportMetric,
   type TeamComparisonResponse,
   type TeamLookup,
@@ -197,6 +198,18 @@ function matchWinnerLabel(match: AnalyticsMatchHistory) {
   }
 
   return `Winner: ${match.winnerTeamId}`;
+}
+
+function progressResultLabel(point: PlayerProgressPoint) {
+  if (point.won === true) {
+    return "Win";
+  }
+
+  if (point.won === false) {
+    return "Loss";
+  }
+
+  return "Result unavailable";
 }
 
 function average(values: number[]) {
@@ -802,6 +815,14 @@ function PlayerRoleAnalyticsPanel({
               description="Imported OpenDota matches connected to your player profile."
             />
             <MatchHistoryList emptyText="No analyzed personal matches yet." matches={personal.matchHistory} />
+          </div>
+          <div className="analytics-terminal-panel analytics-data-panel ops-panel">
+            <SectionHeader
+              eyebrow="Progress trend"
+              title="Recent Progress"
+              description="Chronological match-by-match progress for your current player profile."
+            />
+            <PlayerProgressTable progress={personal.progress} />
           </div>
         </section>
       </section>
@@ -2201,6 +2222,61 @@ function MatchHistoryList({
               <td>
                 <strong>{match.matchGameId ?? "No game ID"}</strong>
                 <span>{match.matchId ?? "No match ID"}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PlayerProgressTable({ progress }: { progress: PlayerProgressPoint[] }) {
+  if (progress.length === 0) {
+    return (
+      <AnalyticsEmptyBlock
+        title="No progress data yet."
+        detail="Progress rows will appear after imported matches link to your player profile."
+      />
+    );
+  }
+
+  return (
+    <div className="analytics-real-table-wrap">
+      <table className="analytics-real-table">
+        <thead>
+          <tr>
+            <th>Played</th>
+            <th>Hero</th>
+            <th>Result</th>
+            <th>KDA</th>
+            <th>Economy</th>
+            <th>Impact</th>
+          </tr>
+        </thead>
+        <tbody>
+          {progress.map((point, index) => (
+            <tr key={`${point.matchId ?? "match"}-${point.matchGameId ?? index}`}>
+              <td>
+                <strong>{formatAnalyticsDateTime(point.playedAt)}</strong>
+                <span>{point.dotaMatchId ? `Dota ${point.dotaMatchId}` : point.matchId ?? "Match ID unavailable"}</span>
+              </td>
+              <td>
+                <strong>{point.heroName ?? "Hero unavailable"}</strong>
+                <span>{point.heroId ?? "Hero ID unavailable"}</span>
+              </td>
+              <td>
+                <strong>{progressResultLabel(point)}</strong>
+                <span>{point.kills}-{point.deaths}-{point.assists}</span>
+              </td>
+              <td>{point.kda.toFixed(2)}</td>
+              <td>
+                <strong>{countMetricValue(point.goldPerMin)} / {countMetricValue(point.xpPerMin)}</strong>
+                <span>LH/DN {countMetricValue(point.lastHits)} / {countMetricValue(point.denies)}</span>
+              </td>
+              <td>
+                <strong>{countMetricValue(point.heroDamage)} hero / {countMetricValue(point.towerDamage)} tower</strong>
+                <span>Healing {countMetricValue(point.heroHealing)}</span>
               </td>
             </tr>
           ))}

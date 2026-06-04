@@ -11,6 +11,7 @@ import si.um.feri.dotaops.backend.analytics.repository.AnalyticsRepository;
 import si.um.feri.dotaops.backend.analytics.web.AnalyticsMatchHistoryResponse;
 import si.um.feri.dotaops.backend.analytics.web.HeroMetricsResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerMetricsResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerProgressPointResponse;
 import si.um.feri.dotaops.backend.analytics.web.TeamMetricsResponse;
 import si.um.feri.dotaops.backend.analytics.web.TournamentMetricsResponse;
 import si.um.feri.dotaops.backend.common.error.ResourceNotFoundException;
@@ -169,6 +170,18 @@ public class AnalyticsQueryService {
         return analyticsRepository.findRecentMatchesForPlayer(profileId, filters, publicOnly)
                 .stream()
                 .map(AnalyticsMatchHistoryResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlayerProgressPointResponse> playerProgress(
+            UUID profileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findPlayerProgress(profileId, filters, publicOnly)
+                .stream()
+                .map(PlayerProgressPointResponse::from)
                 .toList();
     }
 

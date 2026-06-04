@@ -13,6 +13,7 @@ import si.um.feri.dotaops.backend.analytics.web.CurrentTeamAnalyticsResponse;
 import si.um.feri.dotaops.backend.analytics.web.OrganizerAnalyticsResponse;
 import si.um.feri.dotaops.backend.analytics.web.OrganizerTournamentAnalyticsResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerAnalyticsResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerProgressPointResponse;
 import si.um.feri.dotaops.backend.analytics.web.RecentImportResponse;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
@@ -78,6 +79,25 @@ public class RoleBasedAnalyticsService {
                 analyticsQueryService.protectedPlayerMetrics(filters),
                 analyticsQueryService.protectedHeroMetrics(filters),
                 analyticsQueryService.recentMatchesForPlayer(profileId, filters, false));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlayerProgressPointResponse> currentPlayerProgress(AnalyticsFilters requestedFilters) {
+        AuthenticatedActor actor = requirePlayer();
+        UUID profileId = actor.requireProfileId();
+        if (requestedFilters.profileId() != null && !requestedFilters.profileId().equals(profileId)) {
+            throw new AccessDeniedException("Players can only view their own private analytics.");
+        }
+        AnalyticsFilters filters = new AnalyticsFilters(
+                requestedFilters.tournamentId(),
+                requestedFilters.teamId(),
+                profileId,
+                requestedFilters.heroId(),
+                requestedFilters.from(),
+                requestedFilters.to(),
+                requestedFilters.limit());
+
+        return analyticsQueryService.playerProgress(profileId, filters, false);
     }
 
     @Transactional(readOnly = true)

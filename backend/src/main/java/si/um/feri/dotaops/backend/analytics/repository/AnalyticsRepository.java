@@ -17,6 +17,7 @@ import si.um.feri.dotaops.backend.analytics.domain.AnalyticsMatchHistory;
 import si.um.feri.dotaops.backend.analytics.domain.HeroMetrics;
 import si.um.feri.dotaops.backend.analytics.domain.PickedHeroMetrics;
 import si.um.feri.dotaops.backend.analytics.domain.PlayerMetrics;
+import si.um.feri.dotaops.backend.analytics.domain.PlayerProgressPoint;
 import si.um.feri.dotaops.backend.analytics.domain.TeamMetrics;
 import si.um.feri.dotaops.backend.analytics.domain.TournamentMetrics;
 
@@ -513,6 +514,59 @@ public class AnalyticsRepository {
                 parameters.toArray());
     }
 
+    public List<PlayerProgressPoint> findPlayerProgress(
+            UUID profileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        AnalyticsFilters scopedFilters = filters.withProfileId(profileId);
+        QueryParts queryParts = filteredWhere(scopedFilters, "mp", "m");
+        List<Object> parameters = new ArrayList<>(queryParts.parameters());
+        parameters.add(scopedFilters.limit());
+
+        return jdbcTemplate.query(
+                """
+                select *
+                from (
+                  select
+                    """ + analyticsTimestampExpression("mg", "m") + """
+                      as played_at,
+                    m.id as match_id,
+                    mg.id as match_game_id,
+                    coalesce(mg.dota_match_id, m.dota_match_id) as dota_match_id,
+                    h.id as hero_id,
+                    coalesce(mp.dota_hero_id, h.dota_hero_id) as dota_hero_id,
+                    coalesce(h.localized_name, h.name) as hero_name,
+                    coalesce(mp.kills, 0)::integer as kills,
+                    coalesce(mp.deaths, 0)::integer as deaths,
+                    coalesce(mp.assists, 0)::integer as assists,
+                    round((coalesce(mp.kills, 0) + coalesce(mp.assists, 0))::numeric
+                      / greatest(coalesce(mp.deaths, 0), 1), 2) as kda,
+                    mp.gold_per_min,
+                    mp.xp_per_min,
+                    mp.hero_damage,
+                    mp.tower_damage,
+                    mp.hero_healing,
+                    mp.last_hits,
+                    mp.denies,
+                    mp.is_winner as won
+                  from public.match_players mp
+                  left join public.match_games mg on mg.id = mp.match_game_id
+                  join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
+                  join public.tournaments t on t.id = m.tournament_id
+                  left join public.heroes h on h.id = mp.hero_id
+                  where """ + tournamentVisibilityCondition(publicOnly) + """
+                    and mp.profile_id is not null
+                """ + queryParts.sql() + """
+                  order by played_at desc nulls last, match_id desc, match_game_id desc nulls last
+                  limit ?
+                ) progress
+                order by played_at asc nulls last, match_id asc, match_game_id asc nulls last
+                """,
+                this::mapPlayerProgressPoint,
+                parameters.toArray());
+    }
+
     public List<AnalyticsMatchHistory> findRecentMatchesForTeams(
             UUID firstTeamId,
             UUID secondTeamId,
@@ -957,6 +1011,29 @@ public class AnalyticsRepository {
                 resultSet.getObject("team_b_id", UUID.class),
                 resultSet.getString("team_b_name"),
                 resultSet.getObject("winner_team_id", UUID.class));
+    }
+
+    private PlayerProgressPoint mapPlayerProgressPoint(ResultSet resultSet, int rowNumber) throws SQLException {
+        return new PlayerProgressPoint(
+                resultSet.getObject("played_at", OffsetDateTime.class),
+                resultSet.getObject("match_id", UUID.class),
+                resultSet.getObject("match_game_id", UUID.class),
+                resultSet.getString("dota_match_id"),
+                resultSet.getObject("hero_id", UUID.class),
+                resultSet.getObject("dota_hero_id", Integer.class),
+                resultSet.getString("hero_name"),
+                resultSet.getInt("kills"),
+                resultSet.getInt("deaths"),
+                resultSet.getInt("assists"),
+                decimal(resultSet, "kda"),
+                resultSet.getObject("gold_per_min", Integer.class),
+                resultSet.getObject("xp_per_min", Integer.class),
+                resultSet.getObject("hero_damage", Integer.class),
+                resultSet.getObject("tower_damage", Integer.class),
+                resultSet.getObject("hero_healing", Integer.class),
+                resultSet.getObject("last_hits", Integer.class),
+                resultSet.getObject("denies", Integer.class),
+                resultSet.getObject("won", Boolean.class));
     }
 
     private BigDecimal decimal(ResultSet resultSet, String column) throws SQLException {

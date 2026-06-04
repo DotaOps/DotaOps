@@ -145,6 +145,13 @@ class SecurityConfigTest {
     }
 
     @Test
+    void playerProgressAnalyticsRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/me/analytics/progress"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
     void comparisonAnalyticsRequiresAuthenticationBeforePublicAnalyticsMatcher() throws Exception {
         mockMvc.perform(get("/api/analytics/compare/teams")
                         .queryParam("teamAId", "11111111-1111-4111-8111-111111111111")
@@ -208,6 +215,14 @@ class SecurityConfigTest {
     @Test
     void organizerCannotUsePlayerAnalyticsEndpoint() throws Exception {
         mockMvc.perform(get("/api/me/analytics")
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void organizerCannotUsePlayerProgressAnalyticsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/me/analytics/progress")
                         .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
