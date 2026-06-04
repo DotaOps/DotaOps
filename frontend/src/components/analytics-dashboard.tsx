@@ -164,6 +164,41 @@ function safeMetricNumber(value: number | null | undefined, digits = 1) {
     : "No data";
 }
 
+function formatAnalyticsDateTime(value: string | null) {
+  if (!value) {
+    return "Played time unavailable";
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+}
+
+function matchTeamName(name: string | null, fallback: string) {
+  return name?.trim() || fallback;
+}
+
+function matchTeamsLabel(match: AnalyticsMatchHistory) {
+  return `${matchTeamName(match.teamAName, "Team A unavailable")} vs ${matchTeamName(match.teamBName, "Team B unavailable")}`;
+}
+
+function matchWinnerLabel(match: AnalyticsMatchHistory) {
+  if (!match.winnerTeamId) {
+    return "Winner unavailable";
+  }
+
+  if (match.teamAId === match.winnerTeamId) {
+    return `${matchTeamName(match.teamAName, "Team A")} won`;
+  }
+
+  if (match.teamBId === match.winnerTeamId) {
+    return `${matchTeamName(match.teamBName, "Team B")} won`;
+  }
+
+  return `Winner: ${match.winnerTeamId}`;
+}
+
 function average(values: number[]) {
   const usable = values.filter((value) => Number.isFinite(value) && value > 0);
 
@@ -1133,7 +1168,7 @@ function AdvancedAnalyticsFilters({
       <SectionHeader
         eyebrow="Advanced analytics filters"
         title="Analytics Filters"
-        description="Filter analytics by tournament, team, player, hero, and time range."
+        description="Filter public metrics and role-based analytics by tournament, team, player, hero, and time range."
       />
       {lookupError ? <AnalyticsEmptyBlock title="Lookup data unavailable." detail={lookupError} /> : null}
       {isLoadingLookups ? <p className="analytics-slow-query">Loading filter options...</p> : null}
@@ -1253,16 +1288,6 @@ function AdvancedAnalyticsFilters({
           />
           <span>Optional backend time filter</span>
         </fieldset>
-        <label>
-          <span>Advanced Tournament ID</span>
-          <input
-            autoComplete="off"
-            placeholder="UUID fallback"
-            type="text"
-            value={draft.tournamentId}
-            onChange={(event) => updateField("tournamentId", event.target.value)}
-          />
-        </label>
         <div className="analytics-filter-actions">
           <button className="button ops-button-primary" type="submit">
             <Filter size={16} />
@@ -1506,7 +1531,7 @@ function PublicAggregatePanel({
         <SectionHeader
           eyebrow="Public analytics aggregate"
           title="Read-only Public Metrics"
-          description="These panels use public aggregate backend endpoints. Advanced filters apply only to this tab."
+          description="These panels use public aggregate backend endpoints and the same applied filters as the analytics workspace."
         />
         {publicAggregateError ? (
           <AnalyticsEmptyBlock title="Public aggregate unavailable." detail={publicAggregateError} />
@@ -2153,7 +2178,8 @@ function MatchHistoryList({
         <thead>
           <tr>
             <th>Dota Match ID</th>
-            <th>Match</th>
+            <th>Tournament</th>
+            <th>Teams</th>
             <th>Game</th>
           </tr>
         </thead>
@@ -2164,8 +2190,18 @@ function MatchHistoryList({
                 <strong>{match.dotaMatchId ?? "No data"}</strong>
                 <span>Backend match history</span>
               </td>
-              <td>{match.matchId ?? "No data"}</td>
-              <td>{match.matchGameId ?? "No data"}</td>
+              <td>
+                <strong>{match.tournamentName ?? "Tournament unavailable"}</strong>
+                <span>{formatAnalyticsDateTime(match.playedAt)}</span>
+              </td>
+              <td>
+                <strong>{matchTeamsLabel(match)}</strong>
+                <span>{matchWinnerLabel(match)}</span>
+              </td>
+              <td>
+                <strong>{match.matchGameId ?? "No game ID"}</strong>
+                <span>{match.matchId ?? "No match ID"}</span>
+              </td>
             </tr>
           ))}
         </tbody>
