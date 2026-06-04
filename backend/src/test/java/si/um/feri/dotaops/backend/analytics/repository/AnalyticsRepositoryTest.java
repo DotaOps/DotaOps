@@ -16,6 +16,7 @@ class AnalyticsRepositoryTest {
 
     private static final UUID TOURNAMENT_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
     private static final UUID TEAM_ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
+    private static final UUID OTHER_TEAM_ID = UUID.fromString("55555555-5555-4555-8555-555555555555");
     private static final UUID PROFILE_ID = UUID.fromString("33333333-3333-4333-8333-333333333333");
     private static final UUID HERO_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
     private static final OffsetDateTime FROM = OffsetDateTime.parse("2026-05-01T00:00:00Z");
@@ -110,6 +111,25 @@ class AnalyticsRepositoryTest {
         assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true", "raw_response", "normalized_payload", "raw_player");
         assertThat(jdbcTemplate.parameters)
                 .containsExactly(TEAM_ID, TOURNAMENT_ID, PROFILE_ID, HERO_ID, FROM, TO, 25);
+    }
+
+    @Test
+    void protectedComparedTeamHeroMetricsUseSelectedTeamsAndBoundFilters() {
+        repository.findHeroMetricsForTeams(
+                TEAM_ID,
+                OTHER_TEAM_ID,
+                new AnalyticsFilters(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO, 25),
+                false);
+
+        assertThat(jdbcTemplate.sql).contains("where true");
+        assertThat(jdbcTemplate.sql).contains("and mp.team_id in (?, ?)");
+        assertThat(jdbcTemplate.sql).contains("m.tournament_id = ?");
+        assertThat(jdbcTemplate.sql).doesNotContain("mp.team_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.profile_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.hero_id = ?");
+        assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true", "raw_response", "normalized_payload", "raw_player");
+        assertThat(jdbcTemplate.parameters)
+                .containsExactly(TEAM_ID, OTHER_TEAM_ID, TOURNAMENT_ID, PROFILE_ID, HERO_ID, FROM, TO, 25);
     }
 
     private static class CapturingJdbcTemplate extends JdbcTemplate {

@@ -1836,6 +1836,30 @@ function PlayerRosterComparison({
               subtitle: rightPlayer.teamName ?? "Selected player"
             }}
           />
+          {comparison.profileAHeroPerformance.length > 0 || comparison.profileBHeroPerformance.length > 0 ? (
+            <section className="analytics-terminal-grid analytics-terminal-grid-secondary">
+              {comparison.profileAHeroPerformance.length > 0 ? (
+                <div className="analytics-terminal-panel analytics-data-panel ops-panel">
+                  <SectionHeader
+                    eyebrow="Hero performance"
+                    title={`${leftPlayer.displayName} Heroes`}
+                    description="Hero performance returned for the first compared player."
+                  />
+                  <HeroMatrix heroes={comparison.profileAHeroPerformance} />
+                </div>
+              ) : null}
+              {comparison.profileBHeroPerformance.length > 0 ? (
+                <div className="analytics-terminal-panel analytics-data-panel ops-panel">
+                  <SectionHeader
+                    eyebrow="Hero performance"
+                    title={`${rightPlayer.displayName} Heroes`}
+                    description="Hero performance returned for the second compared player."
+                  />
+                  <HeroMatrix heroes={comparison.profileBHeroPerformance} />
+                </div>
+              ) : null}
+            </section>
+          ) : null}
           <section className="analytics-terminal-grid analytics-terminal-grid-secondary">
             <div className="analytics-terminal-panel analytics-data-panel ops-panel">
               <SectionHeader
@@ -2002,6 +2026,16 @@ function TeamComparisonPanel({
               subtitle: rightTeam.tournamentName ?? "Selected tournament"
             }}
           />
+          {comparison.heroMetrics.length > 0 ? (
+            <section className="analytics-terminal-panel analytics-data-panel ops-panel">
+              <SectionHeader
+                eyebrow="Hero metrics"
+                title="Compared Team Hero Pool"
+                description="Hero performance returned for the selected team comparison."
+              />
+              <HeroMatrix heroes={comparison.heroMetrics} />
+            </section>
+          ) : null}
           <section className="analytics-terminal-panel analytics-data-panel ops-panel">
             <SectionHeader
               eyebrow="Recent matches"

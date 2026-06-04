@@ -75,7 +75,7 @@ public class AnalyticsComparisonService {
                 teamA,
                 teamB,
                 Stream.of(teamA, teamB).filter(Objects::nonNull).toList(),
-                List.of(),
+                analyticsQueryService.heroMetricsForTeams(teamAId, teamBId, filters, access.publicOnly()),
                 analyticsQueryService.recentMatchesForTeams(teamAId, teamBId, filters, access.publicOnly()));
     }
 

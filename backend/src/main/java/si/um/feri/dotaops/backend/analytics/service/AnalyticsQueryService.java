@@ -93,6 +93,19 @@ public class AnalyticsQueryService {
     }
 
     @Transactional(readOnly = true)
+    public List<HeroMetricsResponse> heroMetricsForTeams(
+            UUID firstTeamId,
+            UUID secondTeamId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findHeroMetricsForTeams(firstTeamId, secondTeamId, filters, publicOnly)
+                .stream()
+                .map(HeroMetricsResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<TournamentMetricsResponse> tournamentMetrics(AnalyticsFilters filters) {
         return analyticsRepository.findTournamentMetrics(filters)
                 .stream()

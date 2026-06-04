@@ -256,6 +256,71 @@ public class AnalyticsRepository {
         return findHeroMetrics(filters, false);
     }
 
+    public List<HeroMetrics> findHeroMetricsForTeams(
+            UUID firstTeamId,
+            UUID secondTeamId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        AnalyticsFilters scopedFilters = new AnalyticsFilters(
+                filters.tournamentId(),
+                null,
+                filters.profileId(),
+                filters.heroId(),
+                filters.from(),
+                filters.to(),
+                filters.limit());
+        QueryParts queryParts = filteredWhere(scopedFilters, "mp", "m");
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(firstTeamId);
+        parameters.add(secondTeamId);
+        parameters.addAll(queryParts.parameters());
+        parameters.add(scopedFilters.limit());
+
+        return jdbcTemplate.query(
+                """
+                select
+                  h.id as hero_id,
+                  h.dota_hero_id,
+                  h.name,
+                  h.localized_name,
+                  h.image_url,
+                  h.icon_url,
+                  m.tournament_id,
+                  t.title as tournament_name,
+                  count(*)::integer as games_played,
+                  count(*) filter (where mp.is_winner is true)::integer as wins,
+                  count(*) filter (where mp.is_winner is false)::integer as losses,
+                  round(((count(*) filter (where mp.is_winner is true))::numeric / greatest(count(*), 1)) * 100, 2)
+                    as win_rate,
+                  coalesce(sum(mp.kills), 0)::integer as total_kills,
+                  coalesce(sum(mp.deaths), 0)::integer as total_deaths,
+                  coalesce(sum(mp.assists), 0)::integer as total_assists,
+                  round(avg(mp.kills), 2) as avg_kills,
+                  round(avg(mp.deaths), 2) as avg_deaths,
+                  round(avg(mp.assists), 2) as avg_assists,
+                  round((coalesce(sum(mp.kills), 0) + coalesce(sum(mp.assists), 0))::numeric
+                    / greatest(coalesce(sum(mp.deaths), 0), 1), 2) as kda,
+                  round(avg(mp.gold_per_min), 2) as avg_gpm,
+                  round(avg(mp.xp_per_min), 2) as avg_xpm,
+                  round(avg(mp.hero_damage), 2) as avg_hero_damage
+                from public.match_players mp
+                left join public.match_games mg on mg.id = mp.match_game_id
+                join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
+                join public.tournaments t on t.id = m.tournament_id
+                join public.heroes h on h.id = mp.hero_id
+                where """ + tournamentVisibilityCondition(publicOnly) + """
+                  and mp.team_id in (?, ?)
+                  and mp.hero_id is not null
+                """ + queryParts.sql() + """
+                group by h.id, h.dota_hero_id, h.name, h.localized_name, h.image_url, h.icon_url, m.tournament_id, t.title
+                order by games_played desc, win_rate desc, h.localized_name asc
+                limit ?
+                """,
+                this::mapHeroMetrics,
+                parameters.toArray());
+    }
+
     private List<HeroMetrics> findHeroMetrics(AnalyticsFilters filters, boolean publicOnly) {
         QueryParts queryParts = filteredWhere(filters, "mp", "m");
         List<Object> parameters = new ArrayList<>(queryParts.parameters());

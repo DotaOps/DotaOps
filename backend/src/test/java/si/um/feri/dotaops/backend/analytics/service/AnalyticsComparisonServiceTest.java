@@ -1,5 +1,6 @@
 package si.um.feri.dotaops.backend.analytics.service;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -8,6 +9,7 @@ import org.springframework.security.access.AccessDeniedException;
 
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.repository.AnalyticsLookupRepository;
+import si.um.feri.dotaops.backend.analytics.web.HeroMetricsResponse;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
@@ -90,8 +92,11 @@ class AnalyticsComparisonServiceTest {
 
     @Test
     void organizerCanCompareTeamsInsideManagedTournamentUsingProtectedScope() {
+        HeroMetricsResponse heroMetrics = heroMetricsResponse();
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
         when(tournamentRepository.canManage(TOURNAMENT_ID, CURRENT_PROFILE_ID, false)).thenReturn(true);
+        when(analyticsQueryService.heroMetricsForTeams(eq(TEAM_A_ID), eq(TEAM_B_ID), any(), eq(false)))
+                .thenReturn(List.of(heroMetrics));
         when(analyticsQueryService.recentMatchesForTeams(eq(TEAM_A_ID), eq(TEAM_B_ID), any(), eq(false)))
                 .thenReturn(List.of());
 
@@ -101,11 +106,39 @@ class AnalyticsComparisonServiceTest {
                 new AnalyticsFilters(TOURNAMENT_ID, null, null, null, 10));
 
         assertThat(response.filters().accessScope()).isEqualTo("protected");
+        assertThat(response.heroMetrics()).containsExactly(heroMetrics);
         verify(analyticsQueryService).teamAggregateMetrics(eq(TEAM_A_ID), any(), eq(false));
         verify(analyticsQueryService).teamAggregateMetrics(eq(TEAM_B_ID), any(), eq(false));
+        verify(analyticsQueryService).heroMetricsForTeams(eq(TEAM_A_ID), eq(TEAM_B_ID), any(), eq(false));
     }
 
     private AuthenticatedActor actor(ProfileRole role) {
         return new AuthenticatedActor(AUTH_USER_ID, CURRENT_PROFILE_ID, "profile@example.test", null, role);
+    }
+
+    private HeroMetricsResponse heroMetricsResponse() {
+        return new HeroMetricsResponse(
+                UUID.fromString("88888888-8888-4888-8888-888888888888"),
+                1,
+                "antimage",
+                "Anti-Mage",
+                null,
+                null,
+                TOURNAMENT_ID,
+                "International Test Cup",
+                4,
+                3,
+                1,
+                BigDecimal.valueOf(75),
+                32,
+                12,
+                40,
+                BigDecimal.valueOf(8),
+                BigDecimal.valueOf(3),
+                BigDecimal.valueOf(10),
+                BigDecimal.valueOf(6),
+                BigDecimal.valueOf(610),
+                BigDecimal.valueOf(720),
+                BigDecimal.valueOf(22000));
     }
 }
