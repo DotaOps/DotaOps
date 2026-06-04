@@ -76,6 +76,23 @@ class AnalyticsRepositoryTest {
     }
 
     @Test
+    void publicMetricQueriesUseLiveNormalizedTablesInsteadOfMaterializedViews() {
+        AnalyticsFilters filters = new AnalyticsFilters(null, null, null, null, 10);
+
+        repository.findPlayerMetrics(filters);
+        assertLiveNormalizedAnalyticsQuery();
+
+        repository.findTeamMetrics(filters);
+        assertLiveNormalizedAnalyticsQuery();
+
+        repository.findHeroMetrics(filters);
+        assertLiveNormalizedAnalyticsQuery();
+
+        repository.findTournamentMetrics(filters);
+        assertLiveNormalizedAnalyticsQuery();
+    }
+
+    @Test
     void protectedRecentPlayerMatchesUseSingleProfileSubjectAndBoundFilters() {
         repository.findRecentMatchesForPlayer(
                 PROFILE_ID,
@@ -130,6 +147,16 @@ class AnalyticsRepositoryTest {
         assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true", "raw_response", "normalized_payload", "raw_player");
         assertThat(jdbcTemplate.parameters)
                 .containsExactly(TEAM_ID, OTHER_TEAM_ID, TOURNAMENT_ID, PROFILE_ID, HERO_ID, FROM, TO, 25);
+    }
+
+    private void assertLiveNormalizedAnalyticsQuery() {
+        assertThat(jdbcTemplate.sql).contains("from public.match_players mp");
+        assertThat(jdbcTemplate.sql).contains("join public.matches m");
+        assertThat(jdbcTemplate.sql).doesNotContain(
+                "mv_player_metrics",
+                "mv_team_metrics",
+                "mv_hero_metrics",
+                "mv_tournament_metrics");
     }
 
     private static class CapturingJdbcTemplate extends JdbcTemplate {
