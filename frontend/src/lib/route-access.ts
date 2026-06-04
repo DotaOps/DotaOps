@@ -13,6 +13,10 @@ export function routeAccessForPath(pathname: string): RouteAccess {
     return "public-content";
   }
 
+  if (pathname === "/draft-simulation") {
+    return "public-content";
+  }
+
   if (pathname === "/organizator" || pathname.startsWith("/organizator/")) {
     return "organizer";
   }
