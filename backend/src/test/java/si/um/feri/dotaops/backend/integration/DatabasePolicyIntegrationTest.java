@@ -125,6 +125,15 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
     }
 
     @Test
+    void profileConstraintRejectsPersistedVisitorRole() {
+        UUID authUserId = UUID.randomUUID();
+        seedAuthUser(authUserId);
+
+        assertThatThrownBy(() -> upsertProfile(authUserId, "visitor"))
+                .isInstanceOf(DataAccessException.class);
+    }
+
+    @Test
     void authenticatedClientCannotMutateSteamExternalAccountsDirectly() {
         UUID authUserId = UUID.randomUUID();
         UUID profileId = upsertProfile(authUserId, "player");
@@ -144,6 +153,70 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
                     uniqueSteamId64());
             return null;
         })).isInstanceOf(DataAccessException.class);
+    }
+
+    @Test
+    void onlyAdminCanReadAuditLogThroughAuthenticatedRole() {
+        UUID playerAuthUserId = UUID.randomUUID();
+        UUID adminAuthUserId = UUID.randomUUID();
+        upsertProfile(playerAuthUserId, "player");
+        upsertProfile(adminAuthUserId, "admin");
+        UUID auditLogId = asServiceRole(() -> jdbcTemplate.queryForObject(
+                """
+                insert into public.audit_log (table_name, record_id, action, new_row)
+                values ('public.teams', ?, 'insert'::public.dotaops_audit_action, '{}'::jsonb)
+                returning id
+                """,
+                UUID.class,
+                UUID.randomUUID()));
+
+        Integer playerVisibleRows = asAuthenticated(playerAuthUserId, () -> jdbcTemplate.queryForObject(
+                "select count(*) from public.audit_log where id = ?",
+                Integer.class,
+                auditLogId));
+        Integer adminVisibleRows = asAuthenticated(adminAuthUserId, () -> jdbcTemplate.queryForObject(
+                "select count(*) from public.audit_log where id = ?",
+                Integer.class,
+                auditLogId));
+
+        assertThat(playerVisibleRows).isZero();
+        assertThat(adminVisibleRows).isOne();
+        assertThatThrownBy(() -> asRole("anon", null, () -> jdbcTemplate.queryForObject(
+                "select count(*) from public.audit_log where id = ?",
+                Integer.class,
+                auditLogId)))
+                .isInstanceOf(DataAccessException.class);
+    }
+
+    @Test
+    void storageOwnershipHelpersRestrictAvatarAndTeamAssetPaths() {
+        UUID captainAuthUserId = UUID.randomUUID();
+        UUID otherAuthUserId = UUID.randomUUID();
+        UUID captainProfileId = upsertProfile(captainAuthUserId, "player");
+        UUID otherProfileId = upsertProfile(otherAuthUserId, "player");
+        UUID teamId = insertTeam(captainProfileId);
+
+        Boolean ownAvatar = asAuthenticated(captainAuthUserId, () -> jdbcTemplate.queryForObject(
+                "select private.storage_profile_avatar_owner(?)",
+                Boolean.class,
+                "profiles/" + captainProfileId + "/avatar.png"));
+        Boolean otherAvatar = asAuthenticated(captainAuthUserId, () -> jdbcTemplate.queryForObject(
+                "select private.storage_profile_avatar_owner(?)",
+                Boolean.class,
+                "profiles/" + otherProfileId + "/avatar.png"));
+        Boolean captainTeamAsset = asAuthenticated(captainAuthUserId, () -> jdbcTemplate.queryForObject(
+                "select private.storage_team_asset_owner(?)",
+                Boolean.class,
+                "teams/" + teamId + "/logo.webp"));
+        Boolean nonCaptainTeamAsset = asAuthenticated(otherAuthUserId, () -> jdbcTemplate.queryForObject(
+                "select private.storage_team_asset_owner(?)",
+                Boolean.class,
+                "teams/" + teamId + "/banner.jpg"));
+
+        assertThat(ownAvatar).isTrue();
+        assertThat(otherAvatar).isFalse();
+        assertThat(captainTeamAsset).isTrue();
+        assertThat(nonCaptainTeamAsset).isFalse();
     }
 
     @Test
@@ -273,5 +346,20 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
         assertThat(persisted.get("provider_account_id")).isEqualTo(steamId64);
         assertThat(persisted.get("is_primary")).isEqualTo(Boolean.TRUE);
         assertThat(persisted.get("is_login_identity")).isEqualTo(Boolean.TRUE);
+    }
+
+    private UUID insertTeam(UUID captainProfileId) {
+        String suffix = uniqueSuffix();
+
+        return jdbcTemplate.queryForObject(
+                """
+                insert into public.teams (name, slug, captain_profile_id)
+                values (?, ?, ?)
+                returning id
+                """,
+                UUID.class,
+                "Storage Policy Team " + suffix,
+                "storage-policy-team-" + suffix,
+                captainProfileId);
     }
 }

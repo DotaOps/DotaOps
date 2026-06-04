@@ -56,16 +56,42 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/steam/logout").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/steam/link").authenticated()
                         .requestMatchers(HttpMethod.GET,
+                                "/api/analytics/compare/**",
+                                "/api/teams/*/lookups/players").authenticated()
+                        .requestMatchers(HttpMethod.GET,
                                 "/api/teams/*/invitations",
                                 "/api/teams/*/join-requests",
                                 "/api/teams/*/tournament-registrations",
                                 "/api/teams/*/invitations/**").authenticated()
                         .requestMatchers(HttpMethod.GET,
+                                "/api/lookups/heroes",
                                 "/api/public/analytics/**",
                                 "/api/public/tournaments/**",
                                 "/api/tournament-groups/*/teams",
                                 "/api/tournament-groups/*/standings",
                                 "/api/public/tournament-groups/*/standings").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/teams").hasRole("PLAYER")
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/me/team/leave",
+                                "/api/teams/*/disband",
+                                "/api/teams/*/transfer-ownership",
+                                "/api/teams/*/logo/upload-url",
+                                "/api/teams/*/logo/confirm",
+                                "/api/teams/*/banner/upload-url",
+                                "/api/teams/*/banner/confirm").hasRole("PLAYER")
+                        .requestMatchers(HttpMethod.GET, "/api/teams/*/members/*/profile").hasRole("PLAYER")
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/teams/*/join-requests",
+                                "/api/team-invitations/*/accept",
+                                "/api/team-invitations/*/decline").hasRole("PLAYER")
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/me/analytics",
+                                "/api/me/analytics/heroes",
+                                "/api/me/analytics/progress",
+                                "/api/me/team/analytics").hasRole("PLAYER")
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/organizer/analytics",
+                                "/api/organizer/tournaments/*/analytics").hasAnyRole("ORGANIZER", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/match-imports").hasAnyRole("ORGANIZER", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/match-imports/*/retry")
                                 .hasAnyRole("ORGANIZER", "ADMIN")

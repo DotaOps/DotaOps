@@ -131,6 +131,50 @@ class SecurityConfigTest {
     }
 
     @Test
+    void dashboardRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/me/dashboard"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void playerAnalyticsRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/me/analytics"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void playerProgressAnalyticsRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/me/analytics/progress"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void playerHeroAnalyticsRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/me/analytics/heroes"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void comparisonAnalyticsRequiresAuthenticationBeforePublicAnalyticsMatcher() throws Exception {
+        mockMvc.perform(get("/api/analytics/compare/teams")
+                        .queryParam("teamAId", "11111111-1111-4111-8111-111111111111")
+                        .queryParam("teamBId", "22222222-2222-4222-8222-222222222222"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void teamPlayerLookupRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/teams/11111111-1111-4111-8111-111111111111/lookups/players"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
     void invalidJwtReturnsUnauthorizedContract() throws Exception {
         mockMvc.perform(get("/api/me/security-test")
                         .header("Authorization", "Bearer invalid"))
@@ -176,11 +220,59 @@ class SecurityConfigTest {
     }
 
     @Test
+    void organizerCannotUsePlayerAnalyticsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/me/analytics")
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void organizerCannotUsePlayerProgressAnalyticsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/me/analytics/progress")
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void organizerCannotUsePlayerHeroAnalyticsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/me/analytics/heroes")
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void playerCannotUseOrganizerAnalyticsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/organizer/analytics")
+                        .header("Authorization", bearerToken(PLAYER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
     void matchImportRequiresOrganizerRole() throws Exception {
         mockMvc.perform(post("/api/match-imports")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"dotaMatchId\":\"7894561230\"}")
                         .header("Authorization", bearerToken(PLAYER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void organizerCannotUseTeamStorageUploadRoutes() throws Exception {
+        mockMvc.perform(post("/api/teams/77777777-7777-4777-8777-777777777777/logo/upload-url")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fileName": "logo.png",
+                                  "contentType": "image/png",
+                                  "fileSizeBytes": 1024
+                                }
+                                """)
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }

@@ -21,7 +21,7 @@ export function TournamentCommandHeader({
   children
 }: TournamentCommandHeaderProps) {
   return (
-    <section className="tournament-command-header ops-panel ops-command-grid">
+    <section className="tournament-command-header ops-panel">
       <div className="tournament-command-copy">
         <p className="ops-label">{eyebrow}</p>
         <div className="tournament-command-title-row">

@@ -2,40 +2,28 @@
 
 import { Info, KeyRound, LogIn, Mail, RadioTower } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
-import { PageLoadingOverlay } from "@/components/page-loading-overlay";
+import { LoginPortalOverlay } from "@/components/auth/login-portal-overlay";
 import { dashboardPathForRole, getCurrentUserProfile, loginWithEmailPassword } from "@/lib/auth";
 import { safeLocalRedirectPath } from "@/lib/route-access";
 
-async function waitForAuthenticatedProfile(timeoutMs = 1500) {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    try {
-      const profile = await getCurrentUserProfile();
-
-      if (profile) {
-        return profile;
-      }
-    } catch {
-      // Retry until the session is visible or the timeout is reached.
-    }
-
-    await new Promise((resolve) => window.setTimeout(resolve, 50));
-  }
-
-  return null;
-}
-
 export function LoginForm() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [portalDestination, setPortalDestination] = useState<string | null>(null);
+  const [portalRole, setPortalRole] = useState<string | null>(null);
+
+  const enterWorkspace = useCallback((destination: string) => {
+    router.replace(destination);
+  }, [router]);
 
   useEffect(() => {
     let isMounted = true;
@@ -65,17 +53,20 @@ export function LoginForm() {
     setIsLoading(true);
 
     try {
-      const result = await loginWithEmailPassword({ email, password });
-      await waitForAuthenticatedProfile();
+      const result = await loginWithEmailPassword({ email, password, remember });
       try {
         localStorage.setItem("dotaops:just_signed_in", String(Date.now()));
       } catch {
         // ignore if storage is unavailable
       }
       setNotice(result.message ?? "Dashboard uplink prepared.");
-      window.location.replace(getRedirectTarget(result.dashboardPath));
+      const destination = getRedirectTarget(result.dashboardPath);
+      setPortalRole(result.role ?? null);
+      setPortalDestination(destination);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Login failed.");
+      setPortalDestination(null);
+      setPortalRole(null);
       setIsLoading(false);
     }
   }
@@ -167,7 +158,14 @@ export function LoginForm() {
         </span>
       </div>
 
-      {isLoading ? <PageLoadingOverlay label="Logging in" /> : null}
+      {portalDestination ? (
+        <LoginPortalOverlay
+          destination={portalDestination}
+          onComplete={enterWorkspace}
+          onSkip={enterWorkspace}
+          role={portalRole}
+        />
+      ) : null}
     </main>
   );
 }

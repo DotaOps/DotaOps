@@ -4,6 +4,8 @@ import java.util.UUID;
 
 public record AdminAuditActor(
         UUID profileId,
-        String nickname
+        String nickname,
+        String displayName,
+        String role
 ) {
 }

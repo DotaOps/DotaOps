@@ -31,6 +31,7 @@ export type ProfileRole = RequestedAuthRole | "visitor" | "admin";
 export interface LoginInput {
   email: string;
   password: string;
+  remember?: boolean;
 }
 
 export interface RegisterInput {
@@ -48,6 +49,7 @@ export interface AuthResult {
   dashboardPath: string;
   message?: string;
   requiresEmailConfirmation?: boolean;
+  role?: ProfileRole | null;
 }
 
 export class RegistrationRateLimitError extends Error {
@@ -88,6 +90,71 @@ export interface AvatarUploadResult {
   avatarUrl: string | null;
   message: string;
   persisted: boolean;
+}
+
+type LoginPersistenceMode = "persistent" | "session";
+
+const REMEMBER_COOKIE_NAME = "dotaops_remember";
+const AUTH_PERSISTENCE_KEY = "dotaops:auth_persistence";
+const SESSION_LOGIN_KEY = "dotaops:session_login";
+const REMEMBER_COOKIE_MAX_AGE = 60 * 60 * 24 * 180;
+
+function canUseBrowserStorage() {
+  return typeof window !== "undefined";
+}
+
+function setRememberCookie() {
+  if (!canUseBrowserStorage()) {
+    return;
+  }
+
+  document.cookie = `${REMEMBER_COOKIE_NAME}=1; path=/; max-age=${REMEMBER_COOKIE_MAX_AGE}; samesite=lax`;
+}
+
+function clearRememberCookie() {
+  if (!canUseBrowserStorage()) {
+    return;
+  }
+
+  document.cookie = `${REMEMBER_COOKIE_NAME}=; path=/; max-age=0; samesite=lax`;
+}
+
+export function setLoginPersistenceMode(mode: LoginPersistenceMode) {
+  if (!canUseBrowserStorage()) {
+    return;
+  }
+
+  if (mode === "persistent") {
+    setRememberCookie();
+    localStorage.setItem(AUTH_PERSISTENCE_KEY, "persistent");
+    sessionStorage.removeItem(SESSION_LOGIN_KEY);
+    return;
+  }
+
+  clearRememberCookie();
+  localStorage.setItem(AUTH_PERSISTENCE_KEY, "session");
+  sessionStorage.setItem(SESSION_LOGIN_KEY, "1");
+}
+
+export function clearLoginPersistenceMode() {
+  if (!canUseBrowserStorage()) {
+    return;
+  }
+
+  clearRememberCookie();
+  localStorage.removeItem(AUTH_PERSISTENCE_KEY);
+  sessionStorage.removeItem(SESSION_LOGIN_KEY);
+}
+
+export function shouldClearSessionOnlyLogin() {
+  if (!canUseBrowserStorage()) {
+    return false;
+  }
+
+  return (
+    localStorage.getItem(AUTH_PERSISTENCE_KEY) === "session" &&
+    !sessionStorage.getItem(SESSION_LOGIN_KEY)
+  );
 }
 
 export interface ProfileSaveResult {
@@ -625,10 +692,34 @@ export async function startSteamProfileLink(): Promise<string> {
 export async function signOutCurrentUser() {
   const supabase = requireSupabaseClient();
   const { error } = await supabase.auth.signOut();
+  clearLoginPersistenceMode();
 
   if (error) {
     throw error;
   }
+}
+
+export async function enforceSessionOnlyPersistence() {
+  if (!shouldClearSessionOnlyLogin()) {
+    return false;
+  }
+
+  const supabase = requireSupabaseClient();
+  await supabase.auth.signOut();
+  clearLoginPersistenceMode();
+
+  return true;
+}
+
+export async function hasAuthenticatedSession() {
+  const supabase = requireSupabaseClient();
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error) {
+    throw error;
+  }
+
+  return Boolean(data.session?.access_token);
 }
 
 export async function loginWithEmailPassword(input: LoginInput): Promise<AuthResult> {
@@ -651,6 +742,8 @@ export async function loginWithEmailPassword(input: LoginInput): Promise<AuthRes
   const authUserId = data.user?.id;
 
   if (!authUserId) {
+    setLoginPersistenceMode(input.remember ? "persistent" : "session");
+
     return {
       dashboardPath: "/dashboard?role=player",
       message: "Login completed, but no auth user id was returned."
@@ -659,9 +752,12 @@ export async function loginWithEmailPassword(input: LoginInput): Promise<AuthRes
 
   const role = await getCurrentProfileRole(authUserId);
 
+  setLoginPersistenceMode(input.remember ? "persistent" : "session");
+
   return {
     dashboardPath: dashboardPathForRole(role),
-    message: role ? undefined : "No profile role was found; using the player dashboard fallback."
+    message: role ? undefined : "No profile role was found; using the player dashboard fallback.",
+    role
   };
 }
 

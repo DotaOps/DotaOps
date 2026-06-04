@@ -111,6 +111,22 @@ public class TeamJoinRequestRepository {
         return resolve(requestId, TeamJoinRequestStatus.CANCELLED, requesterProfileId);
     }
 
+    public int cancelPendingByTeamId(UUID teamId, UUID resolvedByProfileId) {
+        return jdbcTemplate.update(
+                """
+                update public.team_join_requests
+                set
+                  status = 'cancelled',
+                  resolved_at = now(),
+                  resolved_by_profile_id = ?,
+                  updated_at = now()
+                where team_id = ?
+                  and status = 'pending'
+                """,
+                resolvedByProfileId,
+                teamId);
+    }
+
     private Optional<TeamJoinRequest> resolve(
             UUID requestId,
             TeamJoinRequestStatus status,

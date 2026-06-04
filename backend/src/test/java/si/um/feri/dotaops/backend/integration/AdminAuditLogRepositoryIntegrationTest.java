@@ -61,15 +61,20 @@ class AdminAuditLogRepositoryIntegrationTest extends PostgresIntegrationTestSupp
         AdminAuditLogFilters filters = new AdminAuditLogFilters(
                 "teams",
                 matchingRecordId,
+                actorProfileId,
                 actorNickname,
                 AdminAuditAction.UPDATE,
-                null,
-                null);
+                baseTime,
+                baseTime.plusSeconds(1));
 
         assertThat(auditLogRepository.countAuditLogs(filters)).isEqualTo(2);
         assertThat(auditLogRepository.findAuditLogs(filters, 1, 0))
                 .extracting(record -> record.id())
                 .containsExactly(newerAuditId);
+        assertThat(auditLogRepository.findAuditLogs(filters, 1, 0).getFirst().actorDisplayName())
+                .isEqualTo(actorNickname);
+        assertThat(auditLogRepository.findAuditLogs(filters, 1, 0).getFirst().actorRole())
+                .isEqualTo("admin");
         assertThat(auditLogRepository.findAuditLogs(filters, 1, 1))
                 .extracting(record -> record.id())
                 .containsExactly(olderAuditId);

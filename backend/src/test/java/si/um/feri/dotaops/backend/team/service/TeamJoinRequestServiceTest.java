@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.access.AccessDeniedException;
 
@@ -52,15 +53,24 @@ class TeamJoinRequestServiceTest {
     private final TeamManualPlayerRepository teamManualPlayerRepository = mock(TeamManualPlayerRepository.class);
     private final TeamInvitationRepository teamInvitationRepository = mock(TeamInvitationRepository.class);
     private final TeamRosterLimitRepository teamRosterLimitRepository = mock(TeamRosterLimitRepository.class);
+    private final TeamRosterCapacityService teamRosterCapacityService = new TeamRosterCapacityService(
+            teamMemberRepository,
+            teamManualPlayerRepository,
+            teamRosterLimitRepository);
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
     private final TeamJoinRequestService service = new TeamJoinRequestService(
             joinRequestRepository,
             teamRepository,
             teamMemberRepository,
-            teamManualPlayerRepository,
             teamInvitationRepository,
-            teamRosterLimitRepository,
+            teamRosterCapacityService,
             currentUserProvider);
+
+    @BeforeEach
+    void setUpNormalizedCaptainMembership() {
+        when(teamRepository.findByIdForUpdate(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(teamMemberRepository.existsActive(TEAM_ID, CAPTAIN_PROFILE_ID)).thenReturn(true);
+    }
 
     @Test
     void playerCanCreateJoinRequest() {
@@ -126,7 +136,7 @@ class TeamJoinRequestServiceTest {
 
         assertThatThrownBy(() -> service.listTeamJoinRequests(TEAM_ID, null))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessage("Only the team captain or an organizer can view join requests.");
+                .hasMessage("Only the team captain or an admin can view join requests.");
     }
 
     @Test
@@ -139,6 +149,28 @@ class TeamJoinRequestServiceTest {
 
         assertThat(response).hasSize(1);
         assertThat(response.getFirst().teamId()).isEqualTo(TEAM_ID);
+    }
+
+    @Test
+    void organizerCannotViewTeamJoinRequests() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(profile(OTHER_PROFILE_ID, ProfileRole.ORGANIZER));
+
+        assertThatThrownBy(() -> service.listTeamJoinRequests(TEAM_ID, null))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the team captain or an admin can view join requests.");
+    }
+
+    @Test
+    void organizerCannotCreateJoinRequest() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(profile(OTHER_PROFILE_ID, ProfileRole.ORGANIZER));
+
+        assertThatThrownBy(() -> service.createJoinRequest(TEAM_ID, new CreateTeamJoinRequestRequest(null)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only players can request team membership.");
+
+        verify(joinRequestRepository, never()).create(any());
     }
 
     @Test

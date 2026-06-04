@@ -30,8 +30,13 @@ import si.um.feri.dotaops.backend.common.pagination.PageResponse;
 public class AdminAuditLogService {
 
     private static final Map<String, Set<String>> SAFE_CHANGED_FIELDS = Map.of(
+            "public.profiles", Set.of(
+                    "nickname", "display_name", "role", "avatar_url", "avatar_path", "updated_at"),
             "public.teams", Set.of(
-                    "name", "slug", "tag", "region", "description", "captain_profile_id", "updated_at"),
+                    "name", "slug", "tag", "region", "description", "captain_profile_id", "logo_url", "logo_path",
+                    "banner_url", "banner_path", "disbanded_at", "updated_at"),
+            "public.team_members", Set.of(
+                    "team_id", "profile_id", "member_role", "is_active", "joined_at", "left_at", "updated_at"),
             "public.tournaments", Set.of(
                     "slug", "title", "description", "rules", "format", "status", "is_public",
                     "max_teams", "registration_opens_at", "registration_closes_at", "starts_at", "ends_at",
@@ -54,25 +59,34 @@ public class AdminAuditLogService {
                     "updated_at"));
 
     private static final Map<String, String> TABLE_LABELS = Map.of(
+            "public.profiles", "Profile",
             "public.teams", "Team",
+            "public.team_members", "Team member",
             "public.tournaments", "Tournament",
             "public.tournament_registrations", "Tournament registration",
             "public.matches", "Match",
             "public.match_games", "Match game",
             "public.match_imports", "Match import",
             "public.match_players", "Match player");
+    private static final Set<String> AUDITABLE_TABLES = SAFE_CHANGED_FIELDS.keySet();
 
     private final AdminAuditLogRepository auditLogRepository;
+    private final AuditJsonSanitizer auditJsonSanitizer;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public AdminAuditLogService(AdminAuditLogRepository auditLogRepository) {
+    public AdminAuditLogService(
+            AdminAuditLogRepository auditLogRepository,
+            AuditJsonSanitizer auditJsonSanitizer
+    ) {
         this.auditLogRepository = auditLogRepository;
+        this.auditJsonSanitizer = auditJsonSanitizer;
     }
 
     @Transactional(readOnly = true)
     public PageResponse<AdminAuditLogItem> listAuditLogs(
             String table,
             UUID recordId,
+            UUID actorProfileId,
             String actor,
             String action,
             OffsetDateTime from,
@@ -88,8 +102,9 @@ public class AdminAuditLogService {
         }
 
         AdminAuditLogFilters filters = new AdminAuditLogFilters(
-                normalizeOptional(table),
+                normalizeTable(table),
                 recordId,
+                actorProfileId,
                 normalizeOptional(actor),
                 normalizeAction(action),
                 from,
@@ -108,15 +123,34 @@ public class AdminAuditLogService {
     }
 
     private AdminAuditLogItem toItem(AdminAuditLogRecord record) {
+        List<String> changedFields = changedFields(record);
+        Set<String> includedFields = Set.copyOf(changedFields);
         return new AdminAuditLogItem(
                 record.id(),
                 record.createdAt(),
-                new AdminAuditActor(record.actorProfileId(), record.actorNickname()),
+                actor(record),
                 record.action().databaseValue(),
                 record.tableName(),
                 record.recordId(),
                 summary(record),
-                changedFields(record));
+                changedFields,
+                auditJsonSanitizer.projectSanitizedObject(record.previousRowJson(), includedFields),
+                auditJsonSanitizer.projectSanitizedObject(record.newRowJson(), includedFields));
+    }
+
+    private AdminAuditActor actor(AdminAuditLogRecord record) {
+        if (record.actorProfileId() == null
+                && record.actorNickname() == null
+                && record.actorDisplayName() == null
+                && record.actorRole() == null) {
+            return null;
+        }
+
+        return new AdminAuditActor(
+                record.actorProfileId(),
+                record.actorNickname(),
+                record.actorDisplayName(),
+                record.actorRole());
     }
 
     private String summary(AdminAuditLogRecord record) {
@@ -172,5 +206,21 @@ public class AdminAuditLogService {
         }
 
         return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeTable(String table) {
+        String normalized = normalizeOptional(table);
+        if (normalized == null) {
+            return null;
+        }
+
+        String qualifiedName = normalized.startsWith("public.")
+                ? normalized
+                : "public." + normalized;
+        if (!AUDITABLE_TABLES.contains(qualifiedName)) {
+            throw new BadRequestException("Unsupported audit table.");
+        }
+
+        return qualifiedName;
     }
 }

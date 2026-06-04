@@ -18,14 +18,18 @@ import si.um.feri.dotaops.backend.auth.domain.AuthenticatedProfile;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
+import si.um.feri.dotaops.backend.common.error.ConflictException;
 import si.um.feri.dotaops.backend.common.error.ResourceNotFoundException;
 import si.um.feri.dotaops.backend.common.pagination.PageResponse;
 import si.um.feri.dotaops.backend.storage.service.StoredImage;
 import si.um.feri.dotaops.backend.storage.service.SupabaseImageStorageService;
 import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.domain.TeamManualPlayer;
+import si.um.feri.dotaops.backend.team.domain.TeamMemberRole;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamCommand;
+import si.um.feri.dotaops.backend.team.repository.CreateTeamMemberCommand;
 import si.um.feri.dotaops.backend.team.repository.TeamManualPlayerRepository;
+import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
 import si.um.feri.dotaops.backend.team.repository.UpdateTeamCommand;
 import si.um.feri.dotaops.backend.team.web.CreateTeamRequest;
@@ -40,17 +44,20 @@ public class TeamService {
     private static final int MAX_SLUG_LENGTH = 80;
 
     private final TeamRepository teamRepository;
+    private final TeamMemberRepository teamMemberRepository;
     private final TeamManualPlayerRepository teamManualPlayerRepository;
     private final SupabaseImageStorageService imageStorageService;
     private final CurrentUserProvider currentUserProvider;
 
     public TeamService(
             TeamRepository teamRepository,
+            TeamMemberRepository teamMemberRepository,
             TeamManualPlayerRepository teamManualPlayerRepository,
             SupabaseImageStorageService imageStorageService,
             CurrentUserProvider currentUserProvider
     ) {
         this.teamRepository = teamRepository;
+        this.teamMemberRepository = teamMemberRepository;
         this.teamManualPlayerRepository = teamManualPlayerRepository;
         this.imageStorageService = imageStorageService;
         this.currentUserProvider = currentUserProvider;
@@ -93,6 +100,12 @@ public class TeamService {
     @Transactional
     public TeamResponse createTeam(CreateTeamRequest request) {
         AuthenticatedProfile profile = currentUserProvider.requireProfile();
+        if (profile.role() != ProfileRole.PLAYER) {
+            throw new AccessDeniedException("Only players can create teams.");
+        }
+        if (teamRepository.existsCurrentTeamForProfileExcluding(profile.profileId(), null)) {
+            throw new ConflictException("Profile already belongs to an active team.");
+        }
         UUID authUserId = profile.authUserId();
 
         try {
@@ -105,6 +118,10 @@ public class TeamService {
                     normalizeOptional(request.logoUrl()),
                     normalizeOptional(request.description()),
                     authUserId));
+            teamMemberRepository.create(new CreateTeamMemberCommand(
+                    team.id(),
+                    profile.profileId(),
+                    TeamMemberRole.SUPPORT));
 
             return TeamResponse.from(team);
         } catch (DataIntegrityViolationException exception) {
@@ -123,7 +140,7 @@ public class TeamService {
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
 
         if (!canUpdate(profile, existing)) {
-            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+            throw new AccessDeniedException("Only the team captain or an admin can update this team.");
         }
 
         try {
@@ -155,7 +172,7 @@ public class TeamService {
         Team existing = teamRepository.findById(teamId)
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
         if (!canUpdate(profile, existing)) {
-            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+            throw new AccessDeniedException("Only the team captain or an admin can update this team.");
         }
 
         StoredImage storedLogo = imageStorageService.storeTeamLogo(teamId, logo);
@@ -170,7 +187,7 @@ public class TeamService {
         Team existing = teamRepository.findById(teamId)
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
         if (!canUpdate(profile, existing)) {
-            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+            throw new AccessDeniedException("Only the team captain or an admin can update this team.");
         }
 
         StoredImage storedBanner = imageStorageService.storeTeamBanner(teamId, banner);
@@ -185,7 +202,7 @@ public class TeamService {
         Team existing = teamRepository.findById(teamId)
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
         if (!canUpdate(profile, existing)) {
-            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+            throw new AccessDeniedException("Only the team captain or an admin can update this team.");
         }
 
         return teamRepository.updateLogoUrl(teamId, null)
@@ -199,7 +216,7 @@ public class TeamService {
         Team existing = teamRepository.findById(teamId)
                 .orElseThrow(() -> new ResourceNotFoundException("Team", "id", teamId));
         if (!canUpdate(profile, existing)) {
-            throw new AccessDeniedException("Only the team captain or an organizer can update this team.");
+            throw new AccessDeniedException("Only the team captain or an admin can update this team.");
         }
 
         return teamRepository.updateBannerUrl(teamId, null)
@@ -208,8 +225,7 @@ public class TeamService {
     }
 
     private boolean canUpdate(AuthenticatedProfile profile, Team team) {
-        return profile.role() == ProfileRole.ORGANIZER
-                || profile.role() == ProfileRole.ADMIN
+        return profile.role() == ProfileRole.ADMIN
                 || profile.profileId().equals(team.captainProfileId());
     }
 

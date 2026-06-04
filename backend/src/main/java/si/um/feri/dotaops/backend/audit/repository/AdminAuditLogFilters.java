@@ -8,7 +8,8 @@ import si.um.feri.dotaops.backend.audit.domain.AdminAuditAction;
 public record AdminAuditLogFilters(
         String tableName,
         UUID recordId,
-        String actor,
+        UUID actorProfileId,
+        String actorQuery,
         AdminAuditAction action,
         OffsetDateTime from,
         OffsetDateTime to

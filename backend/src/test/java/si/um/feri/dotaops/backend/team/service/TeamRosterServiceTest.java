@@ -7,14 +7,17 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.access.AccessDeniedException;
 
+import si.um.feri.dotaops.backend.analytics.service.AnalyticsQueryService;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedProfile;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.auth.service.SupabasePrincipal;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
+import si.um.feri.dotaops.backend.common.security.DatabaseActorContext;
 import si.um.feri.dotaops.backend.profile.domain.Profile;
 import si.um.feri.dotaops.backend.profile.repository.ProfileRepository;
 import si.um.feri.dotaops.backend.team.domain.Team;
@@ -28,12 +31,14 @@ import si.um.feri.dotaops.backend.team.repository.CreateTeamMemberCommand;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamManualPlayerCommand;
 import si.um.feri.dotaops.backend.team.repository.TeamManualPlayerRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamInvitationRepository;
+import si.um.feri.dotaops.backend.team.repository.TeamJoinRequestRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRosterLimitRepository;
 import si.um.feri.dotaops.backend.team.web.AddTeamMemberRequest;
 import si.um.feri.dotaops.backend.team.web.CreateTeamInvitationRequest;
 import si.um.feri.dotaops.backend.team.web.CreateTeamManualPlayerRequest;
+import si.um.feri.dotaops.backend.team.web.TransferTeamOwnershipRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -53,23 +58,40 @@ class TeamRosterServiceTest {
     private static final UUID TEAM_ID = UUID.fromString("55555555-5555-4555-8555-555555555555");
     private static final UUID MEMBER_ID = UUID.fromString("66666666-6666-4666-8666-666666666666");
     private static final UUID INVITATION_ID = UUID.fromString("77777777-7777-4777-8777-777777777777");
+    private static final UUID OWNER_MEMBER_ID = UUID.fromString("99999999-9999-4999-8999-999999999999");
     private static final OffsetDateTime NOW = OffsetDateTime.parse("2026-05-12T00:00:00Z");
 
     private final TeamRepository teamRepository = mock(TeamRepository.class);
     private final TeamMemberRepository teamMemberRepository = mock(TeamMemberRepository.class);
     private final TeamManualPlayerRepository teamManualPlayerRepository = mock(TeamManualPlayerRepository.class);
     private final TeamInvitationRepository teamInvitationRepository = mock(TeamInvitationRepository.class);
+    private final TeamJoinRequestRepository teamJoinRequestRepository = mock(TeamJoinRequestRepository.class);
     private final TeamRosterLimitRepository teamRosterLimitRepository = mock(TeamRosterLimitRepository.class);
+    private final TeamRosterCapacityService teamRosterCapacityService = new TeamRosterCapacityService(
+            teamMemberRepository,
+            teamManualPlayerRepository,
+            teamRosterLimitRepository);
     private final ProfileRepository profileRepository = mock(ProfileRepository.class);
+    private final AnalyticsQueryService analyticsQueryService = mock(AnalyticsQueryService.class);
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
+    private final DatabaseActorContext databaseActorContext = mock(DatabaseActorContext.class);
     private final TeamRosterService teamRosterService = new TeamRosterService(
             teamRepository,
             teamMemberRepository,
             teamManualPlayerRepository,
             teamInvitationRepository,
-            teamRosterLimitRepository,
+            teamJoinRequestRepository,
+            teamRosterCapacityService,
+            analyticsQueryService,
             profileRepository,
-            currentUserProvider);
+            currentUserProvider,
+            databaseActorContext);
+
+    @BeforeEach
+    void setUpNormalizedCaptainMembership() {
+        when(teamRepository.findByIdForUpdate(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(teamMemberRepository.existsActive(TEAM_ID, CAPTAIN_PROFILE_ID)).thenReturn(true);
+    }
 
     @Test
     void currentTeamUsesCurrentProfileAndReturnsRosterPermissions() {
@@ -82,7 +104,15 @@ class TeamRosterServiceTest {
         assertThat(response.team().id()).isEqualTo(TEAM_ID);
         assertThat(response.members()).hasSize(1);
         assertThat(response.captain()).isTrue();
+        assertThat(response.isTeamOwner()).isTrue();
+        assertThat(response.currentUserTeamRole()).isEqualTo("owner");
+        assertThat(response.canManageTeam()).isTrue();
         assertThat(response.canManageRoster()).isTrue();
+        assertThat(response.canInvitePlayers()).isTrue();
+        assertThat(response.canTransferOwnership()).isTrue();
+        assertThat(response.canLeaveTeam()).isFalse();
+        assertThat(response.canDisbandTeam()).isTrue();
+        assertThat(response.canViewAnalytics()).isTrue();
     }
 
     @Test
@@ -95,7 +125,112 @@ class TeamRosterServiceTest {
         assertThat(response.team()).isNull();
         assertThat(response.members()).isEmpty();
         assertThat(response.captain()).isFalse();
+        assertThat(response.canCreateTeam()).isTrue();
         assertThat(response.canManageRoster()).isFalse();
+        assertThat(response.canLeaveTeam()).isFalse();
+        assertThat(response.canDisbandTeam()).isFalse();
+    }
+
+    @Test
+    void soloOwnerCannotTransferOwnershipWithoutAnotherActiveMember() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRepository.findCurrentTeamForProfile(CAPTAIN_PROFILE_ID)).thenReturn(Optional.of(team()));
+        when(teamMemberRepository.findActiveByTeamId(TEAM_ID)).thenReturn(List.of(
+                member(OWNER_MEMBER_ID, CAPTAIN_PROFILE_ID, true, TeamMemberRole.SUPPORT)));
+
+        var response = teamRosterService.getCurrentTeam();
+
+        assertThat(response.canTransferOwnership()).isFalse();
+        assertThat(response.canLeaveTeam()).isFalse();
+        assertThat(response.canDisbandTeam()).isTrue();
+    }
+
+    @Test
+    void normalMemberCanLeaveCurrentTeamAndKeepsHistoricalMembership() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(INVITEE_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRepository.findCurrentTeamForProfile(INVITEE_PROFILE_ID)).thenReturn(Optional.of(team()));
+        when(teamMemberRepository.findActiveByTeamAndProfile(TEAM_ID, INVITEE_PROFILE_ID))
+                .thenReturn(Optional.of(member(true, TeamMemberRole.MID)));
+        when(teamMemberRepository.deactivate(TEAM_ID, MEMBER_ID))
+                .thenReturn(Optional.of(member(false, TeamMemberRole.MID)));
+
+        var response = teamRosterService.leaveCurrentTeam();
+
+        assertThat(response.team()).isNull();
+        assertThat(response.canCreateTeam()).isTrue();
+        assertThat(response.canLeaveTeam()).isFalse();
+        verify(databaseActorContext).apply(any());
+        verify(teamMemberRepository).deactivate(TEAM_ID, MEMBER_ID);
+    }
+
+    @Test
+    void ownerMustTransferOwnershipOrDisbandBeforeLeaving() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRepository.findCurrentTeamForProfile(CAPTAIN_PROFILE_ID)).thenReturn(Optional.of(team()));
+
+        assertThatThrownBy(() -> teamRosterService.leaveCurrentTeam())
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Team owner must transfer ownership or disband the team before leaving.");
+
+        verify(teamMemberRepository, never()).deactivate(any(), any());
+    }
+
+    @Test
+    void ownerCanSoftDisbandTeamAndCloseOpenMembershipFlows() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRepository.disband(TEAM_ID)).thenReturn(Optional.of(NOW));
+
+        var response = teamRosterService.disbandTeam(TEAM_ID);
+
+        assertThat(response.teamId()).isEqualTo(TEAM_ID);
+        assertThat(response.status()).isEqualTo("disbanded");
+        assertThat(response.disbandedAt()).isEqualTo(NOW);
+        verify(databaseActorContext).apply(any());
+        verify(teamMemberRepository).deactivateAllActiveByTeamId(TEAM_ID);
+        verify(teamInvitationRepository).cancelPendingByTeamId(TEAM_ID);
+        verify(teamJoinRequestRepository).cancelPendingByTeamId(TEAM_ID, CAPTAIN_PROFILE_ID);
+    }
+
+    @Test
+    void normalMemberCannotDisbandTeam() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(INVITEE_PROFILE_ID, ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> teamRosterService.disbandTeam(TEAM_ID))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the current team owner can disband this team.");
+
+        verify(teamRepository, never()).disband(TEAM_ID);
+    }
+
+    @Test
+    void activeMemberCanReadRosterProfileWithStableEmptyStats() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(INVITEE_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamMemberRepository.existsActive(TEAM_ID, INVITEE_PROFILE_ID)).thenReturn(true);
+        when(teamMemberRepository.findActiveByTeamAndProfile(TEAM_ID, INVITEE_PROFILE_ID))
+                .thenReturn(Optional.of(member(true, TeamMemberRole.MID)));
+        when(analyticsQueryService.protectedPlayerMetrics(any())).thenReturn(List.of());
+        when(analyticsQueryService.protectedHeroMetrics(any())).thenReturn(List.of());
+
+        var response = teamRosterService.getRosterProfile(TEAM_ID, INVITEE_PROFILE_ID);
+
+        assertThat(response.profileId()).isEqualTo(INVITEE_PROFILE_ID);
+        assertThat(response.role()).isEqualTo(TeamMemberRole.MID);
+        assertThat(response.teamOwner()).isFalse();
+        assertThat(response.stats().gamesPlayed()).isZero();
+        assertThat(response.stats().winRate()).isEqualByComparingTo("0.00");
+        assertThat(response.mostPlayedHeroes()).isEmpty();
+        assertThat(response.recentMatches()).isEmpty();
+    }
+
+    @Test
+    void foreignPlayerCannotReadPrivateRosterProfile() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(OTHER_PROFILE_ID, ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> teamRosterService.getRosterProfile(TEAM_ID, INVITEE_PROFILE_ID))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only active team members can view private roster profiles.");
     }
 
     @Test
@@ -129,15 +264,42 @@ class TeamRosterServiceTest {
     }
 
     @Test
-    void deactivateMemberKeepsHistoricalRow() {
+    void organizerCannotAddMember() {
         when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(OTHER_PROFILE_ID, ProfileRole.ORGANIZER));
+
+        assertThatThrownBy(() -> teamRosterService.addMember(
+                TEAM_ID,
+                new AddTeamMemberRequest(INVITEE_PROFILE_ID, TeamMemberRole.SUPPORT)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the team captain or an admin can manage this team.");
+
+        verify(teamMemberRepository, never()).create(any());
+    }
+
+    @Test
+    void deactivateMemberKeepsHistoricalRow() {
         when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamMemberRepository.findById(MEMBER_ID)).thenReturn(Optional.of(member(true, TeamMemberRole.SUPPORT)));
         when(teamMemberRepository.deactivate(TEAM_ID, MEMBER_ID)).thenReturn(Optional.of(member(false, TeamMemberRole.SUPPORT)));
 
         var response = teamRosterService.deactivateMember(TEAM_ID, MEMBER_ID);
 
         assertThat(response.active()).isFalse();
         assertThat(response.leftAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void currentOwnerCannotBeRemovedBeforeOwnershipTransfer() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamMemberRepository.findById(OWNER_MEMBER_ID))
+                .thenReturn(Optional.of(member(OWNER_MEMBER_ID, CAPTAIN_PROFILE_ID, true, TeamMemberRole.SUPPORT)));
+
+        assertThatThrownBy(() -> teamRosterService.deactivateMember(TEAM_ID, OWNER_MEMBER_ID))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Transfer ownership before removing the current team owner.");
+
+        verify(teamMemberRepository, never()).deactivate(TEAM_ID, OWNER_MEMBER_ID);
     }
 
     @Test
@@ -264,6 +426,87 @@ class TeamRosterServiceTest {
     }
 
     @Test
+    void createInvitationAllowsPlayerEmailWithoutProfileId() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamInvitationRepository.create(any()))
+                .thenReturn(invitation(TeamInvitationStatus.PENDING, null, "player@example.com", null));
+
+        teamRosterService.createInvitation(
+                TEAM_ID,
+                new CreateTeamInvitationRequest(null, "Player@Example.com", TeamMemberRole.CARRY, null));
+
+        ArgumentCaptor<CreateTeamInvitationCommand> captor = ArgumentCaptor.forClass(CreateTeamInvitationCommand.class);
+        verify(teamInvitationRepository).create(captor.capture());
+
+        assertThat(captor.getValue().inviteeProfileId()).isNull();
+        assertThat(captor.getValue().inviteeEmail()).isEqualTo("player@example.com");
+    }
+
+    @Test
+    void createInvitationRejectsFullTeam() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRosterLimitRepository.resolveRosterLimit(TEAM_ID)).thenReturn(5);
+        when(teamMemberRepository.countActiveByTeamId(TEAM_ID)).thenReturn(5);
+
+        assertThatThrownBy(() -> teamRosterService.createInvitation(
+                TEAM_ID,
+                new CreateTeamInvitationRequest(null, "player@example.com", TeamMemberRole.CARRY, null)))
+                .isInstanceOf(si.um.feri.dotaops.backend.common.error.ConflictException.class)
+                .hasMessage("Team roster is full.");
+
+        verify(teamInvitationRepository, never()).create(any());
+    }
+
+    @Test
+    void invitedUserCannotAcceptInvitationWhenRosterBecameFull() {
+        when(teamInvitationRepository.findById(INVITATION_ID))
+                .thenReturn(Optional.of(invitation(TeamInvitationStatus.PENDING, INVITEE_PROFILE_ID, null, null)));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(INVITEE_PROFILE_ID, ProfileRole.PLAYER));
+        when(currentUserProvider.currentUser()).thenReturn(Optional.of(principal(INVITEE_PROFILE_ID, "player@example.com")));
+        when(teamRosterLimitRepository.resolveRosterLimit(TEAM_ID)).thenReturn(1);
+        when(teamMemberRepository.countActiveByTeamId(TEAM_ID)).thenReturn(1);
+
+        assertThatThrownBy(() -> teamRosterService.acceptInvitation(INVITATION_ID))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Team roster cannot exceed 1 players.");
+
+        verify(teamInvitationRepository, never()).accept(eq(INVITATION_ID), any());
+        verify(teamMemberRepository, never()).create(any());
+    }
+
+    @Test
+    void invitedUserCannotAcceptInvitationWhenAlreadyOnAnotherTeam() {
+        when(teamInvitationRepository.findById(INVITATION_ID))
+                .thenReturn(Optional.of(invitation(TeamInvitationStatus.PENDING, INVITEE_PROFILE_ID, null, null)));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(INVITEE_PROFILE_ID, ProfileRole.PLAYER));
+        when(currentUserProvider.currentUser()).thenReturn(Optional.of(principal(INVITEE_PROFILE_ID, "player@example.com")));
+        when(teamRepository.existsCurrentTeamForProfileExcluding(INVITEE_PROFILE_ID, TEAM_ID)).thenReturn(true);
+
+        assertThatThrownBy(() -> teamRosterService.acceptInvitation(INVITATION_ID))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Profile already belongs to another active team.");
+
+        verify(teamInvitationRepository, never()).accept(eq(INVITATION_ID), any());
+        verify(teamMemberRepository, never()).create(any());
+    }
+
+    @Test
+    void organizerCannotAcceptPlayerInvitation() {
+        when(teamInvitationRepository.findById(INVITATION_ID))
+                .thenReturn(Optional.of(invitation(TeamInvitationStatus.PENDING, INVITEE_PROFILE_ID, null, null)));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(INVITEE_PROFILE_ID, ProfileRole.ORGANIZER));
+
+        assertThatThrownBy(() -> teamRosterService.acceptInvitation(INVITATION_ID))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only players can respond to team invitations.");
+
+        verify(teamInvitationRepository, never()).accept(eq(INVITATION_ID), any());
+        verify(teamMemberRepository, never()).create(any());
+    }
+
+    @Test
     void unrelatedUserCannotAcceptInvitation() {
         when(teamInvitationRepository.findById(INVITATION_ID))
                 .thenReturn(Optional.of(invitation(TeamInvitationStatus.PENDING, INVITEE_PROFILE_ID, null, null)));
@@ -273,6 +516,21 @@ class TeamRosterServiceTest {
         assertThatThrownBy(() -> teamRosterService.acceptInvitation(INVITATION_ID))
                 .isInstanceOf(AccessDeniedException.class);
 
+        verify(teamMemberRepository, never()).create(any());
+    }
+
+    @Test
+    void acceptedInvitationCannotBeAcceptedAgain() {
+        when(teamInvitationRepository.findById(INVITATION_ID))
+                .thenReturn(Optional.of(invitation(TeamInvitationStatus.ACCEPTED, INVITEE_PROFILE_ID, null, NOW)));
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(INVITEE_PROFILE_ID, ProfileRole.PLAYER));
+        when(currentUserProvider.currentUser()).thenReturn(Optional.of(principal(INVITEE_PROFILE_ID, "player@example.com")));
+
+        assertThatThrownBy(() -> teamRosterService.acceptInvitation(INVITATION_ID))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Only pending invitations can be changed.");
+
+        verify(teamInvitationRepository, never()).accept(eq(INVITATION_ID), any());
         verify(teamMemberRepository, never()).create(any());
     }
 
@@ -327,13 +585,162 @@ class TeamRosterServiceTest {
         verify(teamMemberRepository, never()).create(any());
     }
 
+    @Test
+    void ownerCanTransferOwnershipToActivePlayerMember() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(profileRepository.findById(INVITEE_PROFILE_ID)).thenReturn(Optional.of(profile(INVITEE_PROFILE_ID)));
+        when(teamMemberRepository.existsActive(TEAM_ID, INVITEE_PROFILE_ID)).thenReturn(true);
+        when(teamRepository.transferOwnership(TEAM_ID, INVITEE_PROFILE_ID)).thenReturn(Optional.of(team(INVITEE_PROFILE_ID)));
+        when(teamMemberRepository.findActiveByTeamId(TEAM_ID)).thenReturn(List.of(
+                member(OWNER_MEMBER_ID, CAPTAIN_PROFILE_ID, true, TeamMemberRole.SUPPORT),
+                member(true, TeamMemberRole.MID)));
+
+        var response = teamRosterService.transferOwnership(
+                TEAM_ID,
+                new TransferTeamOwnershipRequest(INVITEE_PROFILE_ID));
+
+        assertThat(response.team().captainProfileId()).isEqualTo(INVITEE_PROFILE_ID);
+        assertThat(response.isTeamOwner()).isFalse();
+        assertThat(response.canManageRoster()).isFalse();
+        assertThat(response.canInvitePlayers()).isFalse();
+        assertThat(response.canTransferOwnership()).isFalse();
+        assertThat(response.members()).hasSize(2);
+        assertThat(response.members()).anySatisfy(member -> {
+            assertThat(member.profileId()).isEqualTo(CAPTAIN_PROFILE_ID);
+            assertThat(member.teamOwner()).isFalse();
+        });
+        assertThat(response.members()).anySatisfy(member -> {
+            assertThat(member.profileId()).isEqualTo(INVITEE_PROFILE_ID);
+            assertThat(member.teamOwner()).isTrue();
+        });
+        verify(databaseActorContext).apply(any());
+    }
+
+    @Test
+    void newOwnerReceivesOwnerCapabilitiesFromCurrentTeamResponse() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(INVITEE_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRepository.findCurrentTeamForProfile(INVITEE_PROFILE_ID)).thenReturn(Optional.of(team(INVITEE_PROFILE_ID)));
+        when(teamMemberRepository.existsActive(TEAM_ID, INVITEE_PROFILE_ID)).thenReturn(true);
+        when(teamMemberRepository.findActiveByTeamId(TEAM_ID)).thenReturn(List.of(
+                member(OWNER_MEMBER_ID, CAPTAIN_PROFILE_ID, true, TeamMemberRole.SUPPORT),
+                member(true, TeamMemberRole.MID)));
+
+        var response = teamRosterService.getCurrentTeam();
+
+        assertThat(response.isTeamOwner()).isTrue();
+        assertThat(response.canManageRoster()).isTrue();
+        assertThat(response.canInvitePlayers()).isTrue();
+        assertThat(response.canTransferOwnership()).isTrue();
+        assertThat(response.canLeaveTeam()).isFalse();
+        assertThat(response.canDisbandTeam()).isTrue();
+        assertThat(response.currentUserTeamRole()).isEqualTo("owner");
+        assertThat(response.members()).anySatisfy(member -> {
+            assertThat(member.profileId()).isEqualTo(INVITEE_PROFILE_ID);
+            assertThat(member.teamOwner()).isTrue();
+        });
+    }
+
+    @Test
+    void nonOwnerCannotTransferOwnership() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(OTHER_PROFILE_ID, ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> teamRosterService.transferOwnership(
+                TEAM_ID,
+                new TransferTeamOwnershipRequest(INVITEE_PROFILE_ID)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the current team owner can transfer ownership.");
+    }
+
+    @Test
+    void organizerCannotTransferOwnership() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.ORGANIZER));
+
+        assertThatThrownBy(() -> teamRosterService.transferOwnership(
+                TEAM_ID,
+                new TransferTeamOwnershipRequest(INVITEE_PROFILE_ID)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only players can transfer team ownership.");
+    }
+
+    @Test
+    void adminDoesNotReceiveImplicitOwnershipTransferBypass() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.ADMIN));
+
+        assertThatThrownBy(() -> teamRosterService.transferOwnership(
+                TEAM_ID,
+                new TransferTeamOwnershipRequest(INVITEE_PROFILE_ID)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only players can transfer team ownership.");
+    }
+
+    @Test
+    void ownerCannotTransferOwnershipToNonMember() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(profileRepository.findById(INVITEE_PROFILE_ID)).thenReturn(Optional.of(profile(INVITEE_PROFILE_ID)));
+
+        assertThatThrownBy(() -> teamRosterService.transferOwnership(
+                TEAM_ID,
+                new TransferTeamOwnershipRequest(INVITEE_PROFILE_ID)))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("New team owner must be an active member of this team.");
+    }
+
+    @Test
+    void ownerCannotTransferOwnershipToOrganizer() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(profileRepository.findById(INVITEE_PROFILE_ID))
+                .thenReturn(Optional.of(profile(INVITEE_PROFILE_ID, ProfileRole.ORGANIZER)));
+
+        assertThatThrownBy(() -> teamRosterService.transferOwnership(
+                TEAM_ID,
+                new TransferTeamOwnershipRequest(INVITEE_PROFILE_ID)))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Team owner must be a player.");
+    }
+
+    @Test
+    void ownerCannotTransferOwnershipToMissingProfile() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> teamRosterService.transferOwnership(
+                TEAM_ID,
+                new TransferTeamOwnershipRequest(INVITEE_PROFILE_ID)))
+                .isInstanceOf(si.um.feri.dotaops.backend.common.error.ResourceNotFoundException.class);
+    }
+
+    @Test
+    void ownershipTransferRejectsMissingTeam() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRepository.findByIdForUpdate(TEAM_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamRosterService.transferOwnership(
+                TEAM_ID,
+                new TransferTeamOwnershipRequest(INVITEE_PROFILE_ID)))
+                .isInstanceOf(si.um.feri.dotaops.backend.common.error.ResourceNotFoundException.class);
+    }
+
+    @Test
+    void ownerCannotTransferOwnershipToSelf() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> teamRosterService.transferOwnership(
+                TEAM_ID,
+                new TransferTeamOwnershipRequest(CAPTAIN_PROFILE_ID)))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Profile is already the team owner.");
+    }
+
     private static Team team() {
+        return team(CAPTAIN_PROFILE_ID);
+    }
+
+    private static Team team(UUID captainProfileId) {
         return new Team(
                 TEAM_ID,
                 "Ancient Stack",
                 "AS",
                 "ancient-stack",
-                CAPTAIN_PROFILE_ID,
+                captainProfileId,
                 "Captain",
                 "EU",
                 null,
@@ -344,10 +751,14 @@ class TeamRosterServiceTest {
     }
 
     private static TeamMember member(boolean active, TeamMemberRole role) {
+        return member(MEMBER_ID, INVITEE_PROFILE_ID, active, role);
+    }
+
+    private static TeamMember member(UUID memberId, UUID profileId, boolean active, TeamMemberRole role) {
         return new TeamMember(
-                MEMBER_ID,
+                memberId,
                 TEAM_ID,
-                INVITEE_PROFILE_ID,
+                profileId,
                 "CarryOne",
                 "Carry One",
                 null,
@@ -404,6 +815,10 @@ class TeamRosterServiceTest {
     }
 
     private static Profile profile(UUID profileId) {
+        return profile(profileId, ProfileRole.PLAYER);
+    }
+
+    private static Profile profile(UUID profileId, ProfileRole role) {
         return new Profile(
                 profileId,
                 AUTH_USER_ID,
@@ -411,7 +826,7 @@ class TeamRosterServiceTest {
                 "Carry One",
                 null,
                 null,
-                ProfileRole.PLAYER,
+                role,
                 null,
                 null,
                 "SI",

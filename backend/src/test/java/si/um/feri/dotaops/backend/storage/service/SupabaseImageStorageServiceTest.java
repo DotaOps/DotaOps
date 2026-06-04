@@ -127,9 +127,40 @@ class SupabaseImageStorageServiceTest {
     }
 
     @Test
+    void createSignedUploadUrlUsesSupabaseUploadSignEndpoint() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        SupabaseImageStorageService service = new SupabaseImageStorageService(properties(), builder);
+        String path = "profiles/" + PROFILE_ID + "/avatar.png";
+
+        server.expect(requestTo("https://project.supabase.co/storage/v1/object/upload/sign/avatars/" + path))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("apikey", "service-role-key"))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer service-role-key"))
+                .andExpect(header("x-upsert", "true"))
+                .andRespond(withSuccess(
+                        "{\"url\":\"/object/upload/sign/avatars/" + path + "?token=signed-token\"}",
+                        MediaType.APPLICATION_JSON));
+
+        SignedStorageUpload upload = service.createSignedUploadUrl("avatars", path);
+
+        assertThat(upload.bucket()).isEqualTo("avatars");
+        assertThat(upload.path()).isEqualTo(path);
+        assertThat(upload.signedUrl())
+                .isEqualTo("https://project.supabase.co/storage/v1/object/upload/sign/avatars/"
+                        + path + "?token=signed-token")
+                .doesNotContain("service-role-key");
+        assertThat(upload.token()).isEqualTo("signed-token");
+        assertThat(upload.publicUrl())
+                .isEqualTo("https://project.supabase.co/storage/v1/object/public/avatars/" + path);
+        assertThat(upload.expiresInSeconds()).isEqualTo(7200);
+        server.verify();
+    }
+
+    @Test
     void storeProfileAvatarRequiresSupabaseStorageConfiguration() {
         SupabaseImageStorageService service = new SupabaseImageStorageService(
-                new SupabaseStorageProperties(null, "service-role-key", "dotaops-images"),
+                new SupabaseStorageProperties(null, "service-role-key", "dotaops-images", "avatars", "team-assets"),
                 RestClient.builder());
         MockMultipartFile avatar = new MockMultipartFile(
                 "avatar",
@@ -146,6 +177,8 @@ class SupabaseImageStorageServiceTest {
         return new SupabaseStorageProperties(
                 "https://project.supabase.co/",
                 "service-role-key",
-                "dotaops-images");
+                "dotaops-images",
+                "avatars",
+                "team-assets");
     }
 }

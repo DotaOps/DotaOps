@@ -26,7 +26,8 @@ public class TeamRepository {
 
         return jdbcTemplate.query(
                 selectTeamSql() + """
-                where (
+                where t.disbanded_at is null
+                  and (
                   cast(? as text) is null
                   or t.name ilike '%' || cast(? as text) || '%'
                   or t.tag ilike '%' || cast(? as text) || '%'
@@ -50,7 +51,8 @@ public class TeamRepository {
                 """
                 select count(*)
                 from public.teams t
-                where (
+                where t.disbanded_at is null
+                  and (
                   cast(? as text) is null
                   or t.name ilike '%' || cast(? as text) || '%'
                   or t.tag ilike '%' || cast(? as text) || '%'
@@ -68,7 +70,16 @@ public class TeamRepository {
 
     public Optional<Team> findById(UUID teamId) {
         return jdbcTemplate.query(
-                        selectTeamSql() + "where t.id = ? limit 1",
+                        selectTeamSql() + "where t.id = ? and t.disbanded_at is null limit 1",
+                        this::mapTeam,
+                        teamId)
+                .stream()
+                .findFirst();
+    }
+
+    public Optional<Team> findByIdForUpdate(UUID teamId) {
+        return jdbcTemplate.query(
+                        selectTeamSql() + "where t.id = ? and t.disbanded_at is null limit 1 for update of t",
                         this::mapTeam,
                         teamId)
                 .stream()
@@ -77,7 +88,7 @@ public class TeamRepository {
 
     public Optional<Team> findBySlug(String slug) {
         return jdbcTemplate.query(
-                        selectTeamSql() + "where t.slug = ? limit 1",
+                        selectTeamSql() + "where t.slug = ? and t.disbanded_at is null limit 1",
                         this::mapTeam,
                         slug)
                 .stream()
@@ -87,14 +98,17 @@ public class TeamRepository {
     public Optional<Team> findCurrentTeamForProfile(UUID profileId) {
         return jdbcTemplate.query(
                         selectTeamSql() + """
-                        where t.captain_profile_id = ?
-                           or exists (
-                             select 1
-                             from public.team_members tm
-                             where tm.team_id = t.id
-                               and tm.profile_id = ?
-                               and tm.is_active = true
-                           )
+                        where t.disbanded_at is null
+                          and (
+                            t.captain_profile_id = ?
+                            or exists (
+                              select 1
+                              from public.team_members tm
+                              where tm.team_id = t.id
+                                and tm.profile_id = ?
+                                and tm.is_active = true
+                            )
+                          )
                         order by
                           case when t.captain_profile_id = ? then 0 else 1 end,
                           t.updated_at desc nulls last,
@@ -108,6 +122,35 @@ public class TeamRepository {
                         profileId)
                 .stream()
                 .findFirst();
+    }
+
+    public boolean existsCurrentTeamForProfileExcluding(UUID profileId, UUID excludedTeamId) {
+        Boolean exists = jdbcTemplate.queryForObject(
+                """
+                select exists (
+                  select 1
+                  from public.teams t
+                  where t.disbanded_at is null
+                    and (cast(? as uuid) is null or t.id <> ?)
+                    and (
+                      t.captain_profile_id = ?
+                      or exists (
+                        select 1
+                        from public.team_members tm
+                        where tm.team_id = t.id
+                          and tm.profile_id = ?
+                          and tm.is_active = true
+                      )
+                    )
+                )
+                """,
+                Boolean.class,
+                excludedTeamId,
+                excludedTeamId,
+                profileId,
+                profileId);
+
+        return Boolean.TRUE.equals(exists);
     }
 
     public Team create(CreateTeamCommand command) {
@@ -137,7 +180,9 @@ public class TeamRepository {
                   ) as captain_nickname,
                   region,
                   logo_url,
+                  logo_path,
                   banner_url,
+                  banner_path,
                   description,
                   created_by,
                   created_at,
@@ -164,9 +209,11 @@ public class TeamRepository {
                           slug = case when ? then ? else slug end,
                           region = case when ? then ? else region end,
                           logo_url = case when ? then ? else logo_url end,
+                          logo_path = case when ? then null else logo_path end,
                           description = case when ? then ? else description end,
                           updated_at = now()
                         where id = ?
+                          and disbanded_at is null
                         returning
                           id,
                           name,
@@ -180,7 +227,9 @@ public class TeamRepository {
                           ) as captain_nickname,
                           region,
                           logo_url,
+                          logo_path,
                           banner_url,
+                          banner_path,
                           description,
                           created_by,
                           created_at,
@@ -197,6 +246,7 @@ public class TeamRepository {
                         command.region(),
                         command.logoUrlPresent(),
                         command.logoUrl(),
+                        command.logoUrlPresent(),
                         command.descriptionPresent(),
                         command.description(),
                         teamId)
@@ -210,8 +260,10 @@ public class TeamRepository {
                         update public.teams
                         set
                           logo_url = ?,
+                          logo_path = null,
                           updated_at = now()
                         where id = ?
+                          and disbanded_at is null
                         returning
                           id,
                           name,
@@ -225,7 +277,9 @@ public class TeamRepository {
                           ) as captain_nickname,
                           region,
                           logo_url,
+                          logo_path,
                           banner_url,
+                          banner_path,
                           description,
                           created_by,
                           created_at,
@@ -244,8 +298,10 @@ public class TeamRepository {
                         update public.teams
                         set
                           banner_url = ?,
+                          banner_path = null,
                           updated_at = now()
                         where id = ?
+                          and disbanded_at is null
                         returning
                           id,
                           name,
@@ -259,7 +315,9 @@ public class TeamRepository {
                           ) as captain_nickname,
                           region,
                           logo_url,
+                          logo_path,
                           banner_url,
+                          banner_path,
                           description,
                           created_by,
                           created_at,
@@ -267,6 +325,138 @@ public class TeamRepository {
                         """,
                         this::mapTeam,
                         bannerUrl,
+                        teamId)
+                .stream()
+                .findFirst();
+    }
+
+    public Optional<Team> updateLogoStorage(UUID teamId, String logoUrl, String logoPath) {
+        return jdbcTemplate.query(
+                        """
+                        update public.teams
+                        set
+                          logo_url = ?,
+                          logo_path = ?,
+                          updated_at = now()
+                        where id = ?
+                          and disbanded_at is null
+                        returning
+                          id,
+                          name,
+                          tag,
+                          slug,
+                          captain_profile_id,
+                          (
+                            select p.nickname
+                            from public.profiles p
+                            where p.id = captain_profile_id
+                          ) as captain_nickname,
+                          region,
+                          logo_url,
+                          logo_path,
+                          banner_url,
+                          banner_path,
+                          description,
+                          created_by,
+                          created_at,
+                          updated_at
+                        """,
+                        this::mapTeam,
+                        logoUrl,
+                        logoPath,
+                        teamId)
+                .stream()
+                .findFirst();
+    }
+
+    public Optional<Team> updateBannerStorage(UUID teamId, String bannerUrl, String bannerPath) {
+        return jdbcTemplate.query(
+                        """
+                        update public.teams
+                        set
+                          banner_url = ?,
+                          banner_path = ?,
+                          updated_at = now()
+                        where id = ?
+                          and disbanded_at is null
+                        returning
+                          id,
+                          name,
+                          tag,
+                          slug,
+                          captain_profile_id,
+                          (
+                            select p.nickname
+                            from public.profiles p
+                            where p.id = captain_profile_id
+                          ) as captain_nickname,
+                          region,
+                          logo_url,
+                          logo_path,
+                          banner_url,
+                          banner_path,
+                          description,
+                          created_by,
+                          created_at,
+                          updated_at
+                        """,
+                        this::mapTeam,
+                        bannerUrl,
+                        bannerPath,
+                        teamId)
+                .stream()
+                .findFirst();
+    }
+
+    public Optional<Team> transferOwnership(UUID teamId, UUID newCaptainProfileId) {
+        return jdbcTemplate.query(
+                        """
+                        update public.teams
+                        set
+                          captain_profile_id = ?,
+                          updated_at = now()
+                        where id = ?
+                          and disbanded_at is null
+                        returning
+                          id,
+                          name,
+                          tag,
+                          slug,
+                          captain_profile_id,
+                          (
+                            select p.nickname
+                            from public.profiles p
+                            where p.id = captain_profile_id
+                          ) as captain_nickname,
+                          region,
+                          logo_url,
+                          logo_path,
+                          banner_url,
+                          banner_path,
+                          description,
+                          created_by,
+                          created_at,
+                          updated_at
+                        """,
+                        this::mapTeam,
+                        newCaptainProfileId,
+                        teamId)
+                .stream()
+                .findFirst();
+    }
+
+    public Optional<OffsetDateTime> disband(UUID teamId) {
+        return jdbcTemplate.query(
+                        """
+                        update public.teams
+                        set
+                          disbanded_at = now(),
+                          updated_at = now()
+                        where id = ?
+                          and disbanded_at is null
+                        returning disbanded_at
+                        """,
+                        (resultSet, rowNumber) -> resultSet.getObject("disbanded_at", OffsetDateTime.class),
                         teamId)
                 .stream()
                 .findFirst();
@@ -283,7 +473,9 @@ public class TeamRepository {
                   p.nickname as captain_nickname,
                   t.region,
                   t.logo_url,
+                  t.logo_path,
                   t.banner_url,
+                  t.banner_path,
                   t.description,
                   t.created_by,
                   t.created_at,
@@ -303,7 +495,9 @@ public class TeamRepository {
                 resultSet.getString("captain_nickname"),
                 resultSet.getString("region"),
                 resultSet.getString("logo_url"),
+                resultSet.getString("logo_path"),
                 resultSet.getString("banner_url"),
+                resultSet.getString("banner_path"),
                 resultSet.getString("description"),
                 resultSet.getObject("created_by", UUID.class),
                 resultSet.getObject("created_at", OffsetDateTime.class),

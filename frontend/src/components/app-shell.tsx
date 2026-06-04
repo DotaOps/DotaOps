@@ -20,7 +20,7 @@ import type { ReactNode } from "react";
 
 import { CurrentUserProfileProvider } from "@/components/current-user-profile-context";
 import { UserAvatar } from "@/components/user-avatar";
-import { getCurrentUserProfile, type CurrentUserProfile } from "@/lib/auth";
+import { enforceSessionOnlyPersistence, getCurrentUserProfile, type CurrentUserProfile } from "@/lib/auth";
 import { isAdminRole, isOrganizerRole, routeAccessForPath } from "@/lib/route-access";
 import { classNames } from "@/lib/utils";
 import {
@@ -82,9 +82,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const access = routeAccessForPath(pathname);
   const isOrganizerWorkspace = access === "organizer";
   const [profile, setProfile] = useState<CurrentUserProfile | null>(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(access !== "public");
+  const [isCheckingAuth, setIsCheckingAuth] = useState(
+    access !== "public" && access !== "transition"
+  );
   const [checkedAuthPathname, setCheckedAuthPathname] = useState<string | null>(
-    access === "public" ? pathname : null
+    access === "public" || access === "transition" ? pathname : null
   );
   const canUseOrganizer = isOrganizerRole(profile?.role);
   const canUseAdmin = isAdminRole(profile?.role);
@@ -92,15 +94,37 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isPrivateAuthCheckPending =
     access !== "public" &&
     access !== "public-content" &&
+    access !== "transition" &&
     (isCheckingAuth || checkedAuthPathname !== pathname);
   const shouldUseOrganizerLoader = isOrganizerWorkspace && isPrivateAuthCheckPending;
 
   useEffect(() => {
     let isMounted = true;
 
-    if (access === "public") {
-      const timeout = window.setTimeout(() => {
+    async function enforceSessionMode() {
+      try {
+        const wasCleared = await enforceSessionOnlyPersistence();
+
+        if (!isMounted || !wasCleared) {
+          return false;
+        }
+
+        setProfile(null);
+
+        if (access === "public" || access === "public-content") {
+          router.refresh();
+        }
+
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    if (access === "public" || access === "transition") {
+      const timeout = window.setTimeout(async () => {
         if (isMounted) {
+          await enforceSessionMode();
           setCheckedAuthPathname(pathname);
         }
       }, 0);
@@ -111,12 +135,23 @@ export function AppShell({ children }: { children: ReactNode }) {
       };
     }
 
-    const timeout = window.setTimeout(() => {
+    const timeout = window.setTimeout(async () => {
       if (!isMounted) {
         return;
       }
 
       setIsCheckingAuth(true);
+
+      const wasSessionCleared = await enforceSessionMode();
+
+      if (wasSessionCleared) {
+        if (isMounted) {
+          setCheckedAuthPathname(pathname);
+          setIsCheckingAuth(false);
+        }
+
+        return;
+      }
 
       getCurrentUserProfile()
         .then((loadedProfile) => {
@@ -141,10 +176,16 @@ export function AppShell({ children }: { children: ReactNode }) {
       isMounted = false;
       window.clearTimeout(timeout);
     };
-  }, [access, pathname]);
+  }, [access, pathname, router]);
 
   useEffect(() => {
-    if (isPrivateAuthCheckPending || profile || access === "public" || access === "public-content") {
+    if (
+      isPrivateAuthCheckPending ||
+      profile ||
+      access === "public" ||
+      access === "public-content" ||
+      access === "transition"
+    ) {
       return;
     }
 
@@ -196,7 +237,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const shouldShowPageSkeleton = isPrivateAuthCheckPending && Boolean(profile) && !shouldUseOrganizerLoader;
   const pageDashboardLoadingRole = dashboardLoadingRole(profile?.role);
 
-  if (access === "public") {
+  if (access === "public" || access === "transition") {
     return <>{children}</>;
   }
 

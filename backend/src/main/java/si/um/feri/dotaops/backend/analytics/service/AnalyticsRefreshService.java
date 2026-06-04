@@ -6,6 +6,7 @@ import java.time.ZoneOffset;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
@@ -19,9 +20,14 @@ public class AnalyticsRefreshService {
     private static final Logger LOGGER = LoggerFactory.getLogger(AnalyticsRefreshService.class);
 
     private final JdbcTemplate jdbcTemplate;
+    private final boolean autoRefreshAfterImport;
 
-    public AnalyticsRefreshService(JdbcTemplate jdbcTemplate) {
+    public AnalyticsRefreshService(
+            JdbcTemplate jdbcTemplate,
+            @Value("${dotaops.analytics.refresh.auto-after-import:false}") boolean autoRefreshAfterImport
+    ) {
         this.jdbcTemplate = jdbcTemplate;
+        this.autoRefreshAfterImport = autoRefreshAfterImport;
     }
 
     public AnalyticsRefreshResponse refreshNow(String reason) {
@@ -54,6 +60,13 @@ public class AnalyticsRefreshService {
 
     @Async("analyticsRefreshTaskExecutor")
     public void requestRefreshAfterSuccessfulImport(String dotaMatchId) {
+        if (!autoRefreshAfterImport) {
+            LOGGER.debug(
+                    "Skipping analytics materialized-view refresh after import {}; live SQL endpoints do not require it.",
+                    safeReason(dotaMatchId));
+            return;
+        }
+
         requestRefreshSafely("match import ready: " + dotaMatchId);
     }
 

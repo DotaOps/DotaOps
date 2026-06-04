@@ -1,6 +1,7 @@
 package si.um.feri.dotaops.backend.analytics.web;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -77,6 +78,8 @@ class PublicAnalyticsControllerTest {
         mockMvc.perform(get("/api/public/analytics/players")
                         .queryParam("tournament_id", TOURNAMENT_ID.toString())
                         .queryParam("profileId", PROFILE_ID.toString())
+                        .queryParam("from", "2026-05-01T00:00:00Z")
+                        .queryParam("to", "2026-06-01T00:00:00Z")
                         .queryParam("limit", "25"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].profileId").value(PROFILE_ID.toString()))
@@ -92,6 +95,8 @@ class PublicAnalyticsControllerTest {
         verify(analyticsQueryService).playerMetrics(filtersCaptor.capture());
         assertThat(filtersCaptor.getValue().tournamentId()).isEqualTo(TOURNAMENT_ID);
         assertThat(filtersCaptor.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filtersCaptor.getValue().from()).isEqualTo(OffsetDateTime.parse("2026-05-01T00:00:00Z"));
+        assertThat(filtersCaptor.getValue().to()).isEqualTo(OffsetDateTime.parse("2026-06-01T00:00:00Z"));
         assertThat(filtersCaptor.getValue().limit()).isEqualTo(25);
     }
 

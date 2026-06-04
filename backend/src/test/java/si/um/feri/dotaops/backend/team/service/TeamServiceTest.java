@@ -14,11 +14,14 @@ import si.um.feri.dotaops.backend.auth.domain.AuthenticatedProfile;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
+import si.um.feri.dotaops.backend.common.error.ConflictException;
 import si.um.feri.dotaops.backend.storage.service.StoredImage;
 import si.um.feri.dotaops.backend.storage.service.SupabaseImageStorageService;
 import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.repository.CreateTeamCommand;
+import si.um.feri.dotaops.backend.team.repository.CreateTeamMemberCommand;
 import si.um.feri.dotaops.backend.team.repository.TeamManualPlayerRepository;
+import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
 import si.um.feri.dotaops.backend.team.repository.UpdateTeamCommand;
 import si.um.feri.dotaops.backend.team.web.CreateTeamRequest;
@@ -41,11 +44,13 @@ class TeamServiceTest {
     private static final UUID TEAM_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
 
     private final TeamRepository teamRepository = mock(TeamRepository.class);
+    private final TeamMemberRepository teamMemberRepository = mock(TeamMemberRepository.class);
     private final TeamManualPlayerRepository teamManualPlayerRepository = mock(TeamManualPlayerRepository.class);
     private final SupabaseImageStorageService imageStorageService = mock(SupabaseImageStorageService.class);
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
     private final TeamService teamService = new TeamService(
             teamRepository,
+            teamMemberRepository,
             teamManualPlayerRepository,
             imageStorageService,
             currentUserProvider);
@@ -65,6 +70,8 @@ class TeamServiceTest {
 
         ArgumentCaptor<CreateTeamCommand> captor = ArgumentCaptor.forClass(CreateTeamCommand.class);
         verify(teamRepository).create(captor.capture());
+        ArgumentCaptor<CreateTeamMemberCommand> memberCaptor = ArgumentCaptor.forClass(CreateTeamMemberCommand.class);
+        verify(teamMemberRepository).create(memberCaptor.capture());
 
         assertThat(captor.getValue().name()).isEqualTo("Ancient Stack");
         assertThat(captor.getValue().tag()).isEqualTo("AS");
@@ -73,6 +80,8 @@ class TeamServiceTest {
         assertThat(captor.getValue().createdBy()).isEqualTo(AUTH_USER_ID);
         assertThat(captor.getValue().region()).isEqualTo("EU");
         assertThat(captor.getValue().description()).isEqualTo("Tier two squad");
+        assertThat(memberCaptor.getValue().profileId()).isEqualTo(CAPTAIN_PROFILE_ID);
+        assertThat(memberCaptor.getValue().role()).isEqualTo(si.um.feri.dotaops.backend.team.domain.TeamMemberRole.SUPPORT);
     }
 
     @Test
@@ -174,8 +183,61 @@ class TeamServiceTest {
     }
 
     @Test
-    void organizerCanUpdateAnyTeam() {
+    void organizerCannotCreateTeam() {
         when(currentUserProvider.requireProfile()).thenReturn(profile(OTHER_PROFILE_ID, ProfileRole.ORGANIZER));
+
+        assertThatThrownBy(() -> teamService.createTeam(new CreateTeamRequest(
+                "Organizer Team",
+                null,
+                null,
+                null,
+                null,
+                null)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only players can create teams.");
+
+        verify(teamRepository, never()).create(any());
+    }
+
+    @Test
+    void playerCannotCreateSecondActiveTeam() {
+        when(currentUserProvider.requireProfile()).thenReturn(profile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRepository.existsCurrentTeamForProfileExcluding(CAPTAIN_PROFILE_ID, null)).thenReturn(true);
+
+        assertThatThrownBy(() -> teamService.createTeam(new CreateTeamRequest(
+                "Second Team",
+                null,
+                null,
+                null,
+                null,
+                null)))
+                .isInstanceOf(ConflictException.class)
+                .hasMessage("Profile already belongs to an active team.");
+
+        verify(teamRepository, never()).create(any());
+    }
+
+    @Test
+    void organizerCannotUpdateAnyTeam() {
+        when(currentUserProvider.requireProfile()).thenReturn(profile(OTHER_PROFILE_ID, ProfileRole.ORGANIZER));
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team("Ancient Stack", "ancient-stack", CAPTAIN_PROFILE_ID)));
+
+        assertThatThrownBy(() -> teamService.updateTeam(TEAM_ID, new UpdateTeamRequest(
+                null,
+                null,
+                null,
+                "NA",
+                null,
+                null)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the team captain or an admin can update this team.");
+
+        verify(teamRepository, never()).update(eq(TEAM_ID), any());
+    }
+
+    @Test
+    void adminCanUpdateAnyTeam() {
+        when(currentUserProvider.requireProfile()).thenReturn(profile(OTHER_PROFILE_ID, ProfileRole.ADMIN));
         when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team("Ancient Stack", "ancient-stack", CAPTAIN_PROFILE_ID)));
         when(teamRepository.update(eq(TEAM_ID), any())).thenReturn(Optional.of(team("Ancient Stack", "ancient-stack", CAPTAIN_PROFILE_ID)));
 
@@ -203,7 +265,7 @@ class TeamServiceTest {
                 null,
                 null)))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessage("Only the team captain or an organizer can update this team.");
+                .hasMessage("Only the team captain or an admin can update this team.");
     }
 
     @Test
@@ -285,7 +347,7 @@ class TeamServiceTest {
 
         assertThatThrownBy(() -> teamService.uploadTeamBanner(TEAM_ID, banner))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessage("Only the team captain or an organizer can update this team.");
+                .hasMessage("Only the team captain or an admin can update this team.");
 
         verify(imageStorageService, never()).storeTeamBanner(TEAM_ID, banner);
         verify(teamRepository, never()).updateBannerUrl(eq(TEAM_ID), any());

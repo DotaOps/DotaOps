@@ -3,6 +3,7 @@ package si.um.feri.dotaops.backend.integration;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -11,8 +12,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.ResourcePatternResolver;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -65,7 +68,8 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('match_games'),
                       ('match_import_events'),
                       ('match_players'),
-                      ('notification_outbox')
+                      ('notification_outbox'),
+                      ('audit_log')
                 ) as expected(relname)
                 left join pg_class c
                   on c.relname = expected.relname
@@ -90,8 +94,11 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                     values
                       ('profiles_steam_id_format'),
                       ('profiles_role_no_global_captain'),
+                      ('profiles_avatar_path_format'),
                       ('profiles_opendota_account_id_range'),
                       ('profile_external_accounts_steam_id64_format'),
+                      ('teams_logo_path_format'),
+                      ('teams_banner_path_format'),
                       ('matches_scores_fit_series'),
                       ('matches_cancellation_reason_length'),
                       ('matches_cancelled_at_status'),
@@ -134,6 +141,8 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                       ('matches_status_idx'),
                       ('steam_login_states_expires_idx'),
                       ('matches_tournament_stage_idx'),
+                      ('teams_active_created_at_idx'),
+                      ('audit_log_created_at_idx'),
                       ('notification_outbox_recipient_profile_id_idx'),
                       ('notification_outbox_status_idx'),
                       ('notification_outbox_type_idx'),
@@ -207,6 +216,141 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
         assertThat(profileCreationTrigger).isOne();
     }
 
+    @Test
+    void operationalAuditTriggersCoverRequiredTables() {
+        List<String> missingAuditTriggers = jdbcTemplate.queryForList(
+                """
+                select expected.trigger_name
+                from (
+                    values
+                      ('audit_profiles', 'profiles'),
+                      ('audit_teams', 'teams'),
+                      ('audit_team_members', 'team_members'),
+                      ('audit_tournaments', 'tournaments'),
+                      ('audit_tournament_registrations', 'tournament_registrations'),
+                      ('audit_matches', 'matches'),
+                      ('audit_match_games', 'match_games'),
+                      ('audit_match_imports', 'match_imports'),
+                      ('audit_match_players', 'match_players')
+                ) as expected(trigger_name, table_name)
+                left join pg_trigger trigger
+                  on trigger.tgname = expected.trigger_name
+                 and not trigger.tgisinternal
+                left join pg_class target_table
+                  on target_table.oid = trigger.tgrelid
+                 and target_table.relname = expected.table_name
+                left join pg_namespace target_schema
+                  on target_schema.oid = target_table.relnamespace
+                 and target_schema.nspname = 'public'
+                where target_schema.oid is null
+                order by expected.trigger_name
+                """,
+                String.class);
+
+        assertThat(missingAuditTriggers).isEmpty();
+    }
+
+    @Test
+    void storageBucketsAndPoliciesExistWhenStorageSchemaIsPresent() {
+        Boolean storageObjectsExist = jdbcTemplate.queryForObject(
+                "select to_regclass('storage.objects') is not null",
+                Boolean.class);
+        if (!Boolean.TRUE.equals(storageObjectsExist)) {
+            return;
+        }
+
+        List<String> missingBuckets = jdbcTemplate.queryForList(
+                """
+                select expected.bucket_id
+                from (
+                    values
+                      ('avatars'),
+                      ('team-assets')
+                ) as expected(bucket_id)
+                left join storage.buckets b
+                  on b.id = expected.bucket_id
+                 and b."public"
+                where b.id is null
+                order by expected.bucket_id
+                """,
+                String.class);
+        List<String> missingPolicies = jdbcTemplate.queryForList(
+                """
+                select expected.policyname
+                from (
+                    values
+                      ('dotaops avatars public read'),
+                      ('dotaops avatars owner insert'),
+                      ('dotaops avatars owner update'),
+                      ('dotaops avatars owner delete'),
+                      ('dotaops team assets public read'),
+                      ('dotaops team assets captain insert'),
+                      ('dotaops team assets captain update'),
+                      ('dotaops team assets captain delete')
+                ) as expected(policyname)
+                left join pg_policies p
+                  on p.schemaname = 'storage'
+                 and p.tablename = 'objects'
+                 and p.policyname = expected.policyname
+                where p.policyname is null
+                order by expected.policyname
+                """,
+                String.class);
+
+        assertThat(missingBuckets).isEmpty();
+        assertThat(missingPolicies).isEmpty();
+    }
+
+    @Test
+    void captainRosterBackfillReactivatesLatestHistoricalMembershipOrCreatesMissingMembership() {
+        UUID historicalCaptainProfileId = upsertProfile(UUID.randomUUID(), "player");
+        UUID missingCaptainProfileId = upsertProfile(UUID.randomUUID(), "player");
+        UUID historicalTeamId = insertTeam(historicalCaptainProfileId);
+        UUID missingTeamId = insertTeam(missingCaptainProfileId);
+
+        insertInactiveTeamMember(historicalTeamId, historicalCaptainProfileId, "3 days", "2 days");
+        UUID latestHistoricalMemberId = insertInactiveTeamMember(
+                historicalTeamId,
+                historicalCaptainProfileId,
+                "2 days",
+                "1 day");
+
+        new ResourceDatabasePopulator(
+                new ClassPathResource("db/migration/V30__backfill_team_captain_roster_membership.sql"))
+                .execute(jdbcTemplate.getDataSource());
+
+        List<UUID> reactivatedMemberIds = jdbcTemplate.queryForList(
+                """
+                select id
+                from public.team_members
+                where team_id = ?
+                  and profile_id = ?
+                  and is_active
+                """,
+                UUID.class,
+                historicalTeamId,
+                historicalCaptainProfileId);
+        Boolean reactivatedMemberClearedLeftAt = jdbcTemplate.queryForObject(
+                "select left_at is null from public.team_members where id = ?",
+                Boolean.class,
+                latestHistoricalMemberId);
+        Integer insertedActiveMemberships = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from public.team_members
+                where team_id = ?
+                  and profile_id = ?
+                  and is_active
+                """,
+                Integer.class,
+                missingTeamId,
+                missingCaptainProfileId);
+
+        assertThat(reactivatedMemberIds).containsExactly(latestHistoricalMemberId);
+        assertThat(reactivatedMemberClearedLeftAt).isTrue();
+        assertThat(insertedActiveMemberships).isOne();
+    }
+
     private List<String> currentMigrationVersions() throws IOException {
         Resource[] resources = resourcePatternResolver.getResources("classpath*:db/migration/V*.sql");
 
@@ -227,5 +371,56 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                 .isTrue();
 
         return matcher.group(1).replace('_', '.');
+    }
+
+    private UUID insertTeam(UUID captainProfileId) {
+        String suffix = uniqueSuffix();
+
+        return jdbcTemplate.queryForObject(
+                """
+                insert into public.teams (name, slug, captain_profile_id)
+                values (?, ?, ?)
+                returning id
+                """,
+                UUID.class,
+                "Migration Team " + suffix,
+                "migration-team-" + suffix,
+                captainProfileId);
+    }
+
+    private UUID insertInactiveTeamMember(
+            UUID teamId,
+            UUID profileId,
+            String joinedAgo,
+            String leftAgo
+    ) {
+        return jdbcTemplate.queryForObject(
+                """
+                insert into public.team_members (
+                  team_id,
+                  profile_id,
+                  member_role,
+                  is_active,
+                  joined_at,
+                  left_at,
+                  updated_at
+                )
+                values (
+                  ?,
+                  ?,
+                  'support'::public.dotaops_team_member_role,
+                  false,
+                  now() - cast(? as interval),
+                  now() - cast(? as interval),
+                  now() - cast(? as interval)
+                )
+                returning id
+                """,
+                UUID.class,
+                teamId,
+                profileId,
+                joinedAgo,
+                leftAgo,
+                leftAgo);
     }
 }

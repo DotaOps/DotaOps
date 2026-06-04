@@ -4,9 +4,7 @@ import {
   BarChart3,
   Check,
   ChevronRight,
-  Lock,
   Mail,
-  MoreVertical,
   RefreshCcw,
   Save,
   Shield,
@@ -26,19 +24,30 @@ import type { LucideIcon } from "lucide-react";
 import { RouteLoadingSkeleton } from "@/components/route-loading-skeleton";
 import {
   createTeam,
+  createTeamJoinRequest,
   acceptTeamInvitation,
+  acceptTeamJoinRequest,
+  cancelTeamJoinRequest,
   cancelTeamInvitation,
+  declineTeamJoinRequest,
   declineTeamInvitation,
+  disbandTeam,
+  getTeamRosterProfile,
+  leaveCurrentTeam,
   loadTeamManagementData,
   removeTeamMember,
   sendTeamInvitation,
+  transferTeamOwnership,
   updateTeamMemberRole,
   type TeamInvitation,
   type TeamInvitationStatus,
+  type TeamJoinRequest,
   type TeamManagementViewModel,
   type TeamManualPlayer,
   type TeamMember,
   type TeamMemberRole,
+  type TeamRosterProfile,
+  type TeamSummary,
   type CreateTeamInput
 } from "@/lib/team-data";
 import { classNames } from "@/lib/utils";
@@ -46,6 +55,8 @@ import { ApiRequestError } from "@/lib/api";
 
 type TeamTab = "overview" | "roster" | "invitations";
 type InviteFilter = "all" | TeamInvitationStatus;
+type RosterProfileTab = "profile" | "stats";
+type TeamConfirmAction = "leave" | "disband";
 
 const tabs: Array<{ id: TeamTab; label: string }> = [
   { id: "overview", label: "Overview" },
@@ -75,6 +86,27 @@ const emptyMembers: TeamMember[] = [];
 const emptyManualPlayers: TeamManualPlayer[] = [];
 const emptyInvitations: TeamInvitation[] = [];
 const emptyEvents: TeamManagementViewModel["activeEvents"] = [];
+
+function hasActiveTeamOwnerMember(team: TeamSummary, members: TeamMember[]) {
+  return Boolean(
+    members.some((member) => member.active && isTeamOwnerMember(team, member))
+  );
+}
+
+function isTeamOwnerMember(team: TeamSummary, member: TeamMember) {
+  return member.teamOwner || Boolean(team.captainProfileId && member.profileId === team.captainProfileId);
+}
+
+function needsDerivedTeamOwnerParticipant(team: TeamSummary, members: TeamMember[]) {
+  return Boolean(team.captainProfileId) && !hasActiveTeamOwnerMember(team, members);
+}
+
+function rosterParticipantCount(team: TeamSummary, members: TeamMember[], manualPlayers: TeamManualPlayer[]) {
+  const activeMembers = members.filter((member) => member.active).length;
+  const derivedTeamOwner = needsDerivedTeamOwnerParticipant(team, members) ? 1 : 0;
+
+  return activeMembers + manualPlayers.length + derivedTeamOwner;
+}
 
 function roleLabel(role: TeamMemberRole) {
   return roleOptions.find((option) => option.value === role)?.label ?? role;
@@ -130,6 +162,10 @@ function formatRelative(value: string | null) {
   return `${Math.round(hours / 24)} days ago`;
 }
 
+function formatMetric(value: number, suffix = "") {
+  return `${Number.isInteger(value) ? value.toString() : value.toFixed(2)}${suffix}`;
+}
+
 function statusClass(status: TeamInvitationStatus) {
   return `team-mgmt-status-${status}`;
 }
@@ -151,6 +187,88 @@ function TeamAvatar({ member, size = "regular" }: { member: TeamMember; size?: "
     >
       {member.avatarUrl ? null : initials(member.displayName || member.nickname)}
     </span>
+  );
+}
+
+function TeamOwnerAvatar({ team }: { team: TeamSummary }) {
+  return (
+    <span className="team-mgmt-avatar" aria-hidden="true">
+      {initials(team.captainNickname ?? "Team owner")}
+    </span>
+  );
+}
+
+function DerivedTeamOwnerPreview({ team }: { team: TeamSummary }) {
+  return (
+    <article className="team-mgmt-roster-tile ops-panel">
+      <span className="team-mgmt-captain-badge">Team owner</span>
+      <TeamOwnerAvatar team={team} />
+      <div>
+        <strong>{team.captainNickname ?? "Team owner"}</strong>
+        <p>Captain / roster participant</p>
+      </div>
+      <div className="team-mgmt-tile-actions">
+        <button
+          className="team-mgmt-later-action"
+          disabled
+          title="Backend player profile page required"
+          type="button"
+        >
+          Profile
+          <small>Later</small>
+        </button>
+        <button
+          className="team-mgmt-later-action"
+          disabled
+          title="Backend player stats page required"
+          type="button"
+        >
+          Stats
+          <small>Later</small>
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function DerivedTeamOwnerRosterCard({ team }: { team: TeamSummary }) {
+  return (
+    <article className="team-mgmt-member-card ops-panel">
+      <span className="team-mgmt-captain-badge">Team owner</span>
+      <div className="team-mgmt-member-head">
+        <TeamOwnerAvatar team={team} />
+        <div>
+          <strong>{team.captainNickname ?? "Team owner"}</strong>
+          <p>Captain / roster participant</p>
+        </div>
+      </div>
+      <div className="team-mgmt-member-meta">
+        <span>Status</span>
+        <strong className="is-online">Registered account</strong>
+        <span>Team access</span>
+        <strong>Owner</strong>
+      </div>
+      <div className="team-mgmt-member-actions">
+        <button
+          className="team-mgmt-later-action"
+          disabled
+          title="Backend player profile page required"
+          type="button"
+        >
+          Profile
+          <small>Later</small>
+        </button>
+        <button
+          className="team-mgmt-later-action"
+          disabled
+          title="Backend player stats page required"
+          type="button"
+        >
+          Stats
+          <small>Later</small>
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -199,25 +317,39 @@ function readableError(caught: unknown, fallback: string) {
 }
 
 function NoTeamState({
+  availableTeams,
   canCreateTeam,
+  canRequestTeamMembership,
   incomingInvitations,
   isTournamentOperator,
   isMutating,
   message,
+  notice,
   onInvitationAction,
+  onJoinRequestAction,
+  onRequestTeamMembership,
   onCreateTeam,
+  outgoingJoinRequests,
   onRefresh
 }: {
+  availableTeams: TeamSummary[];
   canCreateTeam: boolean;
+  canRequestTeamMembership: boolean;
   incomingInvitations: TeamInvitation[];
   isTournamentOperator: boolean;
   isMutating: boolean;
   message: string | null;
+  notice: string | null;
   onInvitationAction: (action: "accept" | "decline", invitationId: string) => void;
+  onJoinRequestAction: (action: "cancel", requestId: string) => void;
+  onRequestTeamMembership: (teamId: string, message: string) => Promise<void>;
   onCreateTeam: (input: CreateTeamInput) => Promise<void>;
+  outgoingJoinRequests: TeamJoinRequest[];
   onRefresh: () => void;
 }) {
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [joinRequestMessage, setJoinRequestMessage] = useState("");
+  const [joinRequestTeamId, setJoinRequestTeamId] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [teamInput, setTeamInput] = useState<CreateTeamInput>({
     description: "",
@@ -237,6 +369,20 @@ function NoTeamState({
     }
 
     await onCreateTeam(teamInput);
+  }
+
+  async function submitJoinRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError(null);
+
+    if (!joinRequestTeamId) {
+      setFormError("Select a team before sending a join request.");
+      return;
+    }
+
+    await onRequestTeamMembership(joinRequestTeamId, joinRequestMessage);
+    setJoinRequestMessage("");
+    setJoinRequestTeamId("");
   }
 
   return (
@@ -318,6 +464,7 @@ function NoTeamState({
       ) : null}
 
       {message ? <p className="team-mgmt-message team-mgmt-error">{message}</p> : null}
+      {notice ? <p className="team-mgmt-message team-mgmt-notice">{notice}</p> : null}
       {formError ? <p className="team-mgmt-message team-mgmt-error">{formError}</p> : null}
       {showCreateForm && canCreateTeam ? (
         <form className="team-mgmt-create-form" onSubmit={submitCreateTeam}>
@@ -397,13 +544,60 @@ function NoTeamState({
           </div>
         </form>
       ) : null}
+      {canRequestTeamMembership ? (
+        <form className="team-mgmt-join-request-form" onSubmit={submitJoinRequest}>
+          <div>
+            <span className="ops-label">Request team access</span>
+            <p>Send a membership request to an existing team. The team owner must approve it.</p>
+          </div>
+          {availableTeams.length > 0 ? (
+            <>
+              <label>
+                <span>Team</span>
+                <select
+                  disabled={isMutating}
+                  onChange={(event) => setJoinRequestTeamId(event.target.value)}
+                  required
+                  value={joinRequestTeamId}
+                >
+                  <option value="">Select a team</option>
+                  {availableTeams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                      {team.tag ? ` (${team.tag})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Message (optional)</span>
+                <textarea
+                  disabled={isMutating}
+                  maxLength={1000}
+                  onChange={(event) => setJoinRequestMessage(event.target.value)}
+                  placeholder="Introduce yourself to the team owner."
+                  rows={3}
+                  value={joinRequestMessage}
+                />
+              </label>
+              <button className="button button-secondary" disabled={isMutating} type="submit">
+                {isMutating ? "Sending..." : "Send Join Request"}
+              </button>
+            </>
+          ) : (
+            <p className="team-mgmt-muted">No teams are currently available for membership requests.</p>
+          )}
+        </form>
+      ) : null}
       {incomingInvitations.length > 0 ? (
         <div className="team-mgmt-empty-list">
           <span className="ops-label">Incoming invitations</span>
           {incomingInvitations.map((invitation) => (
             <article key={invitation.id}>
               <strong>{invitation.teamName ?? "Team invitation"}</strong>
-              <span>{invitation.status}</span>
+              <span className={classNames("team-mgmt-status", statusClass(invitation.status))}>
+                {invitation.status}
+              </span>
               {invitation.status === "pending" ? (
                 <div className="team-mgmt-empty-invite-actions">
                   <button
@@ -426,6 +620,33 @@ function NoTeamState({
           ))}
         </div>
       ) : null}
+      {outgoingJoinRequests.length > 0 ? (
+        <div className="team-mgmt-empty-list">
+          <span className="ops-label">Your join requests</span>
+          {outgoingJoinRequests.map((request) => (
+            <article key={request.id}>
+              <div>
+                <strong>{request.teamName}</strong>
+                <p>{request.message ?? "No message was provided."}</p>
+              </div>
+              <span className={classNames("team-mgmt-status", `team-mgmt-status-${request.status}`)}>
+                {request.status}
+              </span>
+              {request.status === "pending" ? (
+                <div className="team-mgmt-empty-invite-actions">
+                  <button
+                    disabled={isMutating}
+                    onClick={() => onJoinRequestAction("cancel", request.id)}
+                    type="button"
+                  >
+                    Cancel Request
+                  </button>
+                </div>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -441,6 +662,14 @@ export function TeamManagementPage() {
   const [invitee, setInvitee] = useState("");
   const [inviteRole, setInviteRole] = useState<TeamMemberRole>("substitute");
   const [roleDrafts, setRoleDrafts] = useState<Record<string, TeamMemberRole>>({});
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferOwnerProfileId, setTransferOwnerProfileId] = useState("");
+  const [confirmAction, setConfirmAction] = useState<TeamConfirmAction | null>(null);
+  const [rosterProfileMember, setRosterProfileMember] = useState<TeamMember | null>(null);
+  const [rosterProfileTab, setRosterProfileTab] = useState<RosterProfileTab>("profile");
+  const [rosterProfile, setRosterProfile] = useState<TeamRosterProfile | null>(null);
+  const [rosterProfileError, setRosterProfileError] = useState<string | null>(null);
+  const [isRosterProfileLoading, setIsRosterProfileLoading] = useState(false);
   const inviteInputRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -507,11 +736,35 @@ export function TeamManagementPage() {
   const pendingInvites = allInvitations.filter((invitation) => invitation.status === "pending");
   const acceptedThisWeek = allInvitations.filter((invitation) => invitation.status === "accepted").length;
   const activeEvents = viewModel?.activeEvents ?? emptyEvents;
+  const availableTeams = viewModel?.availableTeams ?? [];
+  const canCreateTeam = Boolean(viewModel?.canCreateTeam);
+  const canDisbandTeam = Boolean(viewModel?.canDisbandTeam);
+  const canInvitePlayers = Boolean(viewModel?.canInvitePlayers);
+  const canLeaveTeam = Boolean(viewModel?.canLeaveTeam);
+  const canManageTeam = Boolean(viewModel?.canManageTeam);
   const canManageRoster = Boolean(viewModel?.canManageRoster);
-  const canCreateTeam = viewModel?.currentProfile.role === "player";
+  const canTransferOwnership = Boolean(viewModel?.canTransferOwnership);
+  const canRequestTeamMembership = Boolean(viewModel?.canRequestTeamMembership);
   const isTournamentOperator =
     viewModel?.currentProfile.role === "organizer" || viewModel?.currentProfile.role === "admin";
-  const rosterFilled = members.filter((member) => member.active).length + manualPlayers.length;
+  const outgoingJoinRequests = viewModel?.outgoingJoinRequests ?? [];
+  const teamJoinRequests = viewModel?.teamJoinRequests ?? [];
+  const currentProfileId = viewModel?.currentProfile.profileId;
+  const rosterFilled = team
+    ? viewModel?.slotsFilled ?? viewModel?.participantsCount ?? rosterParticipantCount(team, members, manualPlayers)
+    : 0;
+  const eligibleTransferMembers = useMemo(
+    () =>
+      team
+        ? members.filter(
+            (member) =>
+              member.active &&
+              !isTeamOwnerMember(team, member) &&
+              member.profileId !== currentProfileId
+          )
+        : [],
+    [currentProfileId, members, team]
+  );
   const filteredIncoming = useMemo(
     () => filterInvitations(incomingInvitations, filter),
     [filter, incomingInvitations]
@@ -536,7 +789,7 @@ export function TeamManagementPage() {
       return;
     }
 
-    if (!canManageRoster) {
+    if (!canInvitePlayers) {
       setPlaceholder("Only the team owner can send roster invitations.");
       return;
     }
@@ -612,6 +865,138 @@ export function TeamManagementPage() {
     }
   }
 
+  function openTransferOwnership() {
+    if (!canTransferOwnership) {
+      setPlaceholder("Ownership transfer is not available for this account.");
+      return;
+    }
+
+    if (eligibleTransferMembers.length === 0) {
+      setPlaceholder("Add another registered roster member before transferring team ownership.");
+      return;
+    }
+
+    setError(null);
+    setTransferOwnerProfileId(eligibleTransferMembers[0].profileId);
+    setIsTransferModalOpen(true);
+  }
+
+  function closeTransferOwnership() {
+    if (isMutating) {
+      return;
+    }
+
+    setIsTransferModalOpen(false);
+    setTransferOwnerProfileId("");
+  }
+
+  async function confirmTransferOwnership() {
+    if (!team || !canTransferOwnership || !transferOwnerProfileId) {
+      return;
+    }
+
+    setIsMutating(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await transferTeamOwnership(team.id, transferOwnerProfileId);
+      setIsTransferModalOpen(false);
+      setTransferOwnerProfileId("");
+      await load();
+      setNotice("Team ownership transferred successfully.");
+    } catch (caught) {
+      setError(readableError(caught, "Team ownership could not be transferred."));
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  function openTeamConfirm(action: TeamConfirmAction) {
+    if (action === "leave" && !canLeaveTeam) {
+      setPlaceholder("Transfer ownership or disband the team first.");
+      return;
+    }
+
+    if (action === "disband" && !canDisbandTeam) {
+      setPlaceholder("Team disband is not available for this account.");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    setConfirmAction(action);
+  }
+
+  function closeTeamConfirm() {
+    if (isMutating) {
+      return;
+    }
+
+    setConfirmAction(null);
+  }
+
+  async function confirmTeamAction() {
+    if (!confirmAction || !team) {
+      return;
+    }
+
+    setIsMutating(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      if (confirmAction === "leave") {
+        await leaveCurrentTeam();
+        setConfirmAction(null);
+        await load();
+        setNotice("You left the team workspace.");
+      } else {
+        await disbandTeam(team.id);
+        setConfirmAction(null);
+        await load();
+        setNotice("Team disbanded successfully.");
+      }
+    } catch (caught) {
+      setError(
+        readableError(
+          caught,
+          confirmAction === "leave" ? "Team could not be left." : "Team could not be disbanded."
+        )
+      );
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function openRosterProfile(member: TeamMember, initialTab: RosterProfileTab) {
+    if (!team || !member.active || !member.profileId) {
+      setPlaceholder("Roster profile is available only for active registered members.");
+      return;
+    }
+
+    setRosterProfileMember(member);
+    setRosterProfileTab(initialTab);
+    setRosterProfile(null);
+    setRosterProfileError(null);
+    setIsRosterProfileLoading(true);
+
+    try {
+      setRosterProfile(await getTeamRosterProfile(team.id, member.profileId));
+    } catch (caught) {
+      setRosterProfileError(readableError(caught, "Roster profile could not be loaded."));
+    } finally {
+      setIsRosterProfileLoading(false);
+    }
+  }
+
+  function closeRosterProfile() {
+    setRosterProfileMember(null);
+    setRosterProfile(null);
+    setRosterProfileError(null);
+    setIsRosterProfileLoading(false);
+  }
+
   async function invitationAction(
     action: "accept" | "decline" | "cancel",
     invitationId: string
@@ -633,6 +1018,55 @@ export function TeamManagementPage() {
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Invitation action failed.");
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function joinRequestAction(
+    action: "accept" | "decline" | "cancel",
+    requestId: string
+  ) {
+    setIsMutating(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      if (action === "accept") {
+        await acceptTeamJoinRequest(requestId);
+        setNotice("Join request accepted.");
+      } else if (action === "decline") {
+        await declineTeamJoinRequest(requestId);
+        setNotice("Join request declined.");
+      } else {
+        await cancelTeamJoinRequest(requestId);
+        setNotice("Join request cancelled.");
+      }
+
+      await load();
+    } catch (caught) {
+      setError(readableError(caught, "Join request action failed."));
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function requestTeamMembership(teamId: string, message: string) {
+    if (!canRequestTeamMembership) {
+      setError("Team membership requests are available to players without an active team.");
+      return;
+    }
+
+    setIsMutating(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await createTeamJoinRequest(teamId, message);
+      setNotice("Join request sent successfully.");
+      await load();
+    } catch (caught) {
+      setError(readableError(caught, "Join request could not be sent."));
     } finally {
       setIsMutating(false);
     }
@@ -693,13 +1127,19 @@ export function TeamManagementPage() {
   if (!team) {
     return (
       <NoTeamState
+        availableTeams={availableTeams}
         canCreateTeam={canCreateTeam}
+        canRequestTeamMembership={canRequestTeamMembership}
         incomingInvitations={incomingInvitations}
         isTournamentOperator={isTournamentOperator}
         isMutating={isMutating}
         message={error}
+        notice={notice}
         onCreateTeam={createNewTeam}
         onInvitationAction={(action, invitationId) => invitationAction(action, invitationId)}
+        onJoinRequestAction={(action, requestId) => joinRequestAction(action, requestId)}
+        onRequestTeamMembership={requestTeamMembership}
+        outgoingJoinRequests={outgoingJoinRequests}
         onRefresh={load}
       />
     );
@@ -707,17 +1147,24 @@ export function TeamManagementPage() {
 
   return (
     <div className="team-mgmt-page">
-      <div className="team-mgmt-tabs" role="tablist" aria-label="Team management tabs">
-        {tabs.map((tab) => (
-          <button
-            className={classNames("team-mgmt-tab", activeTab === tab.id && "is-active")}
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="team-mgmt-tab-row">
+        <div className="team-mgmt-tabs" role="tablist" aria-label="Team management tabs">
+          {tabs.map((tab) => (
+            <button
+              className={classNames("team-mgmt-tab", activeTab === tab.id && "is-active")}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              type="button"
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {viewModel.currentUserTeamRole ? (
+          <span className="team-mgmt-role-context">
+            Team access: {viewModel.currentUserTeamRole}
+          </span>
+        ) : null}
       </div>
 
       {notice ? <p className="team-mgmt-message team-mgmt-notice">{notice}</p> : null}
@@ -726,11 +1173,19 @@ export function TeamManagementPage() {
       {activeTab === "overview" ? (
         <OverviewTab
           activeEvents={activeEvents}
+          canDisbandTeam={canDisbandTeam}
+          canInvitePlayers={canInvitePlayers}
+          canLeaveTeam={canLeaveTeam}
           canManageRoster={canManageRoster}
+          canTransferOwnership={canTransferOwnership}
+          isMutating={isMutating}
           manualPlayers={manualPlayers}
           members={members}
           onFocusInvite={focusInviteForm}
+          onOpenRosterProfile={openRosterProfile}
+          onTeamConfirm={openTeamConfirm}
           onRosterTab={() => setActiveTab("roster")}
+          onTransferOwnership={openTransferOwnership}
           outgoingInvitations={outgoingInvitations}
           pendingInviteCount={pendingInvites.length}
           rosterFilled={rosterFilled}
@@ -740,7 +1195,11 @@ export function TeamManagementPage() {
 
       {activeTab === "roster" ? (
         <RosterTab
+          canInvitePlayers={canInvitePlayers}
+          canDisbandTeam={canDisbandTeam}
+          canLeaveTeam={canLeaveTeam}
           canManageRoster={canManageRoster}
+          canTransferOwnership={canTransferOwnership}
           inviteRole={inviteRole}
           invitee={invitee}
           isMutating={isMutating}
@@ -748,10 +1207,13 @@ export function TeamManagementPage() {
           manualPlayers={manualPlayers}
           onInviteRoleChange={setInviteRole}
           onInviteeChange={setInvitee}
+          onOpenRosterProfile={openRosterProfile}
           onRemoveMember={removeMember}
           onRoleDraftChange={(memberId, role) => setRoleDrafts((drafts) => ({ ...drafts, [memberId]: role }))}
           onSaveRoster={saveRosterChanges}
           onSendInvite={sendInvite}
+          onTeamConfirm={openTeamConfirm}
+          onTransferOwnership={openTransferOwnership}
           outgoingInvitations={outgoingInvitations}
           roleDrafts={roleDrafts}
           rosterFilled={rosterFilled}
@@ -763,6 +1225,8 @@ export function TeamManagementPage() {
       {activeTab === "invitations" ? (
         <InvitationsTab
           acceptedThisWeek={acceptedThisWeek}
+          canInvitePlayers={canInvitePlayers}
+          canManageTeam={canManageTeam}
           canManageRoster={canManageRoster}
           filter={filter}
           incomingInvitations={filteredIncoming}
@@ -773,12 +1237,348 @@ export function TeamManagementPage() {
           onFilterChange={setFilter}
           onFocusInvite={focusInviteForm}
           onInvitationAction={invitationAction}
+          onJoinRequestAction={joinRequestAction}
           outgoingInvitations={filteredOutgoing}
           outgoingTotal={outgoingInvitations.length}
           pendingInviteCount={pendingInvites.length}
+          rosterFilled={rosterFilled}
+          team={team}
+          teamJoinRequests={teamJoinRequests}
+        />
+      ) : null}
+
+      {isTransferModalOpen && team ? (
+        <TransferOwnershipModal
+          eligibleMembers={eligibleTransferMembers}
+          error={error}
+          isMutating={isMutating}
+          onCancel={closeTransferOwnership}
+          onConfirm={confirmTransferOwnership}
+          onSelectionChange={setTransferOwnerProfileId}
+          selectedProfileId={transferOwnerProfileId}
           team={team}
         />
       ) : null}
+      {confirmAction && team ? (
+        <TeamConfirmModal
+          action={confirmAction}
+          error={error}
+          isMutating={isMutating}
+          onCancel={closeTeamConfirm}
+          onConfirm={confirmTeamAction}
+          team={team}
+        />
+      ) : null}
+      {rosterProfileMember ? (
+        <RosterProfileModal
+          activeTab={rosterProfileTab}
+          error={rosterProfileError}
+          isLoading={isRosterProfileLoading}
+          member={rosterProfileMember}
+          onClose={closeRosterProfile}
+          onTabChange={setRosterProfileTab}
+          profile={rosterProfile}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function TransferOwnershipModal({
+  eligibleMembers,
+  error,
+  isMutating,
+  onCancel,
+  onConfirm,
+  onSelectionChange,
+  selectedProfileId,
+  team
+}: {
+  eligibleMembers: TeamMember[];
+  error: string | null;
+  isMutating: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onSelectionChange: (profileId: string) => void;
+  selectedProfileId: string;
+  team: TeamSummary;
+}) {
+  return (
+    <div
+      aria-labelledby="team-transfer-title"
+      aria-modal="true"
+      className="team-mgmt-modal-backdrop"
+      onClick={onCancel}
+      role="dialog"
+    >
+      <section className="team-mgmt-modal ops-panel" onClick={(event) => event.stopPropagation()}>
+        <div className="team-mgmt-modal-heading">
+          <span className="team-mgmt-modal-icon">
+            <RefreshCcw size={20} />
+          </span>
+          <div>
+            <p className="ops-label">Team ownership</p>
+            <h2 id="team-transfer-title">Transfer Ownership</h2>
+          </div>
+        </div>
+        <p>
+          Select an active registered member to become the new owner of <strong>{team.name}</strong>.
+        </p>
+        <label className="team-mgmt-modal-select">
+          <span>New team owner</span>
+          <select
+            disabled={isMutating}
+            onChange={(event) => onSelectionChange(event.target.value)}
+            value={selectedProfileId}
+          >
+            {eligibleMembers.map((member) => (
+              <option key={member.profileId} value={member.profileId}>
+                {member.displayName || member.nickname} - {roleLabel(member.role)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {error ? <p className="team-mgmt-message team-mgmt-error">{error}</p> : null}
+        <p className="team-mgmt-modal-warning">
+          After transfer, you will lose owner permissions for this team.
+        </p>
+        <div className="team-mgmt-modal-actions">
+          <button className="button button-secondary" disabled={isMutating} onClick={onCancel} type="button">
+            Cancel
+          </button>
+          <button
+            className="button button-primary ops-button-primary"
+            disabled={isMutating || !selectedProfileId}
+            onClick={onConfirm}
+            type="button"
+          >
+            {isMutating ? "Transferring..." : "Confirm Transfer"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TeamConfirmModal({
+  action,
+  error,
+  isMutating,
+  onCancel,
+  onConfirm,
+  team
+}: {
+  action: TeamConfirmAction;
+  error: string | null;
+  isMutating: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  team: TeamSummary;
+}) {
+  const isDisband = action === "disband";
+
+  return (
+    <div
+      aria-labelledby="team-confirm-title"
+      aria-modal="true"
+      className="team-mgmt-modal-backdrop"
+      onClick={onCancel}
+      role="dialog"
+    >
+      <section
+        className={classNames("team-mgmt-modal ops-panel", isDisband && "team-mgmt-modal-danger")}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="team-mgmt-modal-heading">
+          <span className="team-mgmt-modal-icon">
+            {isDisband ? <Trash2 size={20} /> : <UserMinus size={20} />}
+          </span>
+          <div>
+            <p className="ops-label">{isDisband ? "Destructive team control" : "Team membership"}</p>
+            <h2 id="team-confirm-title">{isDisband ? "Disband Team" : "Leave Team"}</h2>
+          </div>
+        </div>
+        <p>
+          {isDisband ? (
+            <>
+              This will disband <strong>{team.name}</strong>, deactivate active members, cancel pending
+              invitations, and cancel pending join requests.
+            </>
+          ) : (
+            <>
+              You will lose access to the <strong>{team.name}</strong> team workspace.
+            </>
+          )}
+        </p>
+        {error ? <p className="team-mgmt-message team-mgmt-error">{error}</p> : null}
+        <p className="team-mgmt-modal-warning">
+          {isDisband
+            ? "This action changes the team workspace for every member."
+            : "Team owners must transfer ownership or disband the team before leaving."}
+        </p>
+        <div className="team-mgmt-modal-actions">
+          <button className="button button-secondary" disabled={isMutating} onClick={onCancel} type="button">
+            Cancel
+          </button>
+          <button
+            className={classNames("button", isDisband ? "team-mgmt-danger" : "button-primary ops-button-primary")}
+            disabled={isMutating}
+            onClick={onConfirm}
+            type="button"
+          >
+            {isMutating ? "Processing..." : isDisband ? "Confirm Disband" : "Confirm Leave"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function RosterProfileModal({
+  activeTab,
+  error,
+  isLoading,
+  member,
+  onClose,
+  onTabChange,
+  profile
+}: {
+  activeTab: RosterProfileTab;
+  error: string | null;
+  isLoading: boolean;
+  member: TeamMember;
+  onClose: () => void;
+  onTabChange: (tab: RosterProfileTab) => void;
+  profile: TeamRosterProfile | null;
+}) {
+  const displayName = profile?.displayName || member.displayName || member.nickname;
+  const stats = profile?.stats;
+  const hasHeroData = (profile?.mostPlayedHeroes ?? []).length > 0;
+  const hasRecentMatches = (profile?.recentMatches ?? []).length > 0;
+
+  return (
+    <div
+      aria-labelledby="team-roster-profile-title"
+      aria-modal="true"
+      className="team-mgmt-modal-backdrop"
+      onClick={onClose}
+      role="dialog"
+    >
+      <section className="team-mgmt-modal team-mgmt-profile-modal ops-panel" onClick={(event) => event.stopPropagation()}>
+        <div className="team-mgmt-modal-heading">
+          <TeamAvatar member={member} size="large" />
+          <div>
+            <p className="ops-label">Roster profile</p>
+            <h2 id="team-roster-profile-title">{displayName}</h2>
+          </div>
+        </div>
+        <div className="team-mgmt-modal-tabs" role="tablist" aria-label="Roster profile tabs">
+          <button
+            className={classNames(activeTab === "profile" && "is-active")}
+            onClick={() => onTabChange("profile")}
+            type="button"
+          >
+            Profile
+          </button>
+          <button
+            className={classNames(activeTab === "stats" && "is-active")}
+            onClick={() => onTabChange("stats")}
+            type="button"
+          >
+            Stats
+          </button>
+        </div>
+        {isLoading ? <p className="team-mgmt-muted">Loading roster profile...</p> : null}
+        {error ? <p className="team-mgmt-message team-mgmt-error">{error}</p> : null}
+        {!isLoading && !error && activeTab === "profile" ? (
+          <div className="team-mgmt-profile-grid">
+            <article>
+              <span>Nickname</span>
+              <strong>{profile?.nickname ?? member.nickname}</strong>
+            </article>
+            <article>
+              <span>Display name</span>
+              <strong>{profile?.displayName ?? member.displayName ?? "Not set"}</strong>
+            </article>
+            <article>
+              <span>Role</span>
+              <strong>{shortRole(profile?.role ?? member.role)}</strong>
+            </article>
+            <article>
+              <span>Team access</span>
+              <strong>{profile?.teamOwner ?? member.teamOwner ? "Team owner" : "Member"}</strong>
+            </article>
+            <article>
+              <span>Joined</span>
+              <strong>
+                {(profile?.joinedAt ?? member.joinedAt)
+                  ? new Date(profile?.joinedAt ?? member.joinedAt ?? "").toLocaleDateString("en", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric"
+                    })
+                  : "Unavailable"}
+              </strong>
+            </article>
+          </div>
+        ) : null}
+        {!isLoading && !error && activeTab === "stats" ? (
+          <div className="team-mgmt-profile-stats">
+            <div className="team-mgmt-profile-stat-grid">
+              <MetricCard icon={Swords} label="Games" value={formatMetric(stats?.gamesPlayed ?? 0)} />
+              <MetricCard icon={Check} label="Wins" tone="green" value={formatMetric(stats?.wins ?? 0)} />
+              <MetricCard icon={BarChart3} label="Win Rate" tone="cyan" value={formatMetric(stats?.winRate ?? 0, "%")} />
+              <MetricCard icon={Shield} label="KDA" tone="gold" value={formatMetric(stats?.kda ?? 0)} />
+            </div>
+            <div className="team-mgmt-profile-grid">
+              <article>
+                <span>Losses</span>
+                <strong>{formatMetric(stats?.losses ?? 0)}</strong>
+              </article>
+              <article>
+                <span>Avg kills</span>
+                <strong>{formatMetric(stats?.avgKills ?? 0)}</strong>
+              </article>
+              <article>
+                <span>Avg deaths</span>
+                <strong>{formatMetric(stats?.avgDeaths ?? 0)}</strong>
+              </article>
+              <article>
+                <span>Avg assists</span>
+                <strong>{formatMetric(stats?.avgAssists ?? 0)}</strong>
+              </article>
+            </div>
+            <section className="team-mgmt-profile-list">
+              <span className="ops-label">Most played heroes</span>
+              {hasHeroData ? (
+                profile?.mostPlayedHeroes.map((hero, index) => (
+                  <article key={`${hero.heroId ?? hero.heroName ?? "hero"}-${index}`}>
+                    <strong>{hero.heroName ?? `Hero ${hero.heroId ?? "unknown"}`}</strong>
+                    <span>
+                      {hero.gamesPlayed ?? 0} games / {hero.winRate ?? 0}% WR
+                    </span>
+                  </article>
+                ))
+              ) : (
+                <p className="team-mgmt-muted">No analyzed hero data yet.</p>
+              )}
+            </section>
+            <section className="team-mgmt-profile-list">
+              <span className="ops-label">Recent matches</span>
+              {hasRecentMatches ? (
+                <p className="team-mgmt-muted">Recent match records are available from the backend payload.</p>
+              ) : (
+                <p className="team-mgmt-muted">No recent analyzed matches yet.</p>
+              )}
+            </section>
+          </div>
+        ) : null}
+        <div className="team-mgmt-modal-actions">
+          <button className="button button-secondary" onClick={onClose} type="button">
+            Close
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -787,14 +1587,16 @@ function TeamHero({
   compact = false,
   manualPlayers,
   members,
+  rosterFilled,
   team
 }: {
   compact?: boolean;
   manualPlayers: TeamManualPlayer[];
   members: TeamMember[];
+  rosterFilled?: number;
   team: NonNullable<TeamManagementViewModel["team"]>;
 }) {
-  const rosterCount = members.filter((member) => member.active).length + manualPlayers.length;
+  const rosterCount = rosterFilled ?? rosterParticipantCount(team, members, manualPlayers);
 
   return (
     <section
@@ -873,57 +1675,148 @@ function MetricCard({
   );
 }
 
-function LaterAction({ children }: { children: ReactNode }) {
+function PlannedAction({
+  children,
+  label = "Backend required"
+}: {
+  children: ReactNode;
+  label?: string;
+}) {
   return (
     <button className="team-mgmt-later-action" disabled type="button">
       <span>{children}</span>
-      <small>Later</small>
+      <small>{label}</small>
     </button>
   );
 }
 
+function PlannedControls({
+  canDisbandTeam,
+  canLeaveTeam,
+  canTransferOwnership,
+  isMutating,
+  onDisbandTeam,
+  onLeaveTeam,
+  onTransferOwnership
+}: {
+  canDisbandTeam: boolean;
+  canLeaveTeam: boolean;
+  canTransferOwnership: boolean;
+  isMutating?: boolean;
+  onDisbandTeam?: () => void;
+  onLeaveTeam?: () => void;
+  onTransferOwnership?: () => void;
+}) {
+  return (
+    <div className="team-mgmt-planned-controls">
+      <span className="team-mgmt-planned-title">Team controls</span>
+      {canTransferOwnership ? (
+        <button
+          className="team-mgmt-transfer-action"
+          disabled={isMutating}
+          onClick={onTransferOwnership}
+          type="button"
+        >
+          <span>
+            <RefreshCcw size={16} />
+            Transfer Ownership
+          </span>
+          <small>Available</small>
+        </button>
+      ) : (
+        <PlannedAction label="Not available">
+          <RefreshCcw size={16} />
+          Transfer Ownership
+        </PlannedAction>
+      )}
+      {canLeaveTeam ? (
+        <button className="team-mgmt-transfer-action" disabled={isMutating} onClick={onLeaveTeam} type="button">
+          <span>
+            <UserMinus size={16} />
+            Leave Team
+          </span>
+          <small>Available</small>
+        </button>
+      ) : (
+        <PlannedAction label="Transfer/disband first">
+          <UserMinus size={16} />
+          Leave Team
+        </PlannedAction>
+      )}
+      {canDisbandTeam ? (
+        <button className="team-mgmt-transfer-action team-mgmt-disband-action" disabled={isMutating} onClick={onDisbandTeam} type="button">
+          <span>
+            <Trash2 size={16} />
+            Disband Team
+          </span>
+          <small>Available</small>
+        </button>
+      ) : (
+        <PlannedAction label="Not available">
+          <Trash2 size={16} />
+          Disband Team
+        </PlannedAction>
+      )}
+    </div>
+  );
+}
+
 function CommandCenter({
+  canDisbandTeam,
+  canInvitePlayers,
+  canLeaveTeam,
   canManageRoster,
+  canTransferOwnership,
   mode,
   onFocusInvite,
+  onTeamConfirm,
   onRosterTab,
   onSaveRoster,
   onSendInvite,
+  onTransferOwnership,
   isMutating
 }: {
+  canDisbandTeam: boolean;
+  canInvitePlayers: boolean;
+  canLeaveTeam: boolean;
   canManageRoster: boolean;
+  canTransferOwnership: boolean;
   isMutating?: boolean;
   mode: "overview" | "roster" | "invitations";
   onFocusInvite?: () => void;
+  onTeamConfirm?: (action: TeamConfirmAction) => void;
   onRosterTab?: () => void;
   onSaveRoster?: () => void;
   onSendInvite?: () => void;
+  onTransferOwnership?: () => void;
 }) {
   if (mode === "roster") {
     return (
       <aside className="team-mgmt-side-card ops-panel">
         <h2>Command Center</h2>
-        <button className="team-mgmt-command-primary" disabled={isMutating || !canManageRoster} onClick={onSaveRoster} type="button">
-          <Save size={18} />
-          Save Roster Changes
-        </button>
-        <button disabled={isMutating || !canManageRoster} onClick={onSendInvite} type="button">
-          <Mail size={18} />
-          Send Invite
-        </button>
-        <LaterAction>
-          <Lock size={18} />
-          Lock Roster
-        </LaterAction>
-        <hr />
-        <LaterAction>
-          <RefreshCcw size={18} />
-          Transfer Ownership
-        </LaterAction>
-        <LaterAction>
-          <UserMinus size={18} />
-          Leave Team
-        </LaterAction>
+        {canManageRoster ? (
+          <button className="team-mgmt-command-primary" disabled={isMutating} onClick={onSaveRoster} type="button">
+            <Save size={18} />
+            Save Roster Changes
+          </button>
+        ) : null}
+        {canInvitePlayers ? (
+          <button disabled={isMutating} onClick={onSendInvite} type="button">
+            <Mail size={18} />
+            Send Invite
+          </button>
+        ) : null}
+        {canManageRoster ? (
+          <PlannedControls
+            canDisbandTeam={canDisbandTeam}
+            canLeaveTeam={canLeaveTeam}
+            canTransferOwnership={canTransferOwnership}
+            isMutating={isMutating}
+            onDisbandTeam={() => onTeamConfirm?.("disband")}
+            onLeaveTeam={() => onTeamConfirm?.("leave")}
+            onTransferOwnership={onTransferOwnership}
+          />
+        ) : null}
       </aside>
     );
   }
@@ -935,19 +1828,13 @@ function CommandCenter({
           <TerminalSquare size={18} />
           Command Center
         </h2>
-        <button className="team-mgmt-command-primary" disabled={!canManageRoster} onClick={onFocusInvite} type="button">
-          New Invite
-          <UserPlus size={18} />
-        </button>
-        <LaterAction>
-          Review Pending
-        </LaterAction>
-        <LaterAction>
-          View Invite History
-        </LaterAction>
-        <LaterAction>
-          Clear Declined
-        </LaterAction>
+        {canInvitePlayers ? (
+          <button className="team-mgmt-command-primary" onClick={onFocusInvite} type="button">
+            New Invite
+            <UserPlus size={18} />
+          </button>
+        ) : null}
+        <p className="team-mgmt-command-note">Invitation and join request history actions require backend support.</p>
       </aside>
     );
   }
@@ -958,47 +1845,61 @@ function CommandCenter({
         <Shield size={18} />
         Command Center
       </h2>
-      <button disabled={!canManageRoster} onClick={onRosterTab} type="button">
-        Edit Roster
-        <ChevronRight size={16} />
-      </button>
-      <LaterAction>
-        Transfer Ownership
-        <ChevronRight size={16} />
-      </LaterAction>
-      <LaterAction>
-        Audit Logs
-        <ChevronRight size={16} />
-      </LaterAction>
-      <hr />
-      <button className="team-mgmt-danger team-mgmt-later-action" disabled type="button">
-        <span>
-        Disband Team
-        </span>
-        <small>Later</small>
-      </button>
+      {canManageRoster ? (
+        <button onClick={onRosterTab} type="button">
+          Edit Roster
+          <ChevronRight size={16} />
+        </button>
+      ) : null}
+      {canManageRoster ? (
+        <PlannedControls
+          canDisbandTeam={canDisbandTeam}
+          canLeaveTeam={canLeaveTeam}
+          canTransferOwnership={canTransferOwnership}
+          isMutating={isMutating}
+          onDisbandTeam={() => onTeamConfirm?.("disband")}
+          onLeaveTeam={() => onTeamConfirm?.("leave")}
+          onTransferOwnership={onTransferOwnership}
+        />
+      ) : null}
     </aside>
   );
 }
 
 function OverviewTab({
   activeEvents,
+  canDisbandTeam,
+  canInvitePlayers,
+  canLeaveTeam,
   canManageRoster,
+  canTransferOwnership,
+  isMutating,
   manualPlayers,
   members,
   onFocusInvite,
+  onOpenRosterProfile,
   onRosterTab,
+  onTeamConfirm,
+  onTransferOwnership,
   outgoingInvitations,
   pendingInviteCount,
   rosterFilled,
   team
 }: {
   activeEvents: TeamManagementViewModel["activeEvents"];
+  canDisbandTeam: boolean;
+  canInvitePlayers: boolean;
+  canLeaveTeam: boolean;
   canManageRoster: boolean;
+  canTransferOwnership: boolean;
+  isMutating: boolean;
   manualPlayers: TeamManualPlayer[];
   members: TeamMember[];
   onFocusInvite: () => void;
+  onOpenRosterProfile: (member: TeamMember, initialTab: RosterProfileTab) => void;
   onRosterTab: () => void;
+  onTeamConfirm: (action: TeamConfirmAction) => void;
+  onTransferOwnership: () => void;
   outgoingInvitations: TeamInvitation[];
   pendingInviteCount: number;
   rosterFilled: number;
@@ -1006,7 +1907,7 @@ function OverviewTab({
 }) {
   return (
     <>
-      <TeamHero manualPlayers={manualPlayers} members={members} team={team} />
+      <TeamHero manualPlayers={manualPlayers} members={members} rosterFilled={rosterFilled} team={team} />
       <section className="team-mgmt-metrics">
         <MetricCard icon={UsersRound} label="Roster Participants" value={String(rosterFilled)} />
         <MetricCard icon={Mail} label="Pending Invites" tone="gold" value={String(pendingInviteCount)} />
@@ -1022,25 +1923,43 @@ function OverviewTab({
             </span>
           </div>
           <div className="team-mgmt-roster-preview">
-            {members.length === 0 && manualPlayers.length === 0 ? (
+            {rosterFilled === 0 ? (
               <article className="team-mgmt-roster-empty ops-panel">
                 <strong>No roster participants yet.</strong>
                 <p>Invite registered players to build the team roster.</p>
               </article>
             ) : null}
+            {needsDerivedTeamOwnerParticipant(team, members) ? (
+              <DerivedTeamOwnerPreview team={team} />
+            ) : null}
             {members.map((member) => (
               <article className="team-mgmt-roster-tile ops-panel" key={member.id}>
+                {isTeamOwnerMember(team, member) ? (
+                  <span className="team-mgmt-captain-badge">Team owner</span>
+                ) : null}
                 <TeamAvatar member={member} />
                 <div>
                   <strong>{member.displayName || member.nickname}</strong>
                   <p>{shortRole(member.role)}</p>
                 </div>
                 <div className="team-mgmt-tile-actions">
-                  <button disabled type="button">
-                    Profile later
+                  <button
+                    className="team-mgmt-profile-action"
+                    disabled={!member.active}
+                    onClick={() => onOpenRosterProfile(member, "profile")}
+                    title="Open roster profile"
+                    type="button"
+                  >
+                    Profile
                   </button>
-                  <button disabled type="button">
-                    Stats later
+                  <button
+                    className="team-mgmt-profile-action"
+                    disabled={!member.active}
+                    onClick={() => onOpenRosterProfile(member, "stats")}
+                    title="Open roster stats"
+                    type="button"
+                  >
+                    Stats
                   </button>
                 </div>
               </article>
@@ -1057,7 +1976,7 @@ function OverviewTab({
                 <span className="team-mgmt-manual-badge">Manual</span>
               </article>
             ))}
-            <button className="team-mgmt-invite-tile ops-panel" disabled={!canManageRoster} onClick={onFocusInvite} type="button">
+            <button className="team-mgmt-invite-tile ops-panel" disabled={!canInvitePlayers} onClick={onFocusInvite} type="button">
               <UserPlus size={24} />
               Invite New Player
             </button>
@@ -1066,9 +1985,16 @@ function OverviewTab({
         </main>
         <aside className="team-mgmt-side-stack">
           <CommandCenter
+            canDisbandTeam={canDisbandTeam}
+            canInvitePlayers={canInvitePlayers}
+            canLeaveTeam={canLeaveTeam}
             canManageRoster={canManageRoster}
+            canTransferOwnership={canTransferOwnership}
+            isMutating={isMutating}
             mode="overview"
             onRosterTab={onRosterTab}
+            onTeamConfirm={onTeamConfirm}
+            onTransferOwnership={onTransferOwnership}
           />
         </aside>
       </section>
@@ -1085,13 +2011,6 @@ function InviteRegistry({
     <section className="team-mgmt-registry ops-panel">
       <div className="team-mgmt-panel-title">
         <h2>Invite Registry</h2>
-        <button className="team-mgmt-later-action" disabled type="button">
-          <span>
-          View History
-          <ChevronRight size={15} />
-          </span>
-          <small>Later</small>
-        </button>
       </div>
       {invitations.length === 0 ? (
         <p className="team-mgmt-muted">No outgoing invitations are available for this team.</p>
@@ -1123,7 +2042,11 @@ function InviteRegistry({
 }
 
 function RosterTab({
+  canInvitePlayers,
+  canDisbandTeam,
+  canLeaveTeam,
   canManageRoster,
+  canTransferOwnership,
   inviteInputRef,
   inviteRole,
   invitee,
@@ -1132,16 +2055,23 @@ function RosterTab({
   members,
   onInviteRoleChange,
   onInviteeChange,
+  onOpenRosterProfile,
   onRemoveMember,
   onRoleDraftChange,
   onSaveRoster,
   onSendInvite,
+  onTeamConfirm,
+  onTransferOwnership,
   outgoingInvitations,
   roleDrafts,
   rosterFilled,
   team
 }: {
+  canInvitePlayers: boolean;
+  canDisbandTeam: boolean;
+  canLeaveTeam: boolean;
   canManageRoster: boolean;
+  canTransferOwnership: boolean;
   inviteInputRef: RefObject<HTMLInputElement | null>;
   inviteRole: TeamMemberRole;
   invitee: string;
@@ -1150,10 +2080,13 @@ function RosterTab({
   members: TeamMember[];
   onInviteRoleChange: (value: TeamMemberRole) => void;
   onInviteeChange: (value: string) => void;
+  onOpenRosterProfile: (member: TeamMember, initialTab: RosterProfileTab) => void;
   onRemoveMember: (memberId: string) => void;
   onRoleDraftChange: (memberId: string, role: TeamMemberRole) => void;
   onSaveRoster: () => void;
   onSendInvite: () => void;
+  onTeamConfirm: (action: TeamConfirmAction) => void;
+  onTransferOwnership: () => void;
   outgoingInvitations: TeamInvitation[];
   roleDrafts: Record<string, TeamMemberRole>;
   rosterFilled: number;
@@ -1161,7 +2094,7 @@ function RosterTab({
 }) {
   return (
     <>
-      <TeamHero compact manualPlayers={manualPlayers} members={members} team={team} />
+      <TeamHero compact manualPlayers={manualPlayers} members={members} rosterFilled={rosterFilled} team={team} />
       <section className="team-mgmt-metrics team-mgmt-roster-metrics">
         <MetricCard icon={UsersRound} label="Roster Participants" value={String(rosterFilled)} />
         <MetricCard icon={Mail} label="Pending Invites" tone="gold" value={String(outgoingInvitations.filter((invite) => invite.status === "pending").length)} />
@@ -1177,15 +2110,18 @@ function RosterTab({
             <span>{rosterFilled} slots filled</span>
           </div>
           <div className="team-mgmt-roster-management-grid">
-            {members.length === 0 && manualPlayers.length === 0 ? (
+            {rosterFilled === 0 ? (
               <article className="team-mgmt-roster-empty ops-panel">
                 <strong>No roster participants yet.</strong>
                 <p>Use the recruitment terminal to invite registered players.</p>
               </article>
             ) : null}
+            {needsDerivedTeamOwnerParticipant(team, members) ? (
+              <DerivedTeamOwnerRosterCard team={team} />
+            ) : null}
             {members.map((member) => (
               <article className="team-mgmt-member-card ops-panel" key={member.id}>
-                {team.captainProfileId === member.profileId ? <span className="team-mgmt-captain-badge">Team owner</span> : null}
+                {isTeamOwnerMember(team, member) ? <span className="team-mgmt-captain-badge">Team owner</span> : null}
                 <div className="team-mgmt-member-head">
                   <TeamAvatar member={member} />
                   <div>
@@ -1214,13 +2150,29 @@ function RosterTab({
                   </select>
                 </label>
                 <div className="team-mgmt-member-actions">
-                  <button disabled type="button">Profile later</button>
-                  <button disabled={!canManageRoster || isMutating} onClick={() => onRemoveMember(member.id)} type="button">
-                    <Trash2 size={15} />
+                  <button
+                    className="team-mgmt-profile-action"
+                    disabled={!member.active}
+                    onClick={() => onOpenRosterProfile(member, "profile")}
+                    title="Open roster profile"
+                    type="button"
+                  >
+                    Profile
                   </button>
-                  <button disabled type="button">
-                    <MoreVertical size={15} />
+                  <button
+                    className="team-mgmt-profile-action"
+                    disabled={!member.active}
+                    onClick={() => onOpenRosterProfile(member, "stats")}
+                    title="Open roster stats"
+                    type="button"
+                  >
+                    Stats
                   </button>
+                  {canManageRoster && !isTeamOwnerMember(team, member) ? (
+                    <button disabled={isMutating} onClick={() => onRemoveMember(member.id)} type="button">
+                      <Trash2 size={15} />
+                    </button>
+                  ) : null}
                 </div>
               </article>
             ))}
@@ -1246,7 +2198,7 @@ function RosterTab({
             ))}
           </div>
           <RecruitmentTerminal
-            canManageRoster={canManageRoster}
+            canInvitePlayers={canInvitePlayers}
             inviteInputRef={inviteInputRef}
             inviteRole={inviteRole}
             invitee={invitee}
@@ -1258,11 +2210,17 @@ function RosterTab({
         </main>
         <aside className="team-mgmt-side-stack">
           <CommandCenter
+            canDisbandTeam={canDisbandTeam}
+            canInvitePlayers={canInvitePlayers}
+            canLeaveTeam={canLeaveTeam}
             canManageRoster={canManageRoster}
+            canTransferOwnership={canTransferOwnership}
             isMutating={isMutating}
             mode="roster"
             onSaveRoster={onSaveRoster}
             onSendInvite={onSendInvite}
+            onTeamConfirm={onTeamConfirm}
+            onTransferOwnership={onTransferOwnership}
           />
         </aside>
       </section>
@@ -1271,7 +2229,7 @@ function RosterTab({
 }
 
 function RecruitmentTerminal({
-  canManageRoster,
+  canInvitePlayers,
   inviteInputRef,
   inviteRole,
   invitee,
@@ -1280,7 +2238,7 @@ function RecruitmentTerminal({
   onInviteeChange,
   onSendInvite
 }: {
-  canManageRoster: boolean;
+  canInvitePlayers: boolean;
   inviteInputRef: RefObject<HTMLInputElement | null>;
   inviteRole: TeamMemberRole;
   invitee: string;
@@ -1296,7 +2254,7 @@ function RecruitmentTerminal({
         <label>
           <span>Player email</span>
           <input
-            disabled={!canManageRoster || isMutating}
+            disabled={!canInvitePlayers || isMutating}
             onChange={(event) => onInviteeChange(event.target.value)}
             placeholder="player@email.com"
             ref={inviteInputRef}
@@ -1306,7 +2264,7 @@ function RecruitmentTerminal({
         <label>
           <span>Intended Role</span>
           <select
-            disabled={!canManageRoster || isMutating}
+            disabled={!canInvitePlayers || isMutating}
             onChange={(event) => onInviteRoleChange(event.target.value as TeamMemberRole)}
             value={inviteRole}
           >
@@ -1317,7 +2275,7 @@ function RecruitmentTerminal({
             ))}
           </select>
         </label>
-        <button disabled={!canManageRoster || isMutating} onClick={onSendInvite} type="button">
+        <button disabled={!canInvitePlayers || isMutating} onClick={onSendInvite} type="button">
           {isMutating ? "Sending..." : "Send Invite"}
         </button>
       </div>
@@ -1328,6 +2286,8 @@ function RecruitmentTerminal({
 
 function InvitationsTab({
   acceptedThisWeek,
+  canInvitePlayers,
+  canManageTeam,
   canManageRoster,
   filter,
   incomingInvitations,
@@ -1338,12 +2298,17 @@ function InvitationsTab({
   onFilterChange,
   onFocusInvite,
   onInvitationAction,
+  onJoinRequestAction,
   outgoingInvitations,
   outgoingTotal,
   pendingInviteCount,
-  team
+  rosterFilled,
+  team,
+  teamJoinRequests
 }: {
   acceptedThisWeek: number;
+  canInvitePlayers: boolean;
+  canManageTeam: boolean;
   canManageRoster: boolean;
   filter: InviteFilter;
   incomingInvitations: TeamInvitation[];
@@ -1354,14 +2319,17 @@ function InvitationsTab({
   onFilterChange: (filter: InviteFilter) => void;
   onFocusInvite: () => void;
   onInvitationAction: (action: "accept" | "decline" | "cancel", invitationId: string) => void;
+  onJoinRequestAction: (action: "accept" | "decline" | "cancel", requestId: string) => void;
   outgoingInvitations: TeamInvitation[];
   outgoingTotal: number;
   pendingInviteCount: number;
+  rosterFilled: number;
   team: NonNullable<TeamManagementViewModel["team"]>;
+  teamJoinRequests: TeamJoinRequest[];
 }) {
   return (
     <>
-      <TeamHero compact manualPlayers={manualPlayers} members={members} team={team} />
+      <TeamHero compact manualPlayers={manualPlayers} members={members} rosterFilled={rosterFilled} team={team} />
       <section className="team-mgmt-metrics team-mgmt-invite-metrics">
         <MetricCard icon={Mail} label="Incoming Invites" value={String(incomingTotal)} />
         <MetricCard icon={UserPlus} label="Outgoing Invites" value={String(outgoingTotal)} />
@@ -1391,7 +2359,7 @@ function InvitationsTab({
             title="Incoming Invitations"
           />
           <InvitationList
-            canManageRoster={canManageRoster}
+            canManageRoster={canInvitePlayers}
             emptyMessage="No outgoing invitations match this filter."
             invitations={outgoingInvitations}
             isMutating={isMutating}
@@ -1399,16 +2367,22 @@ function InvitationsTab({
             onInvitationAction={onInvitationAction}
             title="Outgoing Invitations"
           />
-          <section className="team-mgmt-join-placeholder ops-panel">
-            <h2>Join Requests</h2>
-            <p className="team-mgmt-muted">
-              Join request management will be available in a later update.
-            </p>
-          </section>
+          {canManageTeam ? (
+            <TeamJoinRequestList
+              canManageTeam={canManageTeam}
+              isMutating={isMutating}
+              onJoinRequestAction={onJoinRequestAction}
+              requests={teamJoinRequests}
+            />
+          ) : null}
         </main>
         <aside className="team-mgmt-side-stack">
           <CommandCenter
+            canDisbandTeam={false}
+            canInvitePlayers={canInvitePlayers}
+            canLeaveTeam={false}
             canManageRoster={canManageRoster}
+            canTransferOwnership={false}
             mode="invitations"
             onFocusInvite={onFocusInvite}
           />
@@ -1421,6 +2395,63 @@ function InvitationsTab({
         </aside>
       </section>
     </>
+  );
+}
+
+function TeamJoinRequestList({
+  canManageTeam,
+  isMutating,
+  onJoinRequestAction,
+  requests
+}: {
+  canManageTeam: boolean;
+  isMutating: boolean;
+  onJoinRequestAction: (action: "accept" | "decline", requestId: string) => void;
+  requests: TeamJoinRequest[];
+}) {
+  return (
+    <section className="team-mgmt-join-placeholder ops-panel">
+      <h2>
+        <UsersRound size={18} />
+        Join Requests
+      </h2>
+      {requests.length === 0 ? (
+        <p className="team-mgmt-muted">No membership requests are waiting for this team.</p>
+      ) : (
+        requests.map((request) => (
+          <article key={request.id}>
+            <span className="team-mgmt-mini-avatar">
+              {initials(request.requesterDisplayName ?? "PL")}
+            </span>
+            <div>
+              <strong>{request.requesterDisplayName ?? "Player request"}</strong>
+              <p>{request.message ?? "No message was provided."}</p>
+            </div>
+            <span className={classNames("team-mgmt-status", `team-mgmt-status-${request.status}`)}>
+              {request.status}
+            </span>
+            {request.status === "pending" ? (
+              <>
+                <button
+                  disabled={isMutating || !canManageTeam}
+                  onClick={() => onJoinRequestAction("accept", request.id)}
+                  type="button"
+                >
+                  Accept
+                </button>
+                <button
+                  disabled={isMutating || !canManageTeam}
+                  onClick={() => onJoinRequestAction("decline", request.id)}
+                  type="button"
+                >
+                  Decline
+                </button>
+              </>
+            ) : null}
+          </article>
+        ))
+      )}
+    </section>
   );
 }
 
