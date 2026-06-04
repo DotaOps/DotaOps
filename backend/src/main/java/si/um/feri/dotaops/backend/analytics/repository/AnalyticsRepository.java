@@ -16,6 +16,7 @@ import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsMatchHistory;
 import si.um.feri.dotaops.backend.analytics.domain.HeroMetrics;
 import si.um.feri.dotaops.backend.analytics.domain.PickedHeroMetrics;
+import si.um.feri.dotaops.backend.analytics.domain.PlayerHeroPerformance;
 import si.um.feri.dotaops.backend.analytics.domain.PlayerMetrics;
 import si.um.feri.dotaops.backend.analytics.domain.PlayerProgressPoint;
 import si.um.feri.dotaops.backend.analytics.domain.TeamMetrics;
@@ -367,6 +368,113 @@ public class AnalyticsRepository {
                 limit ?
                 """,
                 this::mapHeroMetrics,
+                parameters.toArray());
+    }
+
+    public List<PlayerHeroPerformance> findPlayerHeroPerformance(
+            UUID profileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        AnalyticsFilters scopedFilters = filters.withProfileId(profileId);
+        QueryParts queryParts = filteredWhere(scopedFilters, "mp", "m");
+        List<Object> parameters = new ArrayList<>(queryParts.parameters());
+        parameters.add(scopedFilters.limit());
+
+        return jdbcTemplate.query(
+                """
+                with filtered_rows as (
+                  select
+                    h.id as hero_id,
+                    coalesce(mp.dota_hero_id, h.dota_hero_id) as dota_hero_id,
+                    coalesce(h.localized_name, h.name, 'Unknown hero') as hero_name,
+                    m.id as match_id,
+                    mg.id as match_game_id,
+                    coalesce(mg.dota_match_id, m.dota_match_id) as dota_match_id,
+                    """ + analyticsTimestampExpression("mg", "m") + """
+                      as played_at,
+                    mp.is_winner as won,
+                    coalesce(mp.kills, 0)::integer as kills,
+                    coalesce(mp.deaths, 0)::integer as deaths,
+                    coalesce(mp.assists, 0)::integer as assists,
+                    round((coalesce(mp.kills, 0) + coalesce(mp.assists, 0))::numeric
+                      / greatest(coalesce(mp.deaths, 0), 1), 2) as match_kda,
+                    mp.gold_per_min,
+                    mp.xp_per_min,
+                    mp.hero_damage,
+                    mp.tower_damage,
+                    mp.hero_healing,
+                    mp.last_hits,
+                    mp.denies
+                  from public.match_players mp
+                  left join public.match_games mg on mg.id = mp.match_game_id
+                  join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
+                  join public.tournaments t on t.id = m.tournament_id
+                  join public.heroes h on h.id = mp.hero_id
+                  where """ + tournamentVisibilityCondition(publicOnly) + """
+                    and mp.profile_id is not null
+                    and mp.hero_id is not null
+                """ + queryParts.sql() + """
+                ),
+                ranked_rows as (
+                  select
+                    filtered_rows.*,
+                    row_number() over (
+                      partition by hero_id
+                      order by played_at desc nulls last, match_id desc, match_game_id desc nulls last
+                    ) as recent_rank,
+                    row_number() over (
+                      partition by hero_id
+                      order by match_kda desc, kills desc, assists desc, played_at desc nulls last, match_id desc, match_game_id desc nulls last
+                    ) as best_rank
+                  from filtered_rows
+                ),
+                hero_agg as (
+                  select
+                    hero_id,
+                    dota_hero_id,
+                    hero_name,
+                    count(*)::integer as matches,
+                    count(*) filter (where won is true)::integer as wins,
+                    count(*) filter (where won is false)::integer as losses,
+                    round(((count(*) filter (where won is true))::numeric / greatest(count(*), 1)) * 100, 2)
+                      as win_rate,
+                    round(avg(kills), 2) as avg_kills,
+                    round(avg(deaths), 2) as avg_deaths,
+                    round(avg(assists), 2) as avg_assists,
+                    round(avg(match_kda), 2) as avg_kda,
+                    round(avg(gold_per_min), 2) as avg_gpm,
+                    round(avg(xp_per_min), 2) as avg_xpm,
+                    round(avg(hero_damage), 2) as avg_hero_damage,
+                    round(avg(tower_damage), 2) as avg_tower_damage,
+                    round(avg(hero_healing), 2) as avg_hero_healing,
+                    round(avg(last_hits), 2) as avg_last_hits,
+                    round(avg(denies), 2) as avg_denies
+                  from ranked_rows
+                  group by hero_id, dota_hero_id, hero_name
+                )
+                select
+                  hero_agg.*,
+                  recent_row.match_id as recent_match_id,
+                  recent_row.match_game_id as recent_match_game_id,
+                  recent_row.dota_match_id as recent_dota_match_id,
+                  recent_row.played_at as recent_played_at,
+                  best_row.match_id as best_match_id,
+                  best_row.match_game_id as best_match_game_id,
+                  best_row.dota_match_id as best_dota_match_id,
+                  best_row.played_at as best_played_at,
+                  best_row.match_kda as best_kda
+                from hero_agg
+                left join ranked_rows recent_row
+                  on recent_row.hero_id = hero_agg.hero_id
+                  and recent_row.recent_rank = 1
+                left join ranked_rows best_row
+                  on best_row.hero_id = hero_agg.hero_id
+                  and best_row.best_rank = 1
+                order by hero_agg.matches desc, hero_agg.win_rate desc, hero_agg.avg_kda desc, hero_agg.hero_name asc
+                limit ?
+                """,
+                this::mapPlayerHeroPerformance,
                 parameters.toArray());
     }
 
@@ -1034,6 +1142,37 @@ public class AnalyticsRepository {
                 resultSet.getObject("last_hits", Integer.class),
                 resultSet.getObject("denies", Integer.class),
                 resultSet.getObject("won", Boolean.class));
+    }
+
+    private PlayerHeroPerformance mapPlayerHeroPerformance(ResultSet resultSet, int rowNumber) throws SQLException {
+        return new PlayerHeroPerformance(
+                resultSet.getObject("hero_id", UUID.class),
+                resultSet.getObject("dota_hero_id", Integer.class),
+                resultSet.getString("hero_name"),
+                resultSet.getInt("matches"),
+                resultSet.getInt("wins"),
+                resultSet.getInt("losses"),
+                decimal(resultSet, "win_rate"),
+                decimal(resultSet, "avg_kills"),
+                decimal(resultSet, "avg_deaths"),
+                decimal(resultSet, "avg_assists"),
+                decimal(resultSet, "avg_kda"),
+                decimal(resultSet, "avg_gpm"),
+                decimal(resultSet, "avg_xpm"),
+                decimal(resultSet, "avg_hero_damage"),
+                decimal(resultSet, "avg_tower_damage"),
+                decimal(resultSet, "avg_hero_healing"),
+                decimal(resultSet, "avg_last_hits"),
+                decimal(resultSet, "avg_denies"),
+                resultSet.getObject("recent_match_id", UUID.class),
+                resultSet.getObject("recent_match_game_id", UUID.class),
+                resultSet.getString("recent_dota_match_id"),
+                resultSet.getObject("recent_played_at", OffsetDateTime.class),
+                resultSet.getObject("best_match_id", UUID.class),
+                resultSet.getObject("best_match_game_id", UUID.class),
+                resultSet.getString("best_dota_match_id"),
+                resultSet.getObject("best_played_at", OffsetDateTime.class),
+                decimal(resultSet, "best_kda"));
     }
 
     private BigDecimal decimal(ResultSet resultSet, String column) throws SQLException {

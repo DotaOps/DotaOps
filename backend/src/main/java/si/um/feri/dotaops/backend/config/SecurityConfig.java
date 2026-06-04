@@ -86,6 +86,7 @@ public class SecurityConfig {
                                 "/api/team-invitations/*/decline").hasRole("PLAYER")
                         .requestMatchers(HttpMethod.GET,
                                 "/api/me/analytics",
+                                "/api/me/analytics/heroes",
                                 "/api/me/analytics/progress",
                                 "/api/me/team/analytics").hasRole("PLAYER")
                         .requestMatchers(HttpMethod.GET,

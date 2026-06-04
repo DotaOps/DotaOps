@@ -10,6 +10,7 @@ import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.repository.AnalyticsRepository;
 import si.um.feri.dotaops.backend.analytics.web.AnalyticsMatchHistoryResponse;
 import si.um.feri.dotaops.backend.analytics.web.HeroMetricsResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerHeroPerformanceResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerMetricsResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerProgressPointResponse;
 import si.um.feri.dotaops.backend.analytics.web.TeamMetricsResponse;
@@ -103,6 +104,18 @@ public class AnalyticsQueryService {
         return analyticsRepository.findHeroMetricsForTeams(firstTeamId, secondTeamId, filters, publicOnly)
                 .stream()
                 .map(HeroMetricsResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlayerHeroPerformanceResponse> playerHeroPerformance(
+            UUID profileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findPlayerHeroPerformance(profileId, filters, publicOnly)
+                .stream()
+                .map(PlayerHeroPerformanceResponse::from)
                 .toList();
     }
 

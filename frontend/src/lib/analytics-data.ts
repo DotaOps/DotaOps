@@ -155,6 +155,36 @@ export interface PlayerProgressPoint {
   xpPerMin: number | null;
 }
 
+export interface PlayerHeroPerformance {
+  avgAssists: number;
+  avgDeaths: number;
+  avgDenies: number;
+  avgGpm: number;
+  avgHeroDamage: number;
+  avgHeroHealing: number;
+  avgKda: number;
+  avgKills: number;
+  avgLastHits: number;
+  avgTowerDamage: number;
+  avgXpm: number;
+  bestDotaMatchId: string | null;
+  bestKda: number;
+  bestMatchGameId: string | null;
+  bestMatchId: string | null;
+  bestPlayedAt: string | null;
+  dotaHeroId: number | null;
+  heroId: string | null;
+  heroName: string | null;
+  losses: number;
+  matches: number;
+  recentDotaMatchId: string | null;
+  recentMatchGameId: string | null;
+  recentMatchId: string | null;
+  recentPlayedAt: string | null;
+  winRate: number;
+  wins: number;
+}
+
 export interface RoleAnalyticsTeam {
   captainNickname: string | null;
   captainProfileId: string | null;
@@ -165,6 +195,7 @@ export interface RoleAnalyticsTeam {
 }
 
 export interface PlayerAnalyticsResponse {
+  heroDetails: PlayerHeroPerformance[];
   heroPerformance: HeroAnalyticsMetric[];
   matchHistory: AnalyticsMatchHistory[];
   metrics: PlayerAnalyticsMetric[];
@@ -554,6 +585,40 @@ function mapPlayerProgressPoint(value: unknown): PlayerProgressPoint {
   };
 }
 
+function mapPlayerHeroPerformance(value: unknown): PlayerHeroPerformance {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    avgAssists: numberValue(item.avgAssists),
+    avgDeaths: numberValue(item.avgDeaths),
+    avgDenies: numberValue(item.avgDenies),
+    avgGpm: numberValue(item.avgGpm),
+    avgHeroDamage: numberValue(item.avgHeroDamage),
+    avgHeroHealing: numberValue(item.avgHeroHealing),
+    avgKda: numberValue(item.avgKda),
+    avgKills: numberValue(item.avgKills),
+    avgLastHits: numberValue(item.avgLastHits),
+    avgTowerDamage: numberValue(item.avgTowerDamage),
+    avgXpm: numberValue(item.avgXpm),
+    bestDotaMatchId: nullableText(item.bestDotaMatchId),
+    bestKda: numberValue(item.bestKda),
+    bestMatchGameId: nullableText(item.bestMatchGameId),
+    bestMatchId: nullableText(item.bestMatchId),
+    bestPlayedAt: nullableText(item.bestPlayedAt),
+    dotaHeroId: nullableNumber(item.dotaHeroId),
+    heroId: nullableText(item.heroId),
+    heroName: nullableText(item.heroName),
+    losses: numberValue(item.losses),
+    matches: numberValue(item.matches),
+    recentDotaMatchId: nullableText(item.recentDotaMatchId),
+    recentMatchGameId: nullableText(item.recentMatchGameId),
+    recentMatchId: nullableText(item.recentMatchId),
+    recentPlayedAt: nullableText(item.recentPlayedAt),
+    winRate: numberValue(item.winRate),
+    wins: numberValue(item.wins)
+  };
+}
+
 function mapOrganizerTournamentLookup(value: unknown): OrganizerTournamentLookup {
   const item = isRecord(value) ? value : {};
 
@@ -633,6 +698,7 @@ function mapPlayerAnalyticsResponse(value: unknown): PlayerAnalyticsResponse {
   const item = isRecord(value) ? value : {};
 
   return {
+    heroDetails: (arrayPayload(item.heroDetails) ?? []).map(mapPlayerHeroPerformance),
     heroPerformance: (arrayPayload(item.heroPerformance) ?? []).map(mapHero),
     matchHistory: (arrayPayload(item.matchHistory) ?? []).map(mapMatchHistory),
     metrics: (arrayPayload(item.metrics) ?? []).map(mapPlayer),
@@ -783,14 +849,23 @@ export async function getMyPlayerProgress(filters?: AnalyticsFilters) {
   ).map(mapPlayerProgressPoint);
 }
 
+export async function getMyPlayerHeroPerformance(filters?: AnalyticsFilters) {
+  return analyticsArrayPayload(
+    await getApiAuthenticated<unknown>(`/me/analytics/heroes${queryString(filters)}`),
+    "player hero performance"
+  ).map(mapPlayerHeroPerformance);
+}
+
 export async function getMyPlayerAnalytics(filters?: AnalyticsFilters) {
-  const [analytics, progress] = await Promise.all([
+  const [analytics, progress, heroDetails] = await Promise.all([
     getApiAuthenticated<unknown>(`/me/analytics${queryString(filters)}`),
-    getMyPlayerProgress(filters)
+    getMyPlayerProgress(filters),
+    getMyPlayerHeroPerformance(filters)
   ]);
 
   return {
     ...mapPlayerAnalyticsResponse(analytics),
+    heroDetails,
     progress
   };
 }

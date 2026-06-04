@@ -176,6 +176,31 @@ class AnalyticsRepositoryTest {
                 .containsExactly(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO, 25);
     }
 
+    @Test
+    void protectedPlayerHeroPerformanceAggregatesCurrentProfileHeroesAndBoundFilters() {
+        repository.findPlayerHeroPerformance(
+                PROFILE_ID,
+                new AnalyticsFilters(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO, 25),
+                false);
+
+        assertThat(jdbcTemplate.sql).contains("where true");
+        assertThat(jdbcTemplate.sql).contains("mp.profile_id = ?");
+        assertThat(jdbcTemplate.sql).contains("m.tournament_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.team_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.hero_id = ?");
+        assertThat(jdbcTemplate.sql).contains("count(*)::integer as matches");
+        assertThat(jdbcTemplate.sql).contains("count(*) filter (where won is true)::integer as wins");
+        assertThat(jdbcTemplate.sql).contains("round(avg(gold_per_min), 2) as avg_gpm");
+        assertThat(jdbcTemplate.sql).contains("round(avg(hero_healing), 2) as avg_hero_healing");
+        assertThat(jdbcTemplate.sql).contains("round(avg(last_hits), 2) as avg_last_hits");
+        assertThat(jdbcTemplate.sql).contains("recent_rank");
+        assertThat(jdbcTemplate.sql).contains("best_rank");
+        assertThat(jdbcTemplate.sql).contains("order by hero_agg.matches desc");
+        assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true", "raw_response", "normalized_payload", "raw_player");
+        assertThat(jdbcTemplate.parameters)
+                .containsExactly(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO, 25);
+    }
+
     private void assertLiveNormalizedAnalyticsQuery() {
         assertThat(jdbcTemplate.sql).contains("from public.match_players mp");
         assertThat(jdbcTemplate.sql).contains("join public.matches m");

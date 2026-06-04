@@ -44,6 +44,7 @@ import {
   type PlayerComparisonResponse,
   type PlayerAnalyticsMetric,
   type PlayerAnalyticsResponse,
+  type PlayerHeroPerformance,
   type PlayerProgressPoint,
   type RecentImportMetric,
   type TeamComparisonResponse,
@@ -210,6 +211,12 @@ function progressResultLabel(point: PlayerProgressPoint) {
   }
 
   return "Result unavailable";
+}
+
+function playerHeroReferenceLabel(hero: PlayerHeroPerformance) {
+  return hero.recentDotaMatchId
+    ? `Dota ${hero.recentDotaMatchId}`
+    : hero.recentMatchId ?? "Recent match unavailable";
 }
 
 function average(values: number[]) {
@@ -807,6 +814,14 @@ function PlayerRoleAnalyticsPanel({
               description="Hero analytics scoped to your profile."
             />
             <HeroMatrix heroes={personal.heroPerformance} />
+          </div>
+          <div className="analytics-terminal-panel analytics-data-panel ops-panel">
+            <SectionHeader
+              eyebrow="Hero detail"
+              title="Top Hero Breakdown"
+              description="Per-hero averages and match references for your current player profile."
+            />
+            <PlayerHeroPerformanceTable heroes={personal.heroDetails} />
           </div>
           <div className="analytics-terminal-panel analytics-data-panel ops-panel">
             <SectionHeader
@@ -2277,6 +2292,65 @@ function PlayerProgressTable({ progress }: { progress: PlayerProgressPoint[] }) 
               <td>
                 <strong>{countMetricValue(point.heroDamage)} hero / {countMetricValue(point.towerDamage)} tower</strong>
                 <span>Healing {countMetricValue(point.heroHealing)}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PlayerHeroPerformanceTable({ heroes }: { heroes: PlayerHeroPerformance[] }) {
+  if (heroes.length === 0) {
+    return (
+      <AnalyticsEmptyBlock
+        title="No hero-specific analytics yet."
+        detail="Hero breakdown rows will appear after imported matches link heroes to your player profile."
+      />
+    );
+  }
+
+  return (
+    <div className="analytics-real-table-wrap">
+      <table className="analytics-real-table">
+        <thead>
+          <tr>
+            <th>Hero</th>
+            <th>Matches</th>
+            <th>W-L</th>
+            <th>Win Rate</th>
+            <th>Avg KDA</th>
+            <th>Economy</th>
+            <th>Impact</th>
+            <th>Recent / Best</th>
+          </tr>
+        </thead>
+        <tbody>
+          {heroes.slice(0, 12).map((hero) => (
+            <tr key={`${hero.heroId ?? hero.heroName ?? "hero"}-${hero.recentMatchId ?? "recent"}`}>
+              <td>
+                <strong>{hero.heroName ?? "Hero unavailable"}</strong>
+                <span>{hero.heroId ?? "Hero ID unavailable"}</span>
+              </td>
+              <td>{hero.matches}</td>
+              <td>{hero.wins}-{hero.losses}</td>
+              <td>{formatPercent(hero.winRate)}</td>
+              <td>
+                <strong>{safeMetricNumber(hero.avgKda, 2)}</strong>
+                <span>{safeMetricNumber(hero.avgKills)} / {safeMetricNumber(hero.avgDeaths)} / {safeMetricNumber(hero.avgAssists)}</span>
+              </td>
+              <td>
+                <strong>{safeMetricNumber(hero.avgGpm)} / {safeMetricNumber(hero.avgXpm)}</strong>
+                <span>LH/DN {safeMetricNumber(hero.avgLastHits)} / {safeMetricNumber(hero.avgDenies)}</span>
+              </td>
+              <td>
+                <strong>{Math.round(hero.avgHeroDamage).toLocaleString("en-US")} hero / {Math.round(hero.avgTowerDamage).toLocaleString("en-US")} tower</strong>
+                <span>Healing {Math.round(hero.avgHeroHealing).toLocaleString("en-US")}</span>
+              </td>
+              <td>
+                <strong>{formatAnalyticsDateTime(hero.recentPlayedAt)}</strong>
+                <span>Best KDA {safeMetricNumber(hero.bestKda, 2)} / {hero.bestDotaMatchId ?? playerHeroReferenceLabel(hero)}</span>
               </td>
             </tr>
           ))}

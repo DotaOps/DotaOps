@@ -13,6 +13,7 @@ import org.springframework.security.access.AccessDeniedException;
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.repository.RoleBasedAnalyticsRepository;
 import si.um.feri.dotaops.backend.analytics.web.AnalyticsMatchHistoryResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerHeroPerformanceResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerProgressPointResponse;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
@@ -41,6 +42,7 @@ class RoleBasedAnalyticsServiceTest {
     private static final UUID MATCH_GAME_ID = UUID.fromString("66666666-6666-4666-8666-666666666666");
     private static final UUID OPPONENT_TEAM_ID = UUID.fromString("77777777-7777-4777-8777-777777777777");
     private static final UUID HERO_ID = UUID.fromString("88888888-8888-4888-8888-888888888888");
+    private static final UUID HERO_TWO_ID = UUID.fromString("99999999-9999-4999-8999-999999999999");
     private static final OffsetDateTime NOW = OffsetDateTime.parse("2026-05-12T00:00:00Z");
     private static final OffsetDateTime PLAYED_AT = OffsetDateTime.parse("2026-05-11T18:30:00Z");
 
@@ -207,6 +209,83 @@ class RoleBasedAnalyticsServiceTest {
     }
 
     @Test
+    void currentPlayerHeroPerformanceScopesToCurrentProfileAndReturnsMultipleHeroes() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(heroPerformance(), secondHeroPerformance()));
+
+        var response = service.currentPlayerHeroPerformance(new AnalyticsFilters(
+                TOURNAMENT_ID,
+                TEAM_ID,
+                PROFILE_ID,
+                null,
+                OffsetDateTime.parse("2026-05-01T00:00:00Z"),
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                25));
+
+        ArgumentCaptor<AnalyticsFilters> filters = ArgumentCaptor.forClass(AnalyticsFilters.class);
+        verify(analyticsQueryService).playerHeroPerformance(eq(PROFILE_ID), filters.capture(), eq(false));
+        assertThat(filters.getValue().tournamentId()).isEqualTo(TOURNAMENT_ID);
+        assertThat(filters.getValue().teamId()).isEqualTo(TEAM_ID);
+        assertThat(filters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filters.getValue().limit()).isEqualTo(25);
+        assertThat(response).hasSize(2);
+        assertThat(response.getFirst()).satisfies(hero -> {
+            assertThat(hero.heroId()).isEqualTo(HERO_ID);
+            assertThat(hero.heroName()).isEqualTo("Anti-Mage");
+            assertThat(hero.matches()).isEqualTo(2);
+            assertThat(hero.wins()).isEqualTo(1);
+            assertThat(hero.losses()).isEqualTo(1);
+            assertThat(hero.winRate()).isEqualByComparingTo("50.00");
+            assertThat(hero.avgKills()).isEqualByComparingTo("9.50");
+            assertThat(hero.avgDeaths()).isEqualByComparingTo("3.50");
+            assertThat(hero.avgAssists()).isEqualByComparingTo("12.00");
+            assertThat(hero.avgKda()).isEqualByComparingTo("6.14");
+            assertThat(hero.avgGpm()).isEqualByComparingTo("610.00");
+            assertThat(hero.avgXpm()).isEqualByComparingTo("690.00");
+            assertThat(hero.avgHeroDamage()).isEqualByComparingTo("24500.00");
+            assertThat(hero.avgTowerDamage()).isEqualByComparingTo("3900.00");
+            assertThat(hero.avgHeroHealing()).isEqualByComparingTo("0.00");
+            assertThat(hero.avgLastHits()).isEqualByComparingTo("285.00");
+            assertThat(hero.avgDenies()).isEqualByComparingTo("10.50");
+            assertThat(hero.recentMatchId()).isEqualTo(MATCH_ID);
+            assertThat(hero.recentMatchGameId()).isEqualTo(MATCH_GAME_ID);
+            assertThat(hero.recentDotaMatchId()).isEqualTo("7894561230");
+            assertThat(hero.recentPlayedAt()).isEqualTo(PLAYED_AT);
+            assertThat(hero.bestMatchId()).isEqualTo(MATCH_ID);
+            assertThat(hero.bestKda()).isEqualByComparingTo("8.67");
+        });
+        assertThat(response.get(1).heroId()).isEqualTo(HERO_TWO_ID);
+        assertThat(response.get(1).matches()).isOne();
+    }
+
+    @Test
+    void currentPlayerHeroPerformanceReturnsEmptyListWhenNoDataExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of());
+
+        var response = service.currentPlayerHeroPerformance(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        verify(analyticsQueryService).playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false));
+        assertThat(response).isEmpty();
+    }
+
+    @Test
+    void currentPlayerHeroPerformanceRejectsAnotherProfileFilter() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> service.currentPlayerHeroPerformance(new AnalyticsFilters(
+                null,
+                null,
+                UUID.fromString("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+                null,
+                10)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Players can only view their own private analytics.");
+    }
+
+    @Test
     void currentTeamAnalyticsReturnStableEmptyStateWithoutTeam() {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
         when(teamRepository.findCurrentTeamForProfile(PROFILE_ID)).thenReturn(Optional.empty());
@@ -363,6 +442,68 @@ class RoleBasedAnalyticsServiceTest {
                 320,
                 12,
                 true);
+    }
+
+    private PlayerHeroPerformanceResponse heroPerformance() {
+        return new PlayerHeroPerformanceResponse(
+                HERO_ID,
+                1,
+                "Anti-Mage",
+                2,
+                1,
+                1,
+                new BigDecimal("50.00"),
+                new BigDecimal("9.50"),
+                new BigDecimal("3.50"),
+                new BigDecimal("12.00"),
+                new BigDecimal("6.14"),
+                new BigDecimal("610.00"),
+                new BigDecimal("690.00"),
+                new BigDecimal("24500.00"),
+                new BigDecimal("3900.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("285.00"),
+                new BigDecimal("10.50"),
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                PLAYED_AT,
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                PLAYED_AT,
+                new BigDecimal("8.67"));
+    }
+
+    private PlayerHeroPerformanceResponse secondHeroPerformance() {
+        return new PlayerHeroPerformanceResponse(
+                HERO_TWO_ID,
+                2,
+                "Axe",
+                1,
+                1,
+                0,
+                new BigDecimal("100.00"),
+                new BigDecimal("6.00"),
+                new BigDecimal("2.00"),
+                new BigDecimal("18.00"),
+                new BigDecimal("12.00"),
+                new BigDecimal("430.00"),
+                new BigDecimal("510.00"),
+                new BigDecimal("18000.00"),
+                new BigDecimal("1200.00"),
+                new BigDecimal("650.00"),
+                new BigDecimal("165.00"),
+                new BigDecimal("5.00"),
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                PLAYED_AT,
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                PLAYED_AT,
+                new BigDecimal("12.00"));
     }
 
     private Team team() {
