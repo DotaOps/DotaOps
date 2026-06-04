@@ -8,8 +8,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.repository.AnalyticsRepository;
+import si.um.feri.dotaops.backend.analytics.web.AnalyticsMatchHistoryResponse;
 import si.um.feri.dotaops.backend.analytics.web.HeroMetricsResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerHeroPerformanceResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerMetricsResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerProgressPointResponse;
 import si.um.feri.dotaops.backend.analytics.web.TeamMetricsResponse;
 import si.um.feri.dotaops.backend.analytics.web.TournamentMetricsResponse;
 import si.um.feri.dotaops.backend.common.error.ResourceNotFoundException;
@@ -40,6 +43,16 @@ public class AnalyticsQueryService {
     }
 
     @Transactional(readOnly = true)
+    public java.util.Optional<PlayerMetricsResponse> playerAggregateMetrics(
+            UUID profileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findPlayerAggregateMetrics(profileId, filters, publicOnly)
+                .map(PlayerMetricsResponse::from);
+    }
+
+    @Transactional(readOnly = true)
     public List<TeamMetricsResponse> teamMetrics(AnalyticsFilters filters) {
         return analyticsRepository.findTeamMetrics(filters)
                 .stream()
@@ -56,6 +69,16 @@ public class AnalyticsQueryService {
     }
 
     @Transactional(readOnly = true)
+    public java.util.Optional<TeamMetricsResponse> teamAggregateMetrics(
+            UUID teamId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findTeamAggregateMetrics(teamId, filters, publicOnly)
+                .map(TeamMetricsResponse::from);
+    }
+
+    @Transactional(readOnly = true)
     public List<HeroMetricsResponse> heroMetrics(AnalyticsFilters filters) {
         return analyticsRepository.findHeroMetrics(filters)
                 .stream()
@@ -68,6 +91,31 @@ public class AnalyticsQueryService {
         return analyticsRepository.findProtectedHeroMetrics(filters)
                 .stream()
                 .map(HeroMetricsResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<HeroMetricsResponse> heroMetricsForTeams(
+            UUID firstTeamId,
+            UUID secondTeamId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findHeroMetricsForTeams(firstTeamId, secondTeamId, filters, publicOnly)
+                .stream()
+                .map(HeroMetricsResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlayerHeroPerformanceResponse> playerHeroPerformance(
+            UUID profileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findPlayerHeroPerformance(profileId, filters, publicOnly)
+                .stream()
+                .map(PlayerHeroPerformanceResponse::from)
                 .toList();
     }
 
@@ -90,5 +138,88 @@ public class AnalyticsQueryService {
     public java.util.Optional<TournamentMetricsResponse> protectedTournamentMetrics(UUID tournamentId) {
         return analyticsRepository.findProtectedTournamentMetricsById(tournamentId)
                 .map(TournamentMetricsResponse::from);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<TournamentMetricsResponse> protectedTournamentMetrics(AnalyticsFilters filters) {
+        return analyticsRepository.findProtectedTournamentMetrics(filters)
+                .stream()
+                .findFirst()
+                .map(TournamentMetricsResponse::from);
+    }
+
+    @Transactional(readOnly = true)
+    public List<HeroMetricsResponse> sharedHeroesForPlayers(
+            UUID firstProfileId,
+            UUID secondProfileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findSharedHeroesForPlayers(firstProfileId, secondProfileId, filters, publicOnly)
+                .stream()
+                .map(HeroMetricsResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AnalyticsMatchHistoryResponse> recentMatchesForPlayers(
+            UUID firstProfileId,
+            UUID secondProfileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findRecentMatchesForPlayers(firstProfileId, secondProfileId, filters, publicOnly)
+                .stream()
+                .map(AnalyticsMatchHistoryResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AnalyticsMatchHistoryResponse> recentMatchesForPlayer(
+            UUID profileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findRecentMatchesForPlayer(profileId, filters, publicOnly)
+                .stream()
+                .map(AnalyticsMatchHistoryResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlayerProgressPointResponse> playerProgress(
+            UUID profileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findPlayerProgress(profileId, filters, publicOnly)
+                .stream()
+                .map(PlayerProgressPointResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AnalyticsMatchHistoryResponse> recentMatchesForTeams(
+            UUID firstTeamId,
+            UUID secondTeamId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findRecentMatchesForTeams(firstTeamId, secondTeamId, filters, publicOnly)
+                .stream()
+                .map(AnalyticsMatchHistoryResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AnalyticsMatchHistoryResponse> recentMatchesForTeam(
+            UUID teamId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findRecentMatchesForTeam(teamId, filters, publicOnly)
+                .stream()
+                .map(AnalyticsMatchHistoryResponse::from)
+                .toList();
     }
 }

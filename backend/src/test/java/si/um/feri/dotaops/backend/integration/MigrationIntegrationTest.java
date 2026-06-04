@@ -94,8 +94,11 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                     values
                       ('profiles_steam_id_format'),
                       ('profiles_role_no_global_captain'),
+                      ('profiles_avatar_path_format'),
                       ('profiles_opendota_account_id_range'),
                       ('profile_external_accounts_steam_id64_format'),
+                      ('teams_logo_path_format'),
+                      ('teams_banner_path_format'),
                       ('matches_scores_fit_series'),
                       ('matches_cancellation_reason_length'),
                       ('matches_cancelled_at_status'),
@@ -220,6 +223,7 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                 select expected.trigger_name
                 from (
                     values
+                      ('audit_profiles', 'profiles'),
                       ('audit_teams', 'teams'),
                       ('audit_team_members', 'team_members'),
                       ('audit_tournaments', 'tournaments'),
@@ -244,6 +248,57 @@ class MigrationIntegrationTest extends PostgresIntegrationTestSupport {
                 String.class);
 
         assertThat(missingAuditTriggers).isEmpty();
+    }
+
+    @Test
+    void storageBucketsAndPoliciesExistWhenStorageSchemaIsPresent() {
+        Boolean storageObjectsExist = jdbcTemplate.queryForObject(
+                "select to_regclass('storage.objects') is not null",
+                Boolean.class);
+        if (!Boolean.TRUE.equals(storageObjectsExist)) {
+            return;
+        }
+
+        List<String> missingBuckets = jdbcTemplate.queryForList(
+                """
+                select expected.bucket_id
+                from (
+                    values
+                      ('avatars'),
+                      ('team-assets')
+                ) as expected(bucket_id)
+                left join storage.buckets b
+                  on b.id = expected.bucket_id
+                 and b."public"
+                where b.id is null
+                order by expected.bucket_id
+                """,
+                String.class);
+        List<String> missingPolicies = jdbcTemplate.queryForList(
+                """
+                select expected.policyname
+                from (
+                    values
+                      ('dotaops avatars public read'),
+                      ('dotaops avatars owner insert'),
+                      ('dotaops avatars owner update'),
+                      ('dotaops avatars owner delete'),
+                      ('dotaops team assets public read'),
+                      ('dotaops team assets captain insert'),
+                      ('dotaops team assets captain update'),
+                      ('dotaops team assets captain delete')
+                ) as expected(policyname)
+                left join pg_policies p
+                  on p.schemaname = 'storage'
+                 and p.tablename = 'objects'
+                 and p.policyname = expected.policyname
+                where p.policyname is null
+                order by expected.policyname
+                """,
+                String.class);
+
+        assertThat(missingBuckets).isEmpty();
+        assertThat(missingPolicies).isEmpty();
     }
 
     @Test

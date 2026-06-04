@@ -12,15 +12,21 @@ import org.springframework.security.access.AccessDeniedException;
 
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.repository.RoleBasedAnalyticsRepository;
+import si.um.feri.dotaops.backend.analytics.web.AnalyticsMatchHistoryResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerHeroPerformanceResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerProgressPointResponse;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
+import si.um.feri.dotaops.backend.team.domain.Team;
+import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
 import si.um.feri.dotaops.backend.tournament.repository.TournamentRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -30,33 +36,253 @@ class RoleBasedAnalyticsServiceTest {
 
     private static final UUID AUTH_USER_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
     private static final UUID PROFILE_ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
+    private static final UUID TEAM_ID = UUID.fromString("33333333-3333-4333-8333-333333333333");
     private static final UUID TOURNAMENT_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
+    private static final UUID MATCH_ID = UUID.fromString("55555555-5555-4555-8555-555555555555");
+    private static final UUID MATCH_GAME_ID = UUID.fromString("66666666-6666-4666-8666-666666666666");
+    private static final UUID OPPONENT_TEAM_ID = UUID.fromString("77777777-7777-4777-8777-777777777777");
+    private static final UUID HERO_ID = UUID.fromString("88888888-8888-4888-8888-888888888888");
+    private static final UUID HERO_TWO_ID = UUID.fromString("99999999-9999-4999-8999-999999999999");
     private static final OffsetDateTime NOW = OffsetDateTime.parse("2026-05-12T00:00:00Z");
+    private static final OffsetDateTime PLAYED_AT = OffsetDateTime.parse("2026-05-11T18:30:00Z");
 
     private final AnalyticsQueryService analyticsQueryService = mock(AnalyticsQueryService.class);
     private final RoleBasedAnalyticsRepository roleBasedAnalyticsRepository = mock(RoleBasedAnalyticsRepository.class);
     private final TeamRepository teamRepository = mock(TeamRepository.class);
+    private final TeamMemberRepository teamMemberRepository = mock(TeamMemberRepository.class);
     private final TournamentRepository tournamentRepository = mock(TournamentRepository.class);
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
     private final RoleBasedAnalyticsService service = new RoleBasedAnalyticsService(
             analyticsQueryService,
             roleBasedAnalyticsRepository,
             teamRepository,
+            teamMemberRepository,
             tournamentRepository,
             currentUserProvider);
 
     @Test
     void playerAnalyticsAreScopedToCurrentProfileAndHaveStableEmptyHistory() {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.recentMatchesForPlayer(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of());
 
-        var response = service.currentPlayerAnalytics();
+        var response = service.currentPlayerAnalytics(new AnalyticsFilters(
+                null,
+                null,
+                PROFILE_ID,
+                null,
+                OffsetDateTime.parse("2026-05-01T00:00:00Z"),
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                25));
 
         ArgumentCaptor<AnalyticsFilters> filters = ArgumentCaptor.forClass(AnalyticsFilters.class);
         verify(analyticsQueryService).protectedPlayerMetrics(filters.capture());
         assertThat(filters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filters.getValue().from()).isEqualTo(OffsetDateTime.parse("2026-05-01T00:00:00Z"));
+        assertThat(filters.getValue().to()).isEqualTo(OffsetDateTime.parse("2026-06-01T00:00:00Z"));
+        assertThat(filters.getValue().limit()).isEqualTo(25);
+        verify(analyticsQueryService).recentMatchesForPlayer(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false));
         assertThat(response.metrics()).isEmpty();
         assertThat(response.heroPerformance()).isEmpty();
         assertThat(response.matchHistory()).isEmpty();
+    }
+
+    @Test
+    void playerAnalyticsReturnRecentMatchHistoryWhenDataExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.recentMatchesForPlayer(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(matchHistory()));
+
+        var response = service.currentPlayerAnalytics(new AnalyticsFilters(
+                TOURNAMENT_ID,
+                TEAM_ID,
+                PROFILE_ID,
+                null,
+                OffsetDateTime.parse("2026-05-01T00:00:00Z"),
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                25));
+
+        ArgumentCaptor<AnalyticsFilters> filters = ArgumentCaptor.forClass(AnalyticsFilters.class);
+        verify(analyticsQueryService).recentMatchesForPlayer(eq(PROFILE_ID), filters.capture(), eq(false));
+        assertThat(filters.getValue().tournamentId()).isEqualTo(TOURNAMENT_ID);
+        assertThat(filters.getValue().teamId()).isEqualTo(TEAM_ID);
+        assertThat(filters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filters.getValue().limit()).isEqualTo(25);
+        assertThat(response.matchHistory()).singleElement().satisfies(match -> {
+            assertThat(match.matchId()).isEqualTo(MATCH_ID);
+            assertThat(match.matchGameId()).isEqualTo(MATCH_GAME_ID);
+            assertThat(match.dotaMatchId()).isEqualTo("7894561230");
+            assertThat(match.tournamentId()).isEqualTo(TOURNAMENT_ID);
+            assertThat(match.tournamentName()).isEqualTo("Mid Wars");
+            assertThat(match.playedAt()).isEqualTo(PLAYED_AT);
+            assertThat(match.teamAId()).isEqualTo(TEAM_ID);
+            assertThat(match.teamAName()).isEqualTo("Radiant Ops");
+            assertThat(match.teamBId()).isEqualTo(OPPONENT_TEAM_ID);
+            assertThat(match.teamBName()).isEqualTo("Dire Ops");
+            assertThat(match.winnerTeamId()).isEqualTo(TEAM_ID);
+        });
+    }
+
+    @Test
+    void playerAnalyticsRejectAnotherProfileFilter() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> service.currentPlayerAnalytics(new AnalyticsFilters(
+                null,
+                null,
+                UUID.fromString("99999999-9999-4999-8999-999999999999"),
+                null,
+                10)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Players can only view their own private analytics.");
+    }
+
+    @Test
+    void currentPlayerProgressScopesToCurrentProfileAndReturnsProgressRows() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(progressPoint()));
+
+        var response = service.currentPlayerProgress(new AnalyticsFilters(
+                TOURNAMENT_ID,
+                TEAM_ID,
+                PROFILE_ID,
+                HERO_ID,
+                OffsetDateTime.parse("2026-05-01T00:00:00Z"),
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                25));
+
+        ArgumentCaptor<AnalyticsFilters> filters = ArgumentCaptor.forClass(AnalyticsFilters.class);
+        verify(analyticsQueryService).playerProgress(eq(PROFILE_ID), filters.capture(), eq(false));
+        assertThat(filters.getValue().tournamentId()).isEqualTo(TOURNAMENT_ID);
+        assertThat(filters.getValue().teamId()).isEqualTo(TEAM_ID);
+        assertThat(filters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filters.getValue().heroId()).isEqualTo(HERO_ID);
+        assertThat(filters.getValue().limit()).isEqualTo(25);
+        assertThat(response).singleElement().satisfies(point -> {
+            assertThat(point.playedAt()).isEqualTo(PLAYED_AT);
+            assertThat(point.matchId()).isEqualTo(MATCH_ID);
+            assertThat(point.matchGameId()).isEqualTo(MATCH_GAME_ID);
+            assertThat(point.dotaMatchId()).isEqualTo("7894561230");
+            assertThat(point.heroId()).isEqualTo(HERO_ID);
+            assertThat(point.dotaHeroId()).isEqualTo(1);
+            assertThat(point.heroName()).isEqualTo("Anti-Mage");
+            assertThat(point.kills()).isEqualTo(12);
+            assertThat(point.deaths()).isEqualTo(3);
+            assertThat(point.assists()).isEqualTo(14);
+            assertThat(point.kda()).isEqualByComparingTo("8.67");
+            assertThat(point.goldPerMin()).isEqualTo(640);
+            assertThat(point.xpPerMin()).isEqualTo(720);
+            assertThat(point.heroDamage()).isEqualTo(28000);
+            assertThat(point.towerDamage()).isEqualTo(5400);
+            assertThat(point.heroHealing()).isEqualTo(0);
+            assertThat(point.lastHits()).isEqualTo(320);
+            assertThat(point.denies()).isEqualTo(12);
+            assertThat(point.won()).isTrue();
+        });
+    }
+
+    @Test
+    void currentPlayerProgressReturnsEmptyListWhenNoMatchDataExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of());
+
+        var response = service.currentPlayerProgress(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        verify(analyticsQueryService).playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false));
+        assertThat(response).isEmpty();
+    }
+
+    @Test
+    void currentPlayerProgressRejectsAnotherProfileFilter() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> service.currentPlayerProgress(new AnalyticsFilters(
+                null,
+                null,
+                UUID.fromString("99999999-9999-4999-8999-999999999999"),
+                null,
+                10)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Players can only view their own private analytics.");
+    }
+
+    @Test
+    void currentPlayerHeroPerformanceScopesToCurrentProfileAndReturnsMultipleHeroes() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(heroPerformance(), secondHeroPerformance()));
+
+        var response = service.currentPlayerHeroPerformance(new AnalyticsFilters(
+                TOURNAMENT_ID,
+                TEAM_ID,
+                PROFILE_ID,
+                null,
+                OffsetDateTime.parse("2026-05-01T00:00:00Z"),
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                25));
+
+        ArgumentCaptor<AnalyticsFilters> filters = ArgumentCaptor.forClass(AnalyticsFilters.class);
+        verify(analyticsQueryService).playerHeroPerformance(eq(PROFILE_ID), filters.capture(), eq(false));
+        assertThat(filters.getValue().tournamentId()).isEqualTo(TOURNAMENT_ID);
+        assertThat(filters.getValue().teamId()).isEqualTo(TEAM_ID);
+        assertThat(filters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filters.getValue().limit()).isEqualTo(25);
+        assertThat(response).hasSize(2);
+        assertThat(response.getFirst()).satisfies(hero -> {
+            assertThat(hero.heroId()).isEqualTo(HERO_ID);
+            assertThat(hero.heroName()).isEqualTo("Anti-Mage");
+            assertThat(hero.matches()).isEqualTo(2);
+            assertThat(hero.wins()).isEqualTo(1);
+            assertThat(hero.losses()).isEqualTo(1);
+            assertThat(hero.winRate()).isEqualByComparingTo("50.00");
+            assertThat(hero.avgKills()).isEqualByComparingTo("9.50");
+            assertThat(hero.avgDeaths()).isEqualByComparingTo("3.50");
+            assertThat(hero.avgAssists()).isEqualByComparingTo("12.00");
+            assertThat(hero.avgKda()).isEqualByComparingTo("6.14");
+            assertThat(hero.avgGpm()).isEqualByComparingTo("610.00");
+            assertThat(hero.avgXpm()).isEqualByComparingTo("690.00");
+            assertThat(hero.avgHeroDamage()).isEqualByComparingTo("24500.00");
+            assertThat(hero.avgTowerDamage()).isEqualByComparingTo("3900.00");
+            assertThat(hero.avgHeroHealing()).isEqualByComparingTo("0.00");
+            assertThat(hero.avgLastHits()).isEqualByComparingTo("285.00");
+            assertThat(hero.avgDenies()).isEqualByComparingTo("10.50");
+            assertThat(hero.recentMatchId()).isEqualTo(MATCH_ID);
+            assertThat(hero.recentMatchGameId()).isEqualTo(MATCH_GAME_ID);
+            assertThat(hero.recentDotaMatchId()).isEqualTo("7894561230");
+            assertThat(hero.recentPlayedAt()).isEqualTo(PLAYED_AT);
+            assertThat(hero.bestMatchId()).isEqualTo(MATCH_ID);
+            assertThat(hero.bestKda()).isEqualByComparingTo("8.67");
+        });
+        assertThat(response.get(1).heroId()).isEqualTo(HERO_TWO_ID);
+        assertThat(response.get(1).matches()).isOne();
+    }
+
+    @Test
+    void currentPlayerHeroPerformanceReturnsEmptyListWhenNoDataExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of());
+
+        var response = service.currentPlayerHeroPerformance(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        verify(analyticsQueryService).playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false));
+        assertThat(response).isEmpty();
+    }
+
+    @Test
+    void currentPlayerHeroPerformanceRejectsAnotherProfileFilter() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> service.currentPlayerHeroPerformance(new AnalyticsFilters(
+                null,
+                null,
+                UUID.fromString("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+                null,
+                10)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Players can only view their own private analytics.");
     }
 
     @Test
@@ -73,9 +299,59 @@ class RoleBasedAnalyticsServiceTest {
     }
 
     @Test
+    void currentTeamAnalyticsReturnEmptyMatchHistoryWhenNoMatchDataExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(teamRepository.findCurrentTeamForProfile(PROFILE_ID)).thenReturn(Optional.of(team()));
+        when(analyticsQueryService.recentMatchesForTeam(eq(TEAM_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of());
+
+        var response = service.currentTeamAnalytics();
+
+        assertThat(response.team()).isNotNull();
+        assertThat(response.teamSummary()).isEmpty();
+        assertThat(response.rosterPerformance()).isEmpty();
+        assertThat(response.recentTeamMatches()).isEmpty();
+    }
+
+    @Test
+    void currentTeamAnalyticsReturnRecentMatchHistoryWhenDataExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(teamRepository.findCurrentTeamForProfile(PROFILE_ID)).thenReturn(Optional.of(team()));
+        when(analyticsQueryService.recentMatchesForTeam(eq(TEAM_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(matchHistory()));
+
+        var response = service.currentTeamAnalytics(new AnalyticsFilters(
+                TOURNAMENT_ID,
+                TEAM_ID,
+                PROFILE_ID,
+                null,
+                OffsetDateTime.parse("2026-05-01T00:00:00Z"),
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                25));
+
+        ArgumentCaptor<AnalyticsFilters> filters = ArgumentCaptor.forClass(AnalyticsFilters.class);
+        verify(analyticsQueryService).recentMatchesForTeam(eq(TEAM_ID), filters.capture(), eq(false));
+        assertThat(filters.getValue().tournamentId()).isEqualTo(TOURNAMENT_ID);
+        assertThat(filters.getValue().teamId()).isEqualTo(TEAM_ID);
+        assertThat(filters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filters.getValue().limit()).isEqualTo(25);
+        assertThat(response.recentTeamMatches()).singleElement().satisfies(match -> {
+            assertThat(match.matchId()).isEqualTo(MATCH_ID);
+            assertThat(match.matchGameId()).isEqualTo(MATCH_GAME_ID);
+            assertThat(match.dotaMatchId()).isEqualTo("7894561230");
+            assertThat(match.tournamentId()).isEqualTo(TOURNAMENT_ID);
+            assertThat(match.tournamentName()).isEqualTo("Mid Wars");
+            assertThat(match.playedAt()).isEqualTo(PLAYED_AT);
+            assertThat(match.teamAName()).isEqualTo("Radiant Ops");
+            assertThat(match.teamBName()).isEqualTo("Dire Ops");
+            assertThat(match.winnerTeamId()).isEqualTo(TEAM_ID);
+        });
+    }
+
+    @Test
     void organizerAnalyticsReturnOwnedTournamentCounts() {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
-        when(roleBasedAnalyticsRepository.findOrganizerCounts(PROFILE_ID, false))
+        when(roleBasedAnalyticsRepository.findOrganizerCounts(eq(PROFILE_ID), eq(false), any(AnalyticsFilters.class)))
                 .thenReturn(new RoleBasedAnalyticsRepository.OrganizerAnalyticsCounts(3, 2, 1, 2, 4, 5));
 
         var response = service.organizerAnalytics();
@@ -104,14 +380,15 @@ class RoleBasedAnalyticsServiceTest {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
         when(tournamentRepository.findById(TOURNAMENT_ID)).thenReturn(Optional.of(tournament()));
         when(tournamentRepository.canManage(TOURNAMENT_ID, PROFILE_ID, false)).thenReturn(true);
-        when(roleBasedAnalyticsRepository.findTournamentOperationalMetrics(TOURNAMENT_ID))
+        when(roleBasedAnalyticsRepository.findTournamentOperationalMetrics(eq(TOURNAMENT_ID), any(AnalyticsFilters.class)))
                 .thenReturn(new RoleBasedAnalyticsRepository.TournamentOperationalMetrics(
                         4,
                         1,
                         new BigDecimal("80.00"),
                         2400));
-        when(roleBasedAnalyticsRepository.findRecentImports(TOURNAMENT_ID, 10)).thenReturn(List.of());
-        when(analyticsQueryService.protectedTournamentMetrics(TOURNAMENT_ID)).thenReturn(Optional.empty());
+        when(roleBasedAnalyticsRepository.findRecentImports(eq(TOURNAMENT_ID), any(AnalyticsFilters.class)))
+                .thenReturn(List.of());
+        when(analyticsQueryService.protectedTournamentMetrics(any(AnalyticsFilters.class))).thenReturn(Optional.empty());
 
         var response = service.organizerTournamentAnalytics(TOURNAMENT_ID);
 
@@ -127,6 +404,122 @@ class RoleBasedAnalyticsServiceTest {
 
     private AuthenticatedActor actor(ProfileRole role) {
         return new AuthenticatedActor(AUTH_USER_ID, PROFILE_ID, "profile@example.test", null, role);
+    }
+
+    private AnalyticsMatchHistoryResponse matchHistory() {
+        return new AnalyticsMatchHistoryResponse(
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                TOURNAMENT_ID,
+                "Mid Wars",
+                PLAYED_AT,
+                TEAM_ID,
+                "Radiant Ops",
+                OPPONENT_TEAM_ID,
+                "Dire Ops",
+                TEAM_ID);
+    }
+
+    private PlayerProgressPointResponse progressPoint() {
+        return new PlayerProgressPointResponse(
+                PLAYED_AT,
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                HERO_ID,
+                1,
+                "Anti-Mage",
+                12,
+                3,
+                14,
+                new BigDecimal("8.67"),
+                640,
+                720,
+                28000,
+                5400,
+                0,
+                320,
+                12,
+                true);
+    }
+
+    private PlayerHeroPerformanceResponse heroPerformance() {
+        return new PlayerHeroPerformanceResponse(
+                HERO_ID,
+                1,
+                "Anti-Mage",
+                2,
+                1,
+                1,
+                new BigDecimal("50.00"),
+                new BigDecimal("9.50"),
+                new BigDecimal("3.50"),
+                new BigDecimal("12.00"),
+                new BigDecimal("6.14"),
+                new BigDecimal("610.00"),
+                new BigDecimal("690.00"),
+                new BigDecimal("24500.00"),
+                new BigDecimal("3900.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("285.00"),
+                new BigDecimal("10.50"),
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                PLAYED_AT,
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                PLAYED_AT,
+                new BigDecimal("8.67"));
+    }
+
+    private PlayerHeroPerformanceResponse secondHeroPerformance() {
+        return new PlayerHeroPerformanceResponse(
+                HERO_TWO_ID,
+                2,
+                "Axe",
+                1,
+                1,
+                0,
+                new BigDecimal("100.00"),
+                new BigDecimal("6.00"),
+                new BigDecimal("2.00"),
+                new BigDecimal("18.00"),
+                new BigDecimal("12.00"),
+                new BigDecimal("430.00"),
+                new BigDecimal("510.00"),
+                new BigDecimal("18000.00"),
+                new BigDecimal("1200.00"),
+                new BigDecimal("650.00"),
+                new BigDecimal("165.00"),
+                new BigDecimal("5.00"),
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                PLAYED_AT,
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                PLAYED_AT,
+                new BigDecimal("12.00"));
+    }
+
+    private Team team() {
+        return new Team(
+                TEAM_ID,
+                "Radiant Ops",
+                "RAD",
+                "radiant-ops",
+                PROFILE_ID,
+                "Captain",
+                "EU",
+                null,
+                null,
+                AUTH_USER_ID,
+                NOW,
+                NOW);
     }
 
     private si.um.feri.dotaops.backend.tournament.domain.Tournament tournament() {

@@ -189,6 +189,37 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
     }
 
     @Test
+    void storageOwnershipHelpersRestrictAvatarAndTeamAssetPaths() {
+        UUID captainAuthUserId = UUID.randomUUID();
+        UUID otherAuthUserId = UUID.randomUUID();
+        UUID captainProfileId = upsertProfile(captainAuthUserId, "player");
+        UUID otherProfileId = upsertProfile(otherAuthUserId, "player");
+        UUID teamId = insertTeam(captainProfileId);
+
+        Boolean ownAvatar = asAuthenticated(captainAuthUserId, () -> jdbcTemplate.queryForObject(
+                "select private.storage_profile_avatar_owner(?)",
+                Boolean.class,
+                "profiles/" + captainProfileId + "/avatar.png"));
+        Boolean otherAvatar = asAuthenticated(captainAuthUserId, () -> jdbcTemplate.queryForObject(
+                "select private.storage_profile_avatar_owner(?)",
+                Boolean.class,
+                "profiles/" + otherProfileId + "/avatar.png"));
+        Boolean captainTeamAsset = asAuthenticated(captainAuthUserId, () -> jdbcTemplate.queryForObject(
+                "select private.storage_team_asset_owner(?)",
+                Boolean.class,
+                "teams/" + teamId + "/logo.webp"));
+        Boolean nonCaptainTeamAsset = asAuthenticated(otherAuthUserId, () -> jdbcTemplate.queryForObject(
+                "select private.storage_team_asset_owner(?)",
+                Boolean.class,
+                "teams/" + teamId + "/banner.jpg"));
+
+        assertThat(ownAvatar).isTrue();
+        assertThat(otherAvatar).isFalse();
+        assertThat(captainTeamAsset).isTrue();
+        assertThat(nonCaptainTeamAsset).isFalse();
+    }
+
+    @Test
     void serviceRoleSteamHelperLinksPrimarySteamToAutoCreatedAuthProfile() {
         UUID authUserId = UUID.randomUUID();
         seedAuthUser(authUserId);
@@ -315,5 +346,20 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
         assertThat(persisted.get("provider_account_id")).isEqualTo(steamId64);
         assertThat(persisted.get("is_primary")).isEqualTo(Boolean.TRUE);
         assertThat(persisted.get("is_login_identity")).isEqualTo(Boolean.TRUE);
+    }
+
+    private UUID insertTeam(UUID captainProfileId) {
+        String suffix = uniqueSuffix();
+
+        return jdbcTemplate.queryForObject(
+                """
+                insert into public.teams (name, slug, captain_profile_id)
+                values (?, ?, ?)
+                returning id
+                """,
+                UUID.class,
+                "Storage Policy Team " + suffix,
+                "storage-policy-team-" + suffix,
+                captainProfileId);
     }
 }

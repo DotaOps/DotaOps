@@ -6,7 +6,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record SupabaseStorageProperties(
         String url,
         String serviceRoleKey,
-        String imagesBucket
+        String imagesBucket,
+        String avatarsBucket,
+        String teamAssetsBucket
 ) {
 
     public SupabaseStorageProperties {
@@ -15,6 +17,14 @@ public record SupabaseStorageProperties(
         imagesBucket = normalizeBlank(imagesBucket);
         if (imagesBucket == null) {
             imagesBucket = "dotaops-images";
+        }
+        avatarsBucket = normalizeBlank(avatarsBucket);
+        if (avatarsBucket == null) {
+            avatarsBucket = "avatars";
+        }
+        teamAssetsBucket = normalizeBlank(teamAssetsBucket);
+        if (teamAssetsBucket == null) {
+            teamAssetsBucket = "team-assets";
         }
     }
 

@@ -1,6 +1,6 @@
 # DotaOps: pregled trenutnega stanja projekta
 
-Datum pregleda: 2026-06-02
+Datum pregleda: 2026-06-03
 
 ## 1. Povzetek projekta
 
@@ -27,12 +27,12 @@ Ta dokument opisuje dejansko stanje repozitorija. Predlogi so loceni v poglavjih
 | Backend | Java 21, Spring Boot 4.0.6, Spring MVC, Spring Security | `backend/pom.xml` |
 | Dostop do baze | `JdbcTemplate` repository razredi | npr. `TournamentRepository`, `MatchImportRepository`, `AnalyticsRepository` |
 | JPA | Odvisnost je prisotna, vendar ni najdenih `@Entity` razredov ali Spring Data repository interface-ov | `backend/pom.xml`, pregled `backend/src/main/java` |
-| Migracije | Flyway, 30 migracij | `backend/src/main/resources/db/migration/` |
+| Migracije | Flyway, 32 migracij | `backend/src/main/resources/db/migration/` |
 | Baza | Supabase PostgreSQL | `supabase/config.toml`, `backend/src/main/resources/application.properties` |
 | Frontend | Next.js 16.2.6 App Router, React 19.2.5, TypeScript 6 | `frontend/package.json` |
 | Frontend auth | Supabase JS in `@supabase/ssr` | `frontend/src/lib/auth.ts`, `frontend/src/lib/supabase/`, `frontend/src/proxy.ts` |
 | Zunanje integracije | OpenDota API, Steam OpenID in Steam Web API | `OpenDotaClient`, `SteamAuthService`, `SteamOpenIdClient` |
-| Slike | Supabase Storage REST API s server-side service-role kljucem | `SupabaseImageStorageService` |
+| Slike | Supabase Storage REST API, legacy server-side upload in signed upload URL flow | `SupabaseImageStorageService`, `StorageUploadService`, `docs/backend-storage-upload-api.md` |
 | Build | Maven Wrapper, npm, Docker multi-stage build | `backend/mvnw.cmd`, `frontend/package.json`, oba `Dockerfile` |
 | CI | GitHub Actions za backend in frontend | `.github/workflows/backend-ci.yml`, `.github/workflows/frontend-ci.yml` |
 
@@ -64,7 +64,7 @@ backend/src/main/java/si/um/feri/dotaops/backend/
   notification/   durable outbox in in-app obvestila
   opendota/       OpenDota client, hero sync, match import, normalizacija
   profile/        profili in OpenDota bootstrap
-  storage/        Supabase image upload
+  storage/        Supabase image upload, signed upload URL in confirm flow
   team/           ekipe, rosterji, invite in join-request tokovi
   tournament/     turnirji, prijave, skupine, standings, bracketi in tekme
   web/            health endpoint
@@ -85,6 +85,8 @@ frontend/src/
 ### Baza
 
 Flyway migracije so v `backend/src/main/resources/db/migration/`. Mapa `supabase/` ni lastnik sheme; vsebuje Supabase konfiguracijo in rocni `post_flyway_hardening.sql`.
+
+Demo seed za local/dev/demo okolja je locen od Flyway migracij v `backend/src/main/resources/db/demo/`. Zagon je dokumentiran v `docs/backend-demo-seed.md` in gre prek `scripts/seed-demo.ps1 -ConfirmDemoSeed`, zato se ne izvaja samodejno v produkcijskem runtime-u.
 
 ## 4. Backend arhitektura
 
@@ -254,8 +256,9 @@ Obstajajo tudi starejsi ali delno prekrivajoci adapterji: `data.ts`, `organizer-
 | `V29` | `audit_log(created_at desc, id desc)` indeks za newest-first admin paginacijo in casovne filtre |
 | `V30` | reaktivacija ali backfill manjkajocih captain roster zapisov; owner/captain je tudi aktiven `team_members` participant |
 | `V31` | soft disband ekip prek `teams.disbanded_at`, active-team RLS in `audit_team_members` trigger |
+| `V32` | Supabase Storage signed upload: `avatars`/`team-assets` bucketi, path stolpci, storage RLS policyji in `audit_profiles` trigger |
 
-Integracijski test preverja, da Flyway na cisti PostgreSQL 16 bazi izvede vseh 31 migracij.
+Integracijski test preverja, da Flyway na cisti PostgreSQL 16 bazi izvede vseh 32 migracij.
 
 ### Pomembne tabele
 
@@ -446,9 +449,9 @@ Outbox je trajen DB zapis. Trenutni dogodki so submission, approval, rejection i
 
 | Podrocje | Endpointi |
 | --- | --- |
-| Profil | `GET`, `POST`, `PATCH /api/me/profile`, `POST /api/me/avatar`, `POST /api/me/opendota/sync` |
+| Profil | `GET`, `POST`, `PATCH /api/me/profile`, `POST /api/me/avatar`, `POST /api/me/avatar/upload-url`, `POST /api/me/avatar/confirm`, `POST /api/me/opendota/sync` |
 | Steam | `POST /api/auth/steam/link`, `POST /api/auth/steam/logout` |
-| Ekipe | create/update/image endpointi, roster write endpointi, invitations, join requests, `/api/me/team`, `POST /api/teams/{teamId}/transfer-ownership` |
+| Ekipe | create/update/image endpointi, signed logo/banner upload-url + confirm endpointi, roster write endpointi, invitations, join requests, `/api/me/team`, `POST /api/teams/{teamId}/transfer-ownership` |
 | Prijave | `POST /api/tournaments/{id}/registrations`, check-in, team registration pregled |
 | Import pregled | `GET /api/match-imports/{id}`, `/by-match/{id}`, `/{id}/events` |
 | Obvestila | `GET /api/me/notifications`, mark-read, read-all |
@@ -574,12 +577,14 @@ Zacasni PostgreSQL container je bil po testu odstranjen.
 - Supabase RLS in column grants omejujejo neposreden browser dostop.
 - `V28` omeji team create na `PLAYER`; organizer nima vec RLS bypassa za team update, roster, invitations ali manual players.
 - Public analytics filtrira samo `tournaments.is_public = true`.
-- Protected analytics loci osebne player/team metrike od organizer agregatov in preveri tournament ownership.
+- Protected analytics loci osebne player/team metrike od organizer agregatov, preveri tournament ownership in podpira standardne FE-15 filtre `tournamentId`, `teamId`, `profileId`, `heroId`, `from`, `to`, `limit`.
+- Analytics lookup in comparison endpointi so dokumentirani v `docs/backend-analytics-api.md`; `/api/analytics/compare/**` je zasciten pred starejsim javnim `/api/analytics/**` matcherjem.
 - Public view-i so `security_invoker`.
 - Raw OpenDota payload ni v javnih DTO-jih.
 - Admin audit DTO ne vraca polnih raw `previous_row` in `new_row`, ampak samo sanitizirano allowlist projekcijo spremenjenih polj; nested tokeni, gesla, secrets, API kljuci, session in webhook vrednosti so redacted.
 - Global error handler ne razkriva stack trace-a.
 - Service-role storage kljuc ostane v backendu.
+- Signed storage upload flow vraca samo path-scoped Supabase upload token/URL; team asset route-i zahtevajo `ROLE_PLAYER` in captain ownership, avatar path pa pripada trenutnemu profilu. Supabase Storage RLS policyji dodatno dovoljujejo direktne JWT uploade samo za lastne avatarje oziroma captain-owned team assete.
 
 ### Pomembne produkcijske preverbe
 
@@ -589,7 +594,7 @@ Zacasni PostgreSQL container je bil po testu odstranjen.
 4. Backend DB povezava bo pogosto uporabljala privilegiranega uporabnika. RLS zato ne sme biti edina backend varnostna meja; service authorization mora ostati obvezna.
 5. `V12__create_profiles_for_auth_users.sql` dovoljuje self-selected organizer profil prek signup metadata. To je lahko namerna produktna odlocitev, vendar jo je treba potrditi pred produkcijo.
 6. Public profile DTO vraca Steam ID, OpenDota account id, bio in sync case. Manual-player public DTO vraca tudi `note`. Preveriti je treba, ali je to nameravana javna izpostavitev.
-7. Image upload preverja velikost in deklariran MIME type, ne pa magic bytes ali vsebinskega skeniranja.
+7. Image upload preverja velikost, deklariran MIME type in pri signed flowu tudi koncnico, ne pa magic bytes ali vsebinskega skeniranja.
 8. `supabase/post_flyway_hardening.sql` je rocni korak. Deployment mora zagotoviti, da ni izpuscen.
 
 ### Dependency audit
@@ -628,7 +633,7 @@ Za oba je audit prijavil razpolozljiv popravek. Lockfile v tem pregledu ni bil s
 - datasource: `SUPABASE_DB_URL`, `SUPABASE_DB_USER`, `SUPABASE_DB_PASSWORD`;
 - Flyway: `SPRING_FLYWAY_ENABLED`;
 - Supabase auth: JWT secret ali JWKS, issuer, audience;
-- storage: Supabase URL, service-role key, bucket;
+- storage: Supabase URL, service-role key, legacy images bucket, avatars bucket in team-assets bucket;
 - Steam: OpenID URL, realm, callback, Web API key, session cookie;
 - OpenDota: base URL, opcijski API key, timeout in retry;
 - CORS: `CORS_ALLOWED_ORIGIN_PATTERNS`.
@@ -680,7 +685,8 @@ Root `README.md` omenja root `.env.example`, vendar ta datoteka v trenutnem repo
 - OpenDota match import z retryjem, eventi in normalizacijo;
 - javna analitika;
 - role-based dashboard z realnimi stevci in capability DTO-ji;
-- protected player/team in organizer analytics endpointi;
+- protected player/team in organizer analytics endpointi z FE-15 filtri;
+- analytics lookup endpointi in protected team/player comparison endpointi;
 - audit triggerji in admin audit API/UI;
 - durable notification outbox backend;
 - javni turnirski prikazi in organizer UI;
@@ -701,7 +707,7 @@ Trenutno iz repozitorija ni razvidno, da bi bilo dokoncanje naslednjih delov imp
 - trajen queue za asinhroni profile bootstrap in analytics refresh;
 - frontend unit/component/E2E testi;
 - popoln root `.env.example`;
-- frontend povezava na `GET /api/me/dashboard` in protected analytics endpoint-e;
+- frontend povezava na `GET /api/me/dashboard` in nove FE-15 protected analytics/lookup/comparison endpoint-e;
 - varen captain transfer tok; trenutni model ne doloca, ali nekdanji captain po prenosu ostane roster clan;
 - match-history seznam za protected player/team analytics; DTO je stabilen, vendar trenutno vrne prazen seznam;
 - referee/analyst write tokovi; `V14` jih izrecno odlozi;
@@ -726,7 +732,7 @@ Trenutno iz repozitorija ni razvidno, da bi bilo dokoncanje naslednjih delov imp
 3. Frontend ima starejse in novejse prekrivajoce adapterje, kar povecuje moznost nekonsistentnega razvoja.
 4. Root onboarding dokumentacija omenja manjkajoci env template.
 5. Public DTO-ji in RLS izpostavljajo profilne podatke ter manual-player note; pregledati je treba zasebnost.
-6. Storage upload zaupa MIME headerju.
+6. Storage upload se vedno zaupa MIME headerju; signed flow dodatno zavrne SVG in preveri koncnico, vendar ne izvaja magic-byte ali antivirus skeniranja.
 7. `npm audit` ima eno produkcijsko in eno razvojno zmerno tranzitivno ranljivost.
 8. Pravilo ene aktivne ekipe je utrjeno v servisih za create, invite accept, direct member add in join request. `V30` normalizira captain roster zapise, capacity write tokovi pa uporabljajo team row lock. Se vedno ni atomarnega cross-table DB constrainta za eno aktivno ekipo cez `teams.captain_profile_id` in `team_members`.
 

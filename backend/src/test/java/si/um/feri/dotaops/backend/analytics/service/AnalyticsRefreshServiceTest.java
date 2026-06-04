@@ -8,12 +8,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 class AnalyticsRefreshServiceTest {
 
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-    private final AnalyticsRefreshService service = new AnalyticsRefreshService(jdbcTemplate);
+    private final AnalyticsRefreshService service = new AnalyticsRefreshService(jdbcTemplate, false);
 
     @Test
     void refreshNowCallsPrivateRefreshFunction() {
@@ -42,8 +43,17 @@ class AnalyticsRefreshServiceTest {
     }
 
     @Test
-    void importRefreshRequestUsesSameRefreshFunction() {
+    void importRefreshRequestSkipsMaterializedViewRefreshByDefault() {
         service.requestRefreshAfterSuccessfulImport("7894561230");
+
+        verify(jdbcTemplate, never()).execute(anyString());
+    }
+
+    @Test
+    void importRefreshRequestUsesSameRefreshFunctionWhenEnabled() {
+        AnalyticsRefreshService enabledService = new AnalyticsRefreshService(jdbcTemplate, true);
+
+        enabledService.requestRefreshAfterSuccessfulImport("7894561230");
 
         verify(jdbcTemplate).execute("select private.refresh_dotaops_analytics()");
     }

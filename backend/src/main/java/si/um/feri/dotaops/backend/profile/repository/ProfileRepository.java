@@ -36,6 +36,7 @@ public class ProfileRepository {
                   opendota_account_id,
                   role::text as role,
                   avatar_url,
+                  avatar_path,
                   bio,
                   country_code,
                   steam_profile_synced_at,
@@ -92,6 +93,7 @@ public class ProfileRepository {
                           opendota_account_id,
                           role::text as role,
                           avatar_url,
+                          avatar_path,
                           bio,
                           country_code,
                           steam_profile_synced_at,
@@ -120,6 +122,7 @@ public class ProfileRepository {
                           opendota_account_id,
                           role::text as role,
                           avatar_url,
+                          avatar_path,
                           bio,
                           country_code,
                           steam_profile_synced_at,
@@ -166,6 +169,7 @@ public class ProfileRepository {
                           opendota_account_id,
                           role::text as role,
                           avatar_url,
+                          avatar_path,
                           bio,
                           country_code,
                           steam_profile_synced_at,
@@ -204,6 +208,7 @@ public class ProfileRepository {
                   opendota_account_id,
                   role::text as role,
                   avatar_url,
+                  avatar_path,
                   bio,
                   country_code,
                   steam_profile_synced_at,
@@ -246,6 +251,7 @@ public class ProfileRepository {
                           opendota_account_id,
                           role::text as role,
                           avatar_url,
+                          avatar_path,
                           bio,
                           country_code,
                           steam_profile_synced_at,
@@ -260,6 +266,40 @@ public class ProfileRepository {
                 .findFirst();
     }
 
+    public Optional<Profile> updateAvatarStorage(UUID profileId, String avatarUrl, String avatarPath) {
+        return jdbcTemplate.query(
+                        """
+                        update public.profiles
+                        set
+                          avatar_url = ?,
+                          avatar_path = ?,
+                          updated_at = now()
+                        where id = ?
+                        returning
+                          id,
+                          auth_user_id,
+                          nickname,
+                          display_name,
+                          steam_id,
+                          opendota_account_id,
+                          role::text as role,
+                          avatar_url,
+                          avatar_path,
+                          bio,
+                          country_code,
+                          steam_profile_synced_at,
+                          opendota_profile_synced_at,
+                          created_at,
+                          updated_at
+                        """,
+                        this::mapProfile,
+                        avatarUrl,
+                        avatarPath,
+                        profileId)
+                .stream()
+                .findFirst();
+    }
+
     private Optional<Profile> updateByColumn(String columnName, UUID value, UpdateProfileCommand command) {
         return jdbcTemplate.query(
                         """
@@ -268,6 +308,7 @@ public class ProfileRepository {
                           nickname = case when ? then ? else nickname end,
                           display_name = case when ? then ? else display_name end,
                           avatar_url = case when ? then ? else avatar_url end,
+                          avatar_path = case when ? then null else avatar_path end,
                           bio = case when ? then ? else bio end,
                           country_code = case when ? then ? else country_code end,
                           updated_at = now()
@@ -281,6 +322,7 @@ public class ProfileRepository {
                           opendota_account_id,
                           role::text as role,
                           avatar_url,
+                          avatar_path,
                           bio,
                           country_code,
                           steam_profile_synced_at,
@@ -295,6 +337,7 @@ public class ProfileRepository {
                         command.displayName(),
                         command.avatarUrlPresent(),
                         command.avatarUrl(),
+                        command.avatarUrlPresent(),
                         command.bioPresent(),
                         command.bio(),
                         command.countryCodePresent(),
@@ -314,6 +357,7 @@ public class ProfileRepository {
                 resultSet.getObject("opendota_account_id", Long.class),
                 ProfileRole.fromDatabaseValue(resultSet.getString("role")),
                 resultSet.getString("avatar_url"),
+                resultSet.getString("avatar_path"),
                 resultSet.getString("bio"),
                 resultSet.getString("country_code"),
                 resultSet.getObject("steam_profile_synced_at", OffsetDateTime.class),
