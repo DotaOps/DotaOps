@@ -305,11 +305,11 @@ docker compose up --build
 
 Frontend uporablja paket `gsap` za cinematic login teleport animacijo. Paket je deklariran v `frontend/package.json` in zaklenjen v `frontend/package-lock.json`, zato ga ni treba namescati rocno z locenim ukazom.
 
-Pri prejsnjem homepage UI polish delu je bil kot opcijski Codex UI/UX vodic uporabljen:
+Pri prejsnjem homepage UI polish delu je bil kot opcijski UI/UX uporabljen:
 
 - [ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
 
-Ta skill ni runtime dependency aplikacije. Za lokalni zagon frontenda zadostuje `npm install`; skill je uporaben samo kot dodatna oblikovalska pomoc pri nadaljnjem UI delu v Codex okolju.
+Ta skill ni runtime dependency aplikacije. Za lokalni zagon frontenda zadostuje `npm install`; skill je uporaben samo kot dodatna oblikovalska pomoc pri nadaljnjem UI delu.
 
 ## Zagon Frontenda
 
