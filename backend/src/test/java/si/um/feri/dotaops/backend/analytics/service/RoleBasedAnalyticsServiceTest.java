@@ -14,6 +14,8 @@ import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.repository.RoleBasedAnalyticsRepository;
 import si.um.feri.dotaops.backend.analytics.web.AnalyticsMatchHistoryResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerHeroPerformanceResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerInsightCategory;
+import si.um.feri.dotaops.backend.analytics.web.PlayerInsightResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerProgressPointResponse;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
@@ -286,6 +288,110 @@ class RoleBasedAnalyticsServiceTest {
     }
 
     @Test
+    void currentPlayerInsightsReturnPositiveKdaTrendWhenRecentMatchesImprove() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(6), "2.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(5), "2.20", 3, 520, 580),
+                        progressPoint(NOW.minusDays(4), "2.10", 3, 520, 580),
+                        progressPoint(NOW.minusDays(3), "4.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(2), "4.20", 3, 520, 580),
+                        progressPoint(NOW.minusDays(1), "4.10", 3, 520, 580)));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of());
+
+        var response = service.currentPlayerInsights(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        ArgumentCaptor<AnalyticsFilters> filters = ArgumentCaptor.forClass(AnalyticsFilters.class);
+        verify(analyticsQueryService).playerProgress(eq(PROFILE_ID), filters.capture(), eq(false));
+        assertThat(filters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filters.getValue().limit()).isEqualTo(10);
+        PlayerInsightResponse insight = response.stream()
+                .filter(item -> item.metricName().equals("KDA"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(insight.category()).isEqualTo(PlayerInsightCategory.POSITIVE);
+        assertThat(insight.title()).isEqualTo("KDA trend is improving");
+        assertThat(insight.currentValue()).isEqualByComparingTo("4.10");
+        assertThat(insight.comparisonValue()).isEqualByComparingTo("2.10");
+        assertThat(insight.sampleSize()).isEqualTo(6);
+        assertThat(insight.evidence()).contains("3 recent matches");
+    }
+
+    @Test
+    void currentPlayerInsightsReturnWarningWhenDeathsAreHighOnHero() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(6), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(5), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(4), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(3), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(2), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(1), "3.00", 3, 520, 580)));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(heroPerformance(HERO_ID, "Anti-Mage", 3, "50.00", "5.00", "3.00")));
+
+        var response = service.currentPlayerInsights(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        PlayerInsightResponse insight = response.stream()
+                .filter(item -> item.metricName().equals("avgDeaths"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(insight.category()).isEqualTo(PlayerInsightCategory.WARNING);
+        assertThat(insight.title()).isEqualTo("Deaths are high on Anti-Mage");
+        assertThat(insight.currentValue()).isEqualByComparingTo("5.00");
+        assertThat(insight.comparisonValue()).isEqualByComparingTo("3.00");
+        assertThat(insight.sampleSize()).isEqualTo(3);
+        assertThat(insight.description()).contains("Anti-Mage");
+    }
+
+    @Test
+    void currentPlayerInsightsReturnEmptyListWhenDataIsTooSparse() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(2), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(1), "3.20", 3, 520, 580)));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(heroPerformance(HERO_ID, "Anti-Mage", 2, "100.00", "6.00", "7.00")));
+
+        var response = service.currentPlayerInsights(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        verify(analyticsQueryService).playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false));
+        verify(analyticsQueryService).playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false));
+        assertThat(response).isEmpty();
+    }
+
+    @Test
+    void currentPlayerInsightsReturnHeroSpecificInsightWhenMinimumSampleExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(6), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(5), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(4), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(3), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(2), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(1), "3.00", 3, 520, 580)));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(heroPerformance(HERO_ID, "Anti-Mage", 3, "60.00", "3.00", "5.00")));
+
+        var response = service.currentPlayerInsights(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        PlayerInsightResponse insight = response.stream()
+                .filter(item -> item.metricName().equals("avgKda"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(insight.category()).isEqualTo(PlayerInsightCategory.POSITIVE);
+        assertThat(insight.title()).isEqualTo("You perform better with Anti-Mage");
+        assertThat(insight.currentValue()).isEqualByComparingTo("5.00");
+        assertThat(insight.comparisonValue()).isEqualByComparingTo("3.00");
+        assertThat(insight.sampleSize()).isEqualTo(3);
+    }
+
+    @Test
     void currentTeamAnalyticsReturnStableEmptyStateWithoutTeam() {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
         when(teamRepository.findCurrentTeamForProfile(PROFILE_ID)).thenReturn(Optional.empty());
@@ -444,6 +550,35 @@ class RoleBasedAnalyticsServiceTest {
                 true);
     }
 
+    private PlayerProgressPointResponse progressPoint(
+            OffsetDateTime playedAt,
+            String kda,
+            int deaths,
+            Integer goldPerMin,
+            Integer xpPerMin
+    ) {
+        return new PlayerProgressPointResponse(
+                playedAt,
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                HERO_ID,
+                1,
+                "Anti-Mage",
+                8,
+                deaths,
+                10,
+                new BigDecimal(kda),
+                goldPerMin,
+                xpPerMin,
+                18000,
+                2200,
+                0,
+                210,
+                8,
+                true);
+    }
+
     private PlayerHeroPerformanceResponse heroPerformance() {
         return new PlayerHeroPerformanceResponse(
                 HERO_ID,
@@ -504,6 +639,44 @@ class RoleBasedAnalyticsServiceTest {
                 "7894561230",
                 PLAYED_AT,
                 new BigDecimal("12.00"));
+    }
+
+    private PlayerHeroPerformanceResponse heroPerformance(
+            UUID heroId,
+            String heroName,
+            int matches,
+            String winRate,
+            String avgDeaths,
+            String avgKda
+    ) {
+        return new PlayerHeroPerformanceResponse(
+                heroId,
+                1,
+                heroName,
+                matches,
+                Math.max(matches - 1, 0),
+                matches > 0 ? 1 : 0,
+                new BigDecimal(winRate),
+                new BigDecimal("7.00"),
+                new BigDecimal(avgDeaths),
+                new BigDecimal("9.00"),
+                new BigDecimal(avgKda),
+                new BigDecimal("520.00"),
+                new BigDecimal("580.00"),
+                new BigDecimal("18000.00"),
+                new BigDecimal("2200.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("210.00"),
+                new BigDecimal("8.00"),
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                PLAYED_AT,
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                PLAYED_AT,
+                new BigDecimal(avgKda));
     }
 
     private Team team() {

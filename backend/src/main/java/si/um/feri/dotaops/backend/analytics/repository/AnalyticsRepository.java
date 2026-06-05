@@ -16,6 +16,8 @@ import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsMatchHistory;
 import si.um.feri.dotaops.backend.analytics.domain.HeroMetrics;
 import si.um.feri.dotaops.backend.analytics.domain.PickedHeroMetrics;
+import si.um.feri.dotaops.backend.analytics.domain.PlayerComparisonHeadlineMetrics;
+import si.um.feri.dotaops.backend.analytics.domain.PlayerComparisonMatch;
 import si.um.feri.dotaops.backend.analytics.domain.PlayerHeroPerformance;
 import si.um.feri.dotaops.backend.analytics.domain.PlayerMetrics;
 import si.um.feri.dotaops.backend.analytics.domain.PlayerProgressPoint;
@@ -84,6 +86,54 @@ public class AnalyticsRepository {
                         group by p.id, p.display_name, p.nickname
                         """,
                         this::mapPlayerMetrics,
+                        parameters.toArray())
+                .stream()
+                .findFirst();
+    }
+
+    public Optional<PlayerComparisonHeadlineMetrics> findPlayerComparisonHeadlineMetrics(
+            UUID profileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        AnalyticsFilters scopedFilters = filters.withProfileId(profileId);
+        QueryParts queryParts = filteredWhere(scopedFilters, "mp", "m");
+        List<Object> parameters = new ArrayList<>(queryParts.parameters());
+
+        return jdbcTemplate.query(
+                        """
+                        select
+                          p.id as profile_id,
+                          coalesce(p.display_name, p.nickname, 'Unknown player') as display_name,
+                          count(*)::integer as games_played,
+                          count(*) filter (where mp.is_winner is true)::integer as wins,
+                          count(*) filter (where mp.is_winner is false)::integer as losses,
+                          round(((count(*) filter (where mp.is_winner is true))::numeric / greatest(count(*), 1)) * 100, 2)
+                            as win_rate,
+                          round((coalesce(sum(mp.kills), 0) + coalesce(sum(mp.assists), 0))::numeric
+                            / greatest(coalesce(sum(mp.deaths), 0), 1), 2) as kda,
+                          round(avg(mp.kills), 2) as avg_kills,
+                          round(avg(mp.deaths), 2) as avg_deaths,
+                          round(avg(mp.assists), 2) as avg_assists,
+                          round(avg(mp.gold_per_min), 2) as avg_gpm,
+                          round(avg(mp.xp_per_min), 2) as avg_xpm,
+                          round(avg(mp.last_hits), 2) as avg_last_hits,
+                          round(avg(mp.denies), 2) as avg_denies,
+                          round(avg(mp.net_worth), 2) as avg_net_worth,
+                          round(avg(mp.hero_damage), 2) as avg_hero_damage,
+                          round(avg(mp.tower_damage), 2) as avg_tower_damage,
+                          round(avg(mp.hero_healing), 2) as avg_hero_healing
+                        from public.match_players mp
+                        left join public.match_games mg on mg.id = mp.match_game_id
+                        join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
+                        join public.tournaments t on t.id = m.tournament_id
+                        join public.profiles p on p.id = mp.profile_id
+                        where """ + tournamentVisibilityCondition(publicOnly) + """
+                          and mp.profile_id is not null
+                        """ + queryParts.sql() + """
+                        group by p.id, p.display_name, p.nickname
+                        """,
+                        this::mapPlayerComparisonHeadlineMetrics,
                         parameters.toArray())
                 .stream()
                 .findFirst();
@@ -597,6 +647,164 @@ public class AnalyticsRepository {
                 parameters.toArray());
     }
 
+    public List<PlayerComparisonMatch> findPlayerComparisonMatches(
+            UUID firstProfileId,
+            UUID secondProfileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        AnalyticsFilters scopedFilters = new AnalyticsFilters(
+                filters.tournamentId(),
+                filters.teamId(),
+                null,
+                filters.heroId(),
+                filters.from(),
+                filters.to(),
+                filters.limit());
+        QueryParts queryParts = filteredWhere(scopedFilters, "mp", "m");
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(firstProfileId);
+        parameters.add(secondProfileId);
+        parameters.addAll(queryParts.parameters());
+        parameters.add(firstProfileId);
+        parameters.add(secondProfileId);
+        parameters.add(scopedFilters.limit());
+
+        return jdbcTemplate.query(
+                """
+                with filtered_players as (
+                  select
+                    coalesce(mg.id::text, m.id::text) as game_key,
+                    m.id as match_id,
+                    mg.id as match_game_id,
+                    coalesce(mg.dota_match_id, m.dota_match_id) as dota_match_id,
+                    m.tournament_id,
+                    t.title as tournament_name,
+                    """ + analyticsTimestampExpression("mg", "m") + """
+                      as played_at,
+                    m.team_a_id,
+                    ta.name as team_a_name,
+                    m.team_b_id,
+                    tb.name as team_b_name,
+                    coalesce(mg.winner_team_id, m.winner_team_id) as winner_team_id,
+                    coalesce(
+                      mg.winner_side::text,
+                      case
+                        when coalesce(mg.winner_team_id, m.winner_team_id) = mp.team_id then
+                          coalesce(mp.team_side::text, case when mp.is_radiant is true then 'RADIANT' when mp.is_radiant is false then 'DIRE' else null end)
+                        else null
+                      end
+                    ) as winner_side,
+                    mp.profile_id,
+                    mp.team_id,
+                    tm.name as team_name,
+                    h.id as hero_id,
+                    coalesce(mp.dota_hero_id, h.dota_hero_id) as dota_hero_id,
+                    coalesce(h.localized_name, h.name) as hero_name,
+                    mp.is_winner as won,
+                    coalesce(mp.kills, 0)::integer as kills,
+                    coalesce(mp.deaths, 0)::integer as deaths,
+                    coalesce(mp.assists, 0)::integer as assists,
+                    round((coalesce(mp.kills, 0) + coalesce(mp.assists, 0))::numeric
+                      / greatest(coalesce(mp.deaths, 0), 1), 2) as kda,
+                    mp.gold_per_min,
+                    mp.xp_per_min,
+                    mp.last_hits,
+                    mp.denies,
+                    mp.net_worth,
+                    mp.hero_damage,
+                    mp.tower_damage,
+                    mp.hero_healing,
+                    coalesce(mp.team_side::text, case when mp.is_radiant is true then 'RADIANT' when mp.is_radiant is false then 'DIRE' else null end)
+                      as team_side
+                  from public.match_players mp
+                  left join public.match_games mg on mg.id = mp.match_game_id
+                  join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
+                  join public.tournaments t on t.id = m.tournament_id
+                  left join public.teams ta on ta.id = m.team_a_id
+                  left join public.teams tb on tb.id = m.team_b_id
+                  left join public.teams tm on tm.id = mp.team_id
+                  left join public.heroes h on h.id = mp.hero_id
+                  where """ + tournamentVisibilityCondition(publicOnly) + """
+                    and mp.profile_id in (?, ?)
+                    and mp.profile_id is not null
+                """ + queryParts.sql() + """
+                ),
+                ranked_players as (
+                  select
+                    filtered_players.*,
+                    row_number() over (
+                      partition by game_key, profile_id
+                      order by played_at desc nulls last, match_id desc, match_game_id desc nulls last
+                    ) as player_rank
+                  from filtered_players
+                )
+                select
+                  a.match_id,
+                  a.match_game_id,
+                  a.dota_match_id,
+                  a.tournament_id,
+                  a.tournament_name,
+                  a.played_at,
+                  a.team_a_id,
+                  a.team_a_name,
+                  a.team_b_id,
+                  a.team_b_name,
+                  a.winner_team_id,
+                  coalesce(a.winner_side, b.winner_side) as winner_side,
+                  a.profile_id as a_profile_id,
+                  a.team_id as a_team_id,
+                  a.team_name as a_team_name,
+                  a.hero_id as a_hero_id,
+                  a.dota_hero_id as a_dota_hero_id,
+                  a.hero_name as a_hero_name,
+                  a.won as a_won,
+                  a.kills as a_kills,
+                  a.deaths as a_deaths,
+                  a.assists as a_assists,
+                  a.kda as a_kda,
+                  a.gold_per_min as a_gold_per_min,
+                  a.xp_per_min as a_xp_per_min,
+                  a.last_hits as a_last_hits,
+                  a.denies as a_denies,
+                  a.net_worth as a_net_worth,
+                  a.hero_damage as a_hero_damage,
+                  a.tower_damage as a_tower_damage,
+                  a.hero_healing as a_hero_healing,
+                  a.team_side as a_team_side,
+                  b.profile_id as b_profile_id,
+                  b.team_id as b_team_id,
+                  b.team_name as b_team_name,
+                  b.hero_id as b_hero_id,
+                  b.dota_hero_id as b_dota_hero_id,
+                  b.hero_name as b_hero_name,
+                  b.won as b_won,
+                  b.kills as b_kills,
+                  b.deaths as b_deaths,
+                  b.assists as b_assists,
+                  b.kda as b_kda,
+                  b.gold_per_min as b_gold_per_min,
+                  b.xp_per_min as b_xp_per_min,
+                  b.last_hits as b_last_hits,
+                  b.denies as b_denies,
+                  b.net_worth as b_net_worth,
+                  b.hero_damage as b_hero_damage,
+                  b.tower_damage as b_tower_damage,
+                  b.hero_healing as b_hero_healing,
+                  b.team_side as b_team_side
+                from ranked_players a
+                join ranked_players b on b.game_key = a.game_key
+                where a.profile_id = ?
+                  and b.profile_id = ?
+                  and a.player_rank = 1
+                  and b.player_rank = 1
+                order by a.played_at desc nulls last, a.match_id desc, a.match_game_id desc nulls last
+                limit ?
+                """,
+                this::mapPlayerComparisonMatch,
+                parameters.toArray());
+    }
+
     public List<AnalyticsMatchHistory> findRecentMatchesForPlayer(
             UUID profileId,
             AnalyticsFilters filters,
@@ -1030,6 +1238,29 @@ public class AnalyticsRepository {
                 decimal(resultSet, "avg_hero_damage"));
     }
 
+    private PlayerComparisonHeadlineMetrics mapPlayerComparisonHeadlineMetrics(ResultSet resultSet, int rowNumber)
+            throws SQLException {
+        return new PlayerComparisonHeadlineMetrics(
+                resultSet.getObject("profile_id", UUID.class),
+                resultSet.getString("display_name"),
+                resultSet.getInt("games_played"),
+                resultSet.getInt("wins"),
+                resultSet.getInt("losses"),
+                decimal(resultSet, "win_rate"),
+                decimal(resultSet, "kda"),
+                decimal(resultSet, "avg_kills"),
+                decimal(resultSet, "avg_deaths"),
+                decimal(resultSet, "avg_assists"),
+                decimal(resultSet, "avg_gpm"),
+                decimal(resultSet, "avg_xpm"),
+                decimal(resultSet, "avg_last_hits"),
+                decimal(resultSet, "avg_denies"),
+                decimal(resultSet, "avg_net_worth"),
+                decimal(resultSet, "avg_hero_damage"),
+                decimal(resultSet, "avg_tower_damage"),
+                decimal(resultSet, "avg_hero_healing"));
+    }
+
     private TeamMetrics mapTeamMetrics(ResultSet resultSet, int rowNumber) throws SQLException {
         return new TeamMetrics(
                 resultSet.getObject("team_id", UUID.class),
@@ -1119,6 +1350,52 @@ public class AnalyticsRepository {
                 resultSet.getObject("team_b_id", UUID.class),
                 resultSet.getString("team_b_name"),
                 resultSet.getObject("winner_team_id", UUID.class));
+    }
+
+    private PlayerComparisonMatch mapPlayerComparisonMatch(ResultSet resultSet, int rowNumber) throws SQLException {
+        return new PlayerComparisonMatch(
+                resultSet.getObject("match_id", UUID.class),
+                resultSet.getObject("match_game_id", UUID.class),
+                resultSet.getString("dota_match_id"),
+                resultSet.getObject("tournament_id", UUID.class),
+                resultSet.getString("tournament_name"),
+                resultSet.getObject("played_at", OffsetDateTime.class),
+                resultSet.getObject("team_a_id", UUID.class),
+                resultSet.getString("team_a_name"),
+                resultSet.getObject("team_b_id", UUID.class),
+                resultSet.getString("team_b_name"),
+                resultSet.getObject("winner_team_id", UUID.class),
+                resultSet.getString("winner_side"),
+                mapPlayerComparisonMatchStats(resultSet, "a"),
+                mapPlayerComparisonMatchStats(resultSet, "b"));
+    }
+
+    private PlayerComparisonMatch.PlayerMatchStats mapPlayerComparisonMatchStats(
+            ResultSet resultSet,
+            String prefix
+    ) throws SQLException {
+        String columnPrefix = prefix + "_";
+        return new PlayerComparisonMatch.PlayerMatchStats(
+                resultSet.getObject(columnPrefix + "profile_id", UUID.class),
+                resultSet.getObject(columnPrefix + "team_id", UUID.class),
+                resultSet.getString(columnPrefix + "team_name"),
+                resultSet.getObject(columnPrefix + "hero_id", UUID.class),
+                resultSet.getObject(columnPrefix + "dota_hero_id", Integer.class),
+                resultSet.getString(columnPrefix + "hero_name"),
+                resultSet.getObject(columnPrefix + "won", Boolean.class),
+                resultSet.getInt(columnPrefix + "kills"),
+                resultSet.getInt(columnPrefix + "deaths"),
+                resultSet.getInt(columnPrefix + "assists"),
+                decimal(resultSet, columnPrefix + "kda"),
+                resultSet.getObject(columnPrefix + "gold_per_min", Integer.class),
+                resultSet.getObject(columnPrefix + "xp_per_min", Integer.class),
+                resultSet.getObject(columnPrefix + "last_hits", Integer.class),
+                resultSet.getObject(columnPrefix + "denies", Integer.class),
+                resultSet.getObject(columnPrefix + "net_worth", Integer.class),
+                resultSet.getObject(columnPrefix + "hero_damage", Integer.class),
+                resultSet.getObject(columnPrefix + "tower_damage", Integer.class),
+                resultSet.getObject(columnPrefix + "hero_healing", Integer.class),
+                resultSet.getString(columnPrefix + "team_side"));
     }
 
     private PlayerProgressPoint mapPlayerProgressPoint(ResultSet resultSet, int rowNumber) throws SQLException {

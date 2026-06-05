@@ -87,6 +87,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/me/analytics",
                                 "/api/me/analytics/heroes",
+                                "/api/me/analytics/insights",
                                 "/api/me/analytics/progress",
                                 "/api/me/team/analytics").hasRole("PLAYER")
                         .requestMatchers(HttpMethod.GET,
