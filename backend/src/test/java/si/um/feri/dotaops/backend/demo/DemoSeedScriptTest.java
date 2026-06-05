@@ -19,7 +19,8 @@ class DemoSeedScriptTest {
         assertThat(seed)
                 .contains("DO NOT RUN ON PRODUCTION")
                 .contains("@dotaops.local")
-                .contains("DotaOps Demo Cup")
+                .contains("Ljubljana Summer Circuit 2026")
+                .contains("Adriatic Open Qualifier 2026")
                 .contains("npc_dota_hero_ringmaster")
                 .contains("npc_dota_hero_kez")
                 .contains("npc_dota_hero_largo")
@@ -87,6 +88,7 @@ class DemoSeedScriptTest {
         assertThat(script)
                 .contains("ConfirmDemoSeed")
                 .contains("ResetFirst")
+                .contains("CleanGeneratedTestData")
                 .contains("AllowProductionTarget")
                 .contains("ON_ERROR_STOP=1");
     }
