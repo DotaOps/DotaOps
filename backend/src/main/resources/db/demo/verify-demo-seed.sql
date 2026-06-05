@@ -26,11 +26,11 @@ with demo_login_accounts as (
 ),
 required_demo_login_accounts(profile_key, email, display_name) as (
   values
-    ('organizer', 'demo.organizer@dotaops.local', 'Demo Organizer'),
-    ('player-01', 'demo.player1@dotaops.local', 'Aegis Ace'),
-    ('player-07', 'demo.player7@dotaops.local', 'Risky Mid'),
-    ('player-11', 'demo.player11@dotaops.local', 'Titan Carry'),
-    ('player-16', 'demo.player16@dotaops.local', 'Roshan Core')
+    ('organizer', 'demo.organizer@dotaops.local', 'Matej Novak'),
+    ('player-01', 'demo.player1@dotaops.local', 'Luka Kranjc'),
+    ('player-07', 'demo.player7@dotaops.local', 'Mia Horvat'),
+    ('player-11', 'demo.player11@dotaops.local', 'Felix Berger'),
+    ('player-16', 'demo.player16@dotaops.local', 'Jonas Keller')
 ),
 checks as (
   select
@@ -111,19 +111,30 @@ checks as (
     5
   union all
   select
-    'demo profiles exist',
-    (select count(*) from public.profiles where nickname like 'demo_%'),
+    'realistic mock profiles exist',
+    (
+      select count(*)
+      from public.profiles
+      where id in (
+        select pg_temp.demo_uuid('profile:player-' || lpad(player_number::text, 2, '0'))
+        from generate_series(1, 30) as demo_players(player_number)
+        union all
+        select pg_temp.demo_uuid('profile:admin')
+        union all
+        select pg_temp.demo_uuid('profile:organizer')
+      )
+    ),
     32
   union all
   select
-    'demo teams exist',
+    'realistic mock teams exist',
     (select count(*) from public.teams where slug in (
-      'radiant-wolves',
-      'dire-ravens',
-      'ancient-titans',
-      'roshan-hunters',
-      'midlane-mages',
-      'rune-raiders'
+      'ljubljana-wardens',
+      'adriatic-ravens',
+      'alpine-aegis',
+      'roshan-hunters-club',
+      'rome-midlane',
+      'danube-raiders'
     )),
     6
   union all
@@ -133,10 +144,10 @@ checks as (
     127
   union all
   select
-    'demo public tournaments exist',
+    'realistic mock public tournaments exist',
     (select count(*) from public.tournaments where slug in (
-      'dotaops-demo-cup',
-      'dotaops-demo-open-qualifier'
+      'ljubljana-summer-circuit-2026',
+      'adriatic-open-qualifier-2026'
     ) and is_public),
     2
   union all

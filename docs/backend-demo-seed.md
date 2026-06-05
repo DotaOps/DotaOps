@@ -2,20 +2,20 @@
 
 ## Namen
 
-BE/DB-27 doda ponovljive demo podatke za lokalno, razvojno ali namensko demo bazo. Seed pokrije javni pregled turnirjev, organizer tokove, team management, bracket, standings, match import prikaz in analytics/comparison endpoint-e.
+BE/DB-27 doda ponovljive realisticne mock podatke za lokalno, razvojno ali namensko demo bazo. Seed pokrije javni pregled turnirjev, organizer tokove, team management, bracket, standings, match import prikaz in analytics/comparison endpoint-e.
 
 Seed ustvari tudi lokalne Supabase Auth email/password uporabnike za demo organizerja in vseh 30 demo igralcev. Auth uporabniki so povezani z obstojecimi deterministcnimi `public.profiles` zapisi prek `profiles.auth_user_id`, email identiteta pa ostane zapisana tudi v `profile_external_accounts`.
 
 ## Kaj seed ustvari
 
-- 1 admin profil: `demo.admin@dotaops.local`
-- 1 organizer profil: `demo.organizer@dotaops.local`
-- 30 player profilov: `demo.player1@dotaops.local` do `demo.player30@dotaops.local`
+- 1 admin profil: Nika Horvat (`demo.admin@dotaops.local`)
+- 1 organizer profil: Matej Novak (`demo.organizer@dotaops.local`)
+- 30 player profilov z realisticnimi syntheticnimi imeni: `demo.player1@dotaops.local` do `demo.player30@dotaops.local`
 - Supabase Auth login za `demo.organizer@dotaops.local` in vse `demo.playerX@dotaops.local` racune
-- 6 ekip: Radiant Wolves, Dire Ravens, Ancient Titans, Roshan Hunters, Midlane Mages, Rune Raiders
+- 6 ekip: Ljubljana Wardens, Adriatic Ravens, Alpine Aegis, Roshan Hunters Club, Rome Midlane, Danube Raiders
 - aktivne rosterje po 5 igralcev na ekipo
-- `DotaOps Demo Cup` kot public/live turnir
-- `DotaOps Demo Open Qualifier` kot public/registration turnir
+- `Ljubljana Summer Circuit 2026` kot public/live turnir
+- `Adriatic Open Qualifier 2026` kot public/registration turnir
 - approved, pending in rejected tournament registrations
 - group assignment za approved ekipe
 - group-stage standings prek zakljucenih tekem
@@ -42,10 +42,10 @@ Uporabni racuni:
 
 Posebej koristni analytics racuni:
 
-- `demo.player1@dotaops.local` - Aegis Ace, Radiant Wolves
-- `demo.player7@dotaops.local` - Risky Mid, Dire Ravens
-- `demo.player11@dotaops.local` - Titan Carry, Ancient Titans
-- `demo.player16@dotaops.local` - Roshan Core, Roshan Hunters
+- `demo.player1@dotaops.local` - Luka Kranjc, Ljubljana Wardens
+- `demo.player7@dotaops.local` - Mia Horvat, Adriatic Ravens
+- `demo.player11@dotaops.local` - Felix Berger, Alpine Aegis
+- `demo.player16@dotaops.local` - Jonas Keller, Roshan Hunters Club
 
 `demo.admin@dotaops.local` ostane samo seedan profil brez Supabase Auth login uporabnika. Namen demo login seta je organizer/player tok, ne deljen admin dostop.
 
@@ -71,6 +71,12 @@ Z resetom pred seedanjem:
 .\scripts\seed-demo.ps1 -ConfirmDemoSeed -ResetFirst
 ```
 
+Za zamenjavo nakopicenih generated/integration-test podatkov z realisticnim mock datasetom:
+
+```powershell
+.\scripts\seed-demo.ps1 -ConfirmDemoSeed -CleanGeneratedTestData
+```
+
 Wrapper se ustavi brez `-ConfirmDemoSeed`. Ce zazna production-like okolje prek `DOTAOPS_ENV`, `APP_ENV`, `SPRING_PROFILES_ACTIVE` ali `NODE_ENV`, se ustavi, razen ce je dodatno podan `-AllowProductionTarget`.
 
 ## Rocni SQL zagon
@@ -88,7 +94,9 @@ psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend/src/main/resources/db/demo/
 psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend/src/main/resources/db/demo/reset-demo-seed.sql
 ```
 
-Reset brise samo stabilne demo UUID-je za BE/DB-27 turnirje, ekipe in profile ter demo Supabase Auth uporabnike z emaili `demo.organizer@dotaops.local` in `demo.playerX@dotaops.local`. Ne uporablja `TRUNCATE` in ne brise realnih podatkov po splosnih pogojih. Hero reference podatki ostanejo, ker so splosni Dota reference podatki in jih lahko uporablja tudi realen import.
+`reset-demo-seed.sql` brise samo stabilne demo UUID-je za BE/DB-27 turnirje, ekipe in profile ter demo Supabase Auth uporabnike z emaili `demo.organizer@dotaops.local` in `demo.playerX@dotaops.local`. Ne uporablja `TRUNCATE` in ne brise realnih podatkov po splosnih pogojih. Hero reference podatki ostanejo, ker so splosni Dota reference podatki in jih lahko uporablja tudi realen import.
+
+`reset-generated-test-data.sql` je sirsi cleanup za generated/integration-test podatke. Cilja auth domene `integration.test`, `test.com`, `dotaops.local`, turnirje/ekipe s slugom, ki se konca z 12-hex suffixom, in stabilne demo UUID-je. Ne brise `gmail.com` auth racunov, storage objektov, hero kataloga ali audit log zgodovine.
 
 ## Verifikacija
 
@@ -116,19 +124,19 @@ Verify query preveri:
 Public tournament list
 - endpoint: GET /api/tournaments
 - potrebuje: public tournament s statusom registration/published/live/finished
-- seed: DotaOps Demo Cup, DotaOps Demo Open Qualifier
+- seed: Ljubljana Summer Circuit 2026, Adriatic Open Qualifier 2026
 - tabele: tournaments, tournament_registrations
 
 Tournament detail
 - endpoint: GET /api/tournaments/{slug}
 - potrebuje: title, slug, status, organizer, dates, max teams, registration counts
-- seed: oba demo turnirja
+- seed: oba realisticna mock turnirja
 - tabele: tournaments, profiles, tournament_registrations
 
 Public groups and standings
 - endpoint: GET /api/public/tournaments/{id}/groups, GET /api/public/tournaments/{id}/standings
 - potrebuje: tournament_groups, tournament_group_teams, finished group matches
-- seed: Demo Group A, 4 approved teams, 3 finished group matches
+- seed: Group A, 4 approved teams, 3 finished group matches
 - tabele: tournament_groups, tournament_group_teams, matches
 
 Public matches/results
@@ -188,7 +196,7 @@ Lookup dropdowns
 Team vs team comparison
 - endpoint: GET /api/analytics/compare/teams
 - potrebuje: two teams with shared tournament match_players rows
-- seed: Radiant Wolves vs Ancient Titans/Dire Ravens/Roshan Hunters data
+- seed: Ljubljana Wardens vs Alpine Aegis/Adriatic Ravens/Roshan Hunters Club data
 - tabele: teams, tournaments, matches, match_games, match_players
 
 Player vs player comparison
@@ -213,6 +221,6 @@ Player vs player comparison
 ## Omejitve
 
 - Seed neposredno pise v `auth.users` in `auth.identities`, zato je namenjen Supabase Postgres okoljem z aplicirano Auth shemo.
-- Storage datoteke za avatarje/logotipe/bannerje niso nalozene; URL-ji so placeholderji na `example.invalid`.
+- Storage datoteke za avatarje/logotipe/bannerje niso nalozene; seed uporablja syntheticne DiceBear avatar, logo in banner URL-je.
 - Seed uporablja sinteticne OpenDota/match ID-je in ne predstavlja realnih tekem.
 - Reset ne cisti audit log zgodovine, ki jo sprozijo audit triggerji med seedanjem; to je namerno, ker audit trail ostane append-only.
