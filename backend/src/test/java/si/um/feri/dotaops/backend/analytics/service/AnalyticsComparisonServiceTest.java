@@ -1,7 +1,9 @@
 package si.um.feri.dotaops.backend.analytics.service;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -10,6 +12,10 @@ import org.springframework.security.access.AccessDeniedException;
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.repository.AnalyticsLookupRepository;
 import si.um.feri.dotaops.backend.analytics.web.HeroMetricsResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerComparisonMatchPlayerResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerComparisonMatchResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerComparisonMetricResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerHeroPerformanceResponse;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
@@ -34,6 +40,8 @@ class AnalyticsComparisonServiceTest {
     private static final UUID TEAM_A_ID = UUID.fromString("55555555-5555-4555-8555-555555555555");
     private static final UUID TEAM_B_ID = UUID.fromString("66666666-6666-4666-8666-666666666666");
     private static final UUID TOURNAMENT_ID = UUID.fromString("77777777-7777-4777-8777-777777777777");
+    private static final UUID HERO_ID = UUID.fromString("88888888-8888-4888-8888-888888888888");
+    private static final UUID MATCH_ID = UUID.fromString("99999999-9999-4999-8999-999999999999");
 
     private final AnalyticsQueryService analyticsQueryService = mock(AnalyticsQueryService.class);
     private final AnalyticsLookupRepository lookupRepository = mock(AnalyticsLookupRepository.class);
@@ -64,6 +72,42 @@ class AnalyticsComparisonServiceTest {
         verify(analyticsQueryService).playerAggregateMetrics(eq(CURRENT_PROFILE_ID), any(), eq(true));
         verify(analyticsQueryService).playerAggregateMetrics(eq(OTHER_PROFILE_ID), any(), eq(true));
         verify(analyticsQueryService, times(2)).heroMetrics(any());
+    }
+
+    @Test
+    void playerComparisonIncludesHeadlineSharedHeroDetailsEnrichedMatchesAndWarnings() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ADMIN));
+        when(analyticsQueryService.playerComparisonHeadlineMetrics(eq(CURRENT_PROFILE_ID), any(), eq(false)))
+                .thenReturn(Optional.of(comparisonMetric(CURRENT_PROFILE_ID, "Carry One", 8, "620.00", "5.50")));
+        when(analyticsQueryService.playerComparisonHeadlineMetrics(eq(OTHER_PROFILE_ID), any(), eq(false)))
+                .thenReturn(Optional.of(comparisonMetric(OTHER_PROFILE_ID, "Carry Two", 7, "580.00", "4.25")));
+        when(analyticsQueryService.playerHeroPerformance(eq(CURRENT_PROFILE_ID), any(), eq(false)))
+                .thenReturn(List.of(heroDetail(4, "5.20", "610.00", "720.00", "22000.00", "2400.00", "2.50")));
+        when(analyticsQueryService.playerHeroPerformance(eq(OTHER_PROFILE_ID), any(), eq(false)))
+                .thenReturn(List.of(heroDetail(2, "4.10", "560.00", "690.00", "19000.00", "1800.00", "3.00")));
+        when(analyticsQueryService.playerComparisonMatches(eq(CURRENT_PROFILE_ID), eq(OTHER_PROFILE_ID), any(), eq(false)))
+                .thenReturn(List.of(comparisonMatch()));
+
+        var response = service.comparePlayers(
+                CURRENT_PROFILE_ID,
+                OTHER_PROFILE_ID,
+                new AnalyticsFilters(null, null, null, null, 10));
+
+        assertThat(response.headlineComparison().profileA().avgGpm()).isEqualByComparingTo("620.00");
+        assertThat(response.headlineComparison().delta().avgGpm()).isEqualByComparingTo("40.00");
+        assertThat(response.headlineComparison().delta().kda()).isEqualByComparingTo("1.25");
+        assertThat(response.profileAHeroDetails()).hasSize(1);
+        assertThat(response.profileBHeroDetails()).hasSize(1);
+        assertThat(response.sharedHeroComparisons()).hasSize(1);
+        assertThat(response.sharedHeroComparisons().getFirst().heroName()).isEqualTo("Anti-Mage");
+        assertThat(response.sharedHeroComparisons().getFirst().profileA().gamesPlayed()).isEqualTo(4);
+        assertThat(response.sharedHeroComparisons().getFirst().delta().avgTowerDamage()).isEqualByComparingTo("600.00");
+        assertThat(response.enrichedMatchHistory()).hasSize(1);
+        assertThat(response.enrichedMatchHistory().getFirst().profileA().heroName()).isEqualTo("Anti-Mage");
+        assertThat(response.enrichedMatchHistory().getFirst().profileA().netWorth()).isEqualTo(21400);
+        assertThat(response.warnings())
+                .extracting("code")
+                .contains("LOW_SHARED_HERO_SAMPLE");
     }
 
     @Test
@@ -209,7 +253,7 @@ class AnalyticsComparisonServiceTest {
 
     private HeroMetricsResponse heroMetricsResponse() {
         return new HeroMetricsResponse(
-                UUID.fromString("88888888-8888-4888-8888-888888888888"),
+                HERO_ID,
                 1,
                 "antimage",
                 "Anti-Mage",
@@ -231,6 +275,131 @@ class AnalyticsComparisonServiceTest {
                 BigDecimal.valueOf(610),
                 BigDecimal.valueOf(720),
                 BigDecimal.valueOf(22000));
+    }
+
+    private PlayerComparisonMetricResponse comparisonMetric(
+            UUID profileId,
+            String displayName,
+            int gamesPlayed,
+            String avgGpm,
+            String kda
+    ) {
+        return new PlayerComparisonMetricResponse(
+                profileId,
+                displayName,
+                gamesPlayed,
+                gamesPlayed - 2,
+                2,
+                new BigDecimal("75.00"),
+                new BigDecimal(kda),
+                new BigDecimal("8.00"),
+                new BigDecimal("2.00"),
+                new BigDecimal("10.00"),
+                new BigDecimal(avgGpm),
+                new BigDecimal("700.00"),
+                new BigDecimal("210.00"),
+                new BigDecimal("12.00"),
+                new BigDecimal("20500.00"),
+                new BigDecimal("23000.00"),
+                new BigDecimal("2000.00"),
+                new BigDecimal("200.00"));
+    }
+
+    private PlayerHeroPerformanceResponse heroDetail(
+            int matches,
+            String avgKda,
+            String avgGpm,
+            String avgXpm,
+            String avgHeroDamage,
+            String avgTowerDamage,
+            String avgDeaths
+    ) {
+        return new PlayerHeroPerformanceResponse(
+                HERO_ID,
+                1,
+                "Anti-Mage",
+                matches,
+                Math.max(matches - 1, 0),
+                Math.min(matches, 1),
+                new BigDecimal("75.00"),
+                new BigDecimal("8.00"),
+                new BigDecimal(avgDeaths),
+                new BigDecimal("10.00"),
+                new BigDecimal(avgKda),
+                new BigDecimal(avgGpm),
+                new BigDecimal(avgXpm),
+                new BigDecimal(avgHeroDamage),
+                new BigDecimal(avgTowerDamage),
+                new BigDecimal("120.00"),
+                new BigDecimal("210.00"),
+                new BigDecimal("10.00"),
+                MATCH_ID,
+                null,
+                "7777777777",
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                MATCH_ID,
+                null,
+                "7777777777",
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                new BigDecimal("9.00"));
+    }
+
+    private PlayerComparisonMatchResponse comparisonMatch() {
+        return new PlayerComparisonMatchResponse(
+                MATCH_ID,
+                null,
+                "7777777777",
+                TOURNAMENT_ID,
+                "International Test Cup",
+                OffsetDateTime.parse("2026-06-01T00:00:00Z"),
+                TEAM_A_ID,
+                "Radiant Wolves",
+                TEAM_B_ID,
+                "Dire Five",
+                TEAM_A_ID,
+                "RADIANT",
+                new PlayerComparisonMatchPlayerResponse(
+                        CURRENT_PROFILE_ID,
+                        TEAM_A_ID,
+                        "Radiant Wolves",
+                        HERO_ID,
+                        1,
+                        "Anti-Mage",
+                        true,
+                        10,
+                        2,
+                        8,
+                        new BigDecimal("9.00"),
+                        640,
+                        720,
+                        240,
+                        12,
+                        21400,
+                        24000,
+                        2600,
+                        0,
+                        "RADIANT"),
+                new PlayerComparisonMatchPlayerResponse(
+                        OTHER_PROFILE_ID,
+                        TEAM_B_ID,
+                        "Dire Five",
+                        HERO_ID,
+                        1,
+                        "Anti-Mage",
+                        false,
+                        7,
+                        4,
+                        9,
+                        new BigDecimal("4.00"),
+                        560,
+                        660,
+                        180,
+                        8,
+                        17200,
+                        19000,
+                        1800,
+                        0,
+                        "DIRE"));
     }
 
     private AnalyticsLookupRepository.PlayerComparisonCandidate playerCandidate(

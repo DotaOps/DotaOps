@@ -10,6 +10,8 @@ import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.repository.AnalyticsRepository;
 import si.um.feri.dotaops.backend.analytics.web.AnalyticsMatchHistoryResponse;
 import si.um.feri.dotaops.backend.analytics.web.HeroMetricsResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerComparisonMatchResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerComparisonMetricResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerHeroPerformanceResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerMetricsResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerProgressPointResponse;
@@ -50,6 +52,16 @@ public class AnalyticsQueryService {
     ) {
         return analyticsRepository.findPlayerAggregateMetrics(profileId, filters, publicOnly)
                 .map(PlayerMetricsResponse::from);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<PlayerComparisonMetricResponse> playerComparisonHeadlineMetrics(
+            UUID profileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findPlayerComparisonHeadlineMetrics(profileId, filters, publicOnly)
+                .map(PlayerComparisonMetricResponse::from);
     }
 
     @Transactional(readOnly = true)
@@ -171,6 +183,19 @@ public class AnalyticsQueryService {
         return analyticsRepository.findRecentMatchesForPlayers(firstProfileId, secondProfileId, filters, publicOnly)
                 .stream()
                 .map(AnalyticsMatchHistoryResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlayerComparisonMatchResponse> playerComparisonMatches(
+            UUID firstProfileId,
+            UUID secondProfileId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findPlayerComparisonMatches(firstProfileId, secondProfileId, filters, publicOnly)
+                .stream()
+                .map(PlayerComparisonMatchResponse::from)
                 .toList();
     }
 
