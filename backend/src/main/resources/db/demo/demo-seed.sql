@@ -135,6 +135,135 @@ set profile_id = excluded.profile_id,
     metadata = excluded.metadata,
     updated_at = now();
 
+-- Supabase Auth demo login accounts for local/dev/demo only.
+-- Shared demo password: DotaOpsDemo123!
+create temporary table demo_auth_seed on commit drop as
+select
+  s.profile_key,
+  s.nickname,
+  s.display_name,
+  s.role,
+  s.email,
+  pg_temp.demo_uuid('profile:' || s.profile_key) as profile_id,
+  coalesce(
+    (
+      select u.id
+      from auth.users u
+      where lower(u.email) = lower(s.email)
+      order by u.created_at nulls last, u.id
+      limit 1
+    ),
+    pg_temp.demo_uuid('auth-user:' || s.profile_key)
+  ) as auth_user_id
+from demo_profile_seed s
+where s.role in ('organizer', 'player');
+
+insert into auth.users (
+  instance_id,
+  id,
+  aud,
+  role,
+  email,
+  encrypted_password,
+  email_confirmed_at,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  created_at,
+  updated_at
+)
+select
+  '00000000-0000-0000-0000-000000000000'::uuid,
+  auth_user_id,
+  'authenticated',
+  'authenticated',
+  email,
+  crypt('DotaOpsDemo123!', gen_salt('bf')),
+  timestamptz '2026-05-01 00:00:00+00',
+  '',
+  '',
+  '',
+  '',
+  jsonb_build_object(
+    'provider', 'email',
+    'providers', jsonb_build_array('email'),
+    'demo_seed', true
+  ),
+  jsonb_build_object(
+    'demo', true,
+    'nickname', nickname,
+    'display_name', display_name,
+    'account_type', role
+  ),
+  timestamptz '2026-05-01 00:00:00+00',
+  now()
+from demo_auth_seed
+on conflict (id) do update
+set aud = excluded.aud,
+    role = excluded.role,
+    email = excluded.email,
+    encrypted_password = excluded.encrypted_password,
+    email_confirmed_at = excluded.email_confirmed_at,
+    confirmation_token = excluded.confirmation_token,
+    recovery_token = excluded.recovery_token,
+    email_change_token_new = excluded.email_change_token_new,
+    email_change = excluded.email_change,
+    raw_app_meta_data = excluded.raw_app_meta_data,
+    raw_user_meta_data = excluded.raw_user_meta_data,
+    updated_at = now();
+
+insert into auth.identities (
+  id,
+  user_id,
+  provider_id,
+  identity_data,
+  provider,
+  last_sign_in_at,
+  created_at,
+  updated_at
+)
+select
+  pg_temp.demo_uuid('identity:' || profile_key),
+  auth_user_id,
+  auth_user_id::text,
+  jsonb_build_object(
+    'sub', auth_user_id::text,
+    'email', email,
+    'email_verified', true,
+    'phone_verified', false
+  ),
+  'email',
+  null,
+  timestamptz '2026-05-01 00:00:00+00',
+  now()
+from demo_auth_seed
+on conflict (provider_id, provider) do update
+set user_id = excluded.user_id,
+    identity_data = excluded.identity_data,
+    last_sign_in_at = excluded.last_sign_in_at,
+    updated_at = now();
+
+delete from public.profiles p
+using demo_auth_seed s
+where p.auth_user_id = s.auth_user_id
+  and p.id <> s.profile_id
+  and (
+    p.nickname = s.nickname
+    or p.nickname like s.nickname || '\_%' escape '\'
+    or lower(p.nickname) = lower(split_part(s.email, '@', 1))
+    or lower(p.nickname) like lower(split_part(s.email, '@', 1)) || '\_%' escape '\'
+  );
+
+update public.profiles p
+set auth_user_id = s.auth_user_id,
+    updated_at = now()
+from demo_auth_seed s
+where p.id = s.profile_id
+  and p.auth_user_id is distinct from s.auth_user_id;
+
 select set_config('request.dotaops.profile_id', pg_temp.demo_uuid('profile:organizer')::text, true);
 
 create temporary table demo_team_seed (

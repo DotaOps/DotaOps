@@ -24,10 +24,20 @@ class DemoSeedScriptTest {
                 .contains("npc_dota_hero_kez")
                 .contains("npc_dota_hero_largo")
                 .contains("on conflict")
+                .contains("auth.users")
+                .contains("auth.identities")
+                .contains("DotaOpsDemo123!")
+                .contains("crypt('DotaOpsDemo123!', gen_salt('bf'))")
+                .contains("email_confirmed_at")
+                .contains("confirmation_token")
+                .contains("recovery_token")
+                .contains("email_change_token_new")
+                .contains("demo_auth_seed")
                 .contains("private.refresh_dotaops_analytics()");
         assertThat(seed)
                 .doesNotContain("SUPABASE_SERVICE_ROLE_KEY")
                 .doesNotContain("service_role_key")
+                .doesNotContain("jwt_secret")
                 .doesNotContainPattern("(?i)@(gmail|yahoo|hotmail|outlook)\\.");
     }
 
@@ -39,7 +49,11 @@ class DemoSeedScriptTest {
                 .contains("DO NOT RUN ON PRODUCTION")
                 .contains("profile:player-30")
                 .contains("tournament:demo-cup")
-                .contains("team:radiant-wolves");
+                .contains("team:radiant-wolves")
+                .contains("auth.users")
+                .contains("auth.identities")
+                .contains("demo.organizer@dotaops.local")
+                .contains("demo.player' || player_number || '@dotaops.local'");
         assertThat(reset.toLowerCase()).doesNotContain("truncate");
     }
 
@@ -49,6 +63,12 @@ class DemoSeedScriptTest {
 
         assertThat(verify)
                 .contains("demo organizer profile exists")
+                .contains("demo auth users exist")
+                .contains("demo auth users are email confirmed")
+                .contains("demo auth users have gotrue token defaults")
+                .contains("demo auth identities exist")
+                .contains("demo profiles linked to auth users")
+                .contains("required demo login profiles map to seeded profiles")
                 .contains("approved demo cup registrations exist")
                 .contains("dota hero reference catalog exists")
                 .contains("playoff bracket matches exist")

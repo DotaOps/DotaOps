@@ -4,13 +4,14 @@
 
 BE/DB-27 doda ponovljive demo podatke za lokalno, razvojno ali namensko demo bazo. Seed pokrije javni pregled turnirjev, organizer tokove, team management, bracket, standings, match import prikaz in analytics/comparison endpoint-e.
 
-Seed ne ustvarja `auth.users`, ker projekt uporablja Supabase Auth. Demo profili imajo `auth_user_id = null` in sinteticno email identiteto v `profile_external_accounts`. Za realen login mora developer ustvariti Supabase Auth uporabnika in ga povezati s profilom po obstoječem auth flowu.
+Seed ustvari tudi lokalne Supabase Auth email/password uporabnike za demo organizerja in vseh 30 demo igralcev. Auth uporabniki so povezani z obstojecimi deterministcnimi `public.profiles` zapisi prek `profiles.auth_user_id`, email identiteta pa ostane zapisana tudi v `profile_external_accounts`.
 
 ## Kaj seed ustvari
 
 - 1 admin profil: `demo.admin@dotaops.local`
 - 1 organizer profil: `demo.organizer@dotaops.local`
 - 30 player profilov: `demo.player1@dotaops.local` do `demo.player30@dotaops.local`
+- Supabase Auth login za `demo.organizer@dotaops.local` in vse `demo.playerX@dotaops.local` racune
 - 6 ekip: Radiant Wolves, Dire Ravens, Ancient Titans, Roshan Hunters, Midlane Mages, Rune Raiders
 - aktivne rosterje po 5 igralcev na ekipo
 - `DotaOps Demo Cup` kot public/live turnir
@@ -25,6 +26,28 @@ Seed ne ustvarja `auth.users`, ker projekt uporablja Supabase Auth. Demo profili
 - 120 `match_players` zapisov z razlicnimi K/D/A, GPM, XPM, damage in hero podatki
 - celoten OpenDota `/api/heroes` reference katalog za Dota 2 heroje, 127 herojev ob zadnji osvezitvi seeda
 - pending team invitation in pending join request za team flow
+
+## Demo login racuni
+
+Skupno demo geslo za lokalno/dev/demo okolje je:
+
+```text
+DotaOpsDemo123!
+```
+
+Uporabni racuni:
+
+- `demo.organizer@dotaops.local`
+- `demo.player1@dotaops.local` do `demo.player30@dotaops.local`
+
+Posebej koristni analytics racuni:
+
+- `demo.player1@dotaops.local` - Aegis Ace, Radiant Wolves
+- `demo.player7@dotaops.local` - Risky Mid, Dire Ravens
+- `demo.player11@dotaops.local` - Titan Carry, Ancient Titans
+- `demo.player16@dotaops.local` - Roshan Core, Roshan Hunters
+
+`demo.admin@dotaops.local` ostane samo seedan profil brez Supabase Auth login uporabnika. Namen demo login seta je organizer/player tok, ne deljen admin dostop.
 
 ## En ukaz za seed
 
@@ -65,7 +88,7 @@ psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend/src/main/resources/db/demo/
 psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend/src/main/resources/db/demo/reset-demo-seed.sql
 ```
 
-Reset brise samo stabilne demo UUID-je za BE/DB-27 turnirje, ekipe in profile. Ne uporablja `TRUNCATE` in ne brise realnih podatkov po splosnih pogojih. Hero reference podatki ostanejo, ker so splosni Dota reference podatki in jih lahko uporablja tudi realen import.
+Reset brise samo stabilne demo UUID-je za BE/DB-27 turnirje, ekipe in profile ter demo Supabase Auth uporabnike z emaili `demo.organizer@dotaops.local` in `demo.playerX@dotaops.local`. Ne uporablja `TRUNCATE` in ne brise realnih podatkov po splosnih pogojih. Hero reference podatki ostanejo, ker so splosni Dota reference podatki in jih lahko uporablja tudi realen import.
 
 ## Verifikacija
 
@@ -76,6 +99,9 @@ psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend/src/main/resources/db/demo/
 Verify query preveri:
 
 - demo organizer obstaja,
+- demo Supabase Auth uporabniki obstajajo za organizer/player racune,
+- demo Auth uporabniki imajo potrjen email in email identiteto,
+- demo profili so povezani z ustreznimi Auth uporabniki,
 - demo profili in ekipe obstajajo,
 - public turnirji obstajajo,
 - approved/pending registracije obstajajo,
@@ -180,12 +206,13 @@ Player vs player comparison
 
 - Ne poganjaj na produkciji brez eksplicitne potrditve.
 - Ne vsebuje realnih emailov, osebnih podatkov ali skrivnosti.
-- Ne vsebuje Supabase service role keyjev ali connection stringov.
+- Skupno demo geslo je namenjeno samo lokalnemu/dev/demo okolju.
+- Ne vsebuje Supabase service role keyjev, JWT skrivnosti ali connection stringov.
 - Wrapper ne bere ali zapisuje `.env`; connection string mora biti podan iz okolja ali parametra.
 
 ## Omejitve
 
-- Demo profili niso Supabase Auth uporabniki. Login za demo racune ni avtomatsko omogocen.
+- Seed neposredno pise v `auth.users` in `auth.identities`, zato je namenjen Supabase Postgres okoljem z aplicirano Auth shemo.
 - Storage datoteke za avatarje/logotipe/bannerje niso nalozene; URL-ji so placeholderji na `example.invalid`.
 - Seed uporablja sinteticne OpenDota/match ID-je in ne predstavlja realnih tekem.
 - Reset ne cisti audit log zgodovine, ki jo sprozijo audit triggerji med seedanjem; to je namerno, ker audit trail ostane append-only.
