@@ -39,14 +39,21 @@ class AnalyticsLookupRepositoryTest {
         assertThat(jdbcTemplate.sql).contains("where t.is_public = true");
         assertThat(jdbcTemplate.sql).contains("p.role = 'player'::public.dotaops_user_role");
         assertThat(jdbcTemplate.sql).contains("lower(coalesce(p.display_name, '')) like ? escape");
+        assertThat(jdbcTemplate.sql).contains("lower(coalesce(p.nickname, '')) like ? escape");
+        assertThat(jdbcTemplate.sql).contains("coalesce(p.opendota_account_id::text, '') like ? escape");
+        assertThat(jdbcTemplate.sql).contains("p.avatar_url");
+        assertThat(jdbcTemplate.sql).contains("p.opendota_account_id");
+        assertThat(jdbcTemplate.sql).contains("count(*)::integer as analytics_games_count");
         assertThat(jdbcTemplate.sql).contains("m.tournament_id = ?");
         assertThat(jdbcTemplate.sql).contains("mp.team_id = ?");
         assertThat(jdbcTemplate.sql).contains("mp.hero_id = ?");
         assertThat(jdbcTemplate.sql).contains("limit ?");
+        assertThat(jdbcTemplate.sql).doesNotContain("auth_user_id", "email");
         assertThat(jdbcTemplate.parameters)
                 .containsExactly(
                         true,
                         PROFILE_ID,
+                        "%aegis%",
                         "%aegis%",
                         "%aegis%",
                         TOURNAMENT_ID,
@@ -54,6 +61,7 @@ class AnalyticsLookupRepositoryTest {
                         HERO_ID,
                         FROM,
                         TO,
+                        "aegis",
                         "aegis",
                         "aegis",
                         10);
@@ -72,12 +80,20 @@ class AnalyticsLookupRepositoryTest {
         assertThat(jdbcTemplate.sql).contains("where tm.team_id = ?");
         assertThat(jdbcTemplate.sql).contains("p.role = 'player'::public.dotaops_user_role");
         assertThat(jdbcTemplate.sql).contains("lower(coalesce(p.display_name, '')) = ?");
-        assertThat(jdbcTemplate.sql).doesNotContain("from public.match_players");
+        assertThat(jdbcTemplate.sql).contains("lower(coalesce(p.nickname, '')) = ?");
+        assertThat(jdbcTemplate.sql).contains("coalesce(p.opendota_account_id::text, '') = ?");
+        assertThat(jdbcTemplate.sql).contains("p.avatar_url");
+        assertThat(jdbcTemplate.sql).contains("p.opendota_account_id");
+        assertThat(jdbcTemplate.sql).contains("analytics_games_count");
+        assertThat(jdbcTemplate.sql).doesNotContain("from public.match_players mp");
+        assertThat(jdbcTemplate.sql).doesNotContain("auth_user_id", "email");
         assertThat(jdbcTemplate.parameters)
                 .containsExactly(
                         TEAM_ID,
                         true,
                         PROFILE_ID,
+                        "aegis ace",
+                        "aegis ace",
                         "aegis ace",
                         "aegis ace",
                         "aegis ace",

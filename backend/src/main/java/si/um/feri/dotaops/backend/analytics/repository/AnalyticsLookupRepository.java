@@ -124,6 +124,7 @@ public class AnalyticsLookupRepository {
         parameters.addAll(queryParts.parameters());
         parameters.add(normalizedQuery);
         parameters.add(normalizedQuery);
+        parameters.add(normalizedQuery);
         parameters.add(limit);
 
         return jdbcTemplate.query(
@@ -132,12 +133,14 @@ public class AnalyticsLookupRepository {
                   p.id as profile_id,
                   coalesce(p.display_name, p.nickname, 'Unknown player') as display_name,
                   p.nickname,
+                  p.avatar_url,
+                  p.opendota_account_id,
                   case
                     when count(distinct mp.team_id) = 1 then min(mp.team_id::text)::uuid
                     else null::uuid
                   end as team_id,
                   string_agg(distinct tm.name, ', ' order by tm.name) as team_name,
-                  count(*)::integer as analyzed_games
+                  count(*)::integer as analytics_games_count
                 from public.match_players mp
                 left join public.match_games mg on mg.id = mp.match_game_id
                 join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
@@ -150,13 +153,15 @@ public class AnalyticsLookupRepository {
                   and (? = false or p.id <> ?)
                   """ + "and " + playerNameCondition(exact) + "\n"
                   + queryParts.sql() + """
-                group by p.id, p.display_name, p.nickname
+                group by p.id, p.display_name, p.nickname, p.avatar_url, p.opendota_account_id
                 order by
                   case
-                    when lower(coalesce(p.display_name, '')) = ? or lower(coalesce(p.nickname, '')) = ? then 0
+                    when lower(coalesce(p.display_name, '')) = ?
+                      or lower(coalesce(p.nickname, '')) = ?
+                      or coalesce(p.opendota_account_id::text, '') = ? then 0
                     else 1
                   end,
-                  analyzed_games desc,
+                  analytics_games_count desc,
                   lower(coalesce(p.display_name, p.nickname, '')) asc,
                   p.id asc
                 limit ?
@@ -181,6 +186,7 @@ public class AnalyticsLookupRepository {
         addNameParameters(parameters, normalizedQuery, queryPattern, exact);
         parameters.add(normalizedQuery);
         parameters.add(normalizedQuery);
+        parameters.add(normalizedQuery);
         parameters.add(limit);
 
         return jdbcTemplate.query(
@@ -189,9 +195,15 @@ public class AnalyticsLookupRepository {
                   p.id as profile_id,
                   coalesce(p.display_name, p.nickname, 'Unknown player') as display_name,
                   p.nickname,
+                  p.avatar_url,
+                  p.opendota_account_id,
                   t.id as team_id,
                   t.name as team_name,
-                  0::integer as analyzed_games
+                  (
+                    select count(*)::integer
+                    from public.match_players analytics_mp
+                    where analytics_mp.profile_id = p.id
+                  ) as analytics_games_count
                 from public.team_members tm
                 join public.profiles p on p.id = tm.profile_id
                 join public.teams t on t.id = tm.team_id
@@ -203,9 +215,12 @@ public class AnalyticsLookupRepository {
                   """ + "and " + playerNameCondition(exact) + """
                 order by
                   case
-                    when lower(coalesce(p.display_name, '')) = ? or lower(coalesce(p.nickname, '')) = ? then 0
+                    when lower(coalesce(p.display_name, '')) = ?
+                      or lower(coalesce(p.nickname, '')) = ?
+                      or coalesce(p.opendota_account_id::text, '') = ? then 0
                     else 1
                   end,
+                  analytics_games_count desc,
                   tm.joined_at asc,
                   lower(coalesce(p.display_name, p.nickname, '')) asc,
                   p.id asc
@@ -459,7 +474,10 @@ public class AnalyticsLookupRepository {
                 resultSet.getString("display_name"),
                 resultSet.getString("nickname"),
                 resultSet.getObject("team_id", UUID.class),
-                resultSet.getString("team_name"));
+                resultSet.getString("team_name"),
+                resultSet.getString("avatar_url"),
+                resultSet.getObject("opendota_account_id", Long.class),
+                resultSet.getInt("analytics_games_count"));
     }
 
     private PlayerCandidateQueryParts playerAnalyticsFilters(AnalyticsFilters filters) {
@@ -506,11 +524,14 @@ public class AnalyticsLookupRepository {
 
     private String playerNameCondition(boolean exact) {
         if (exact) {
-            return "(lower(coalesce(p.display_name, '')) = ? or lower(coalesce(p.nickname, '')) = ?)";
+            return "(lower(coalesce(p.display_name, '')) = ? "
+                    + "or lower(coalesce(p.nickname, '')) = ? "
+                    + "or coalesce(p.opendota_account_id::text, '') = ?)";
         }
 
         return "(lower(coalesce(p.display_name, '')) like ? escape '\\' "
-                + "or lower(coalesce(p.nickname, '')) like ? escape '\\')";
+                + "or lower(coalesce(p.nickname, '')) like ? escape '\\' "
+                + "or coalesce(p.opendota_account_id::text, '') like ? escape '\\')";
     }
 
     private void addNameParameters(
@@ -522,9 +543,11 @@ public class AnalyticsLookupRepository {
         if (exact) {
             parameters.add(normalizedQuery);
             parameters.add(normalizedQuery);
+            parameters.add(normalizedQuery);
             return;
         }
 
+        parameters.add(queryPattern);
         parameters.add(queryPattern);
         parameters.add(queryPattern);
     }
@@ -564,8 +587,48 @@ public class AnalyticsLookupRepository {
             String displayName,
             String nickname,
             UUID teamId,
-            String teamName
+            String teamName,
+            String avatarUrl,
+            Long opendotaAccountId,
+            int analyticsGamesCount,
+            boolean hasAnalyticsData,
+            String label
     ) {
+
+        public PlayerComparisonCandidate(
+                UUID profileId,
+                String displayName,
+                String nickname,
+                UUID teamId,
+                String teamName
+        ) {
+            this(profileId, displayName, nickname, teamId, teamName, null, null, 0);
+        }
+
+        public PlayerComparisonCandidate(
+                UUID profileId,
+                String displayName,
+                String nickname,
+                UUID teamId,
+                String teamName,
+                String avatarUrl,
+                Long opendotaAccountId,
+                int analyticsGamesCount
+        ) {
+            this(
+                    profileId,
+                    displayName,
+                    nickname,
+                    teamId,
+                    teamName,
+                    avatarUrl,
+                    opendotaAccountId,
+                    analyticsGamesCount,
+                    analyticsGamesCount > 0,
+                    analyticsGamesCount > 0
+                            ? analyticsGamesCount + " imported analytics matches"
+                            : "No imported matches yet");
+        }
     }
 
     public record HeroLookup(

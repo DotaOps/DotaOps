@@ -5,7 +5,6 @@ import java.util.UUID;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
@@ -91,7 +90,9 @@ public class AnalyticsComparisonController {
 
     @GetMapping("/players/candidates")
     ApiResponse<PlayerComparisonLookupResponse> playerComparisonCandidates(
-            @RequestParam @NotBlank @Size(max = 80) String query,
+            @RequestParam(required = false) @Size(max = 80) String query,
+            @RequestParam(name = "q", required = false) @Size(max = 80) String q,
+            @RequestParam(name = "search", required = false) @Size(max = 80) String search,
             @RequestParam(required = false) UUID tournamentId,
             @RequestParam(name = "tournament_id", required = false) UUID tournamentIdSnake,
             @RequestParam(required = false) UUID teamId,
@@ -105,7 +106,7 @@ public class AnalyticsComparisonController {
             @RequestParam(defaultValue = "10") @Min(1) @Max(20) int limit
     ) {
         return ApiResponse.of(analyticsComparisonService.playerComparisonCandidates(
-                query,
+                firstNonBlank(query, q, search),
                 new AnalyticsFilters(
                         firstNonNull(tournamentId, tournamentIdSnake),
                         firstNonNull(teamId, teamIdSnake),
@@ -118,5 +119,15 @@ public class AnalyticsComparisonController {
 
     private UUID firstNonNull(UUID primary, UUID secondary) {
         return primary == null ? secondary : primary;
+    }
+
+    private String firstNonBlank(String primary, String secondary, String tertiary) {
+        if (primary != null && !primary.isBlank()) {
+            return primary;
+        }
+        if (secondary != null && !secondary.isBlank()) {
+            return secondary;
+        }
+        return tertiary;
     }
 }

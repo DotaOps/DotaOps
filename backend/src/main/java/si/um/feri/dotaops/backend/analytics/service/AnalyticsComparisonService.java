@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import org.springframework.security.access.AccessDeniedException;
@@ -49,6 +51,8 @@ public class AnalyticsComparisonService {
     private static final int MAX_PLAYER_SEARCH_LIMIT = 20;
     private static final int MIN_PLAYER_COMPARISON_SAMPLE_SIZE = 5;
     private static final int MIN_SHARED_HERO_SAMPLE_SIZE = 3;
+    private static final Pattern OPENDOTA_PLAYER_URL_PATTERN =
+            Pattern.compile("(?i)opendota\\.com/players/(\\d+)");
 
     private final AnalyticsQueryService analyticsQueryService;
     private final AnalyticsLookupRepository lookupRepository;
@@ -522,6 +526,10 @@ public class AnalyticsComparisonService {
 
     private String normalizePlayerSearchQuery(String query) {
         String normalized = query == null ? "" : query.trim().replaceAll("\\s+", " ");
+        Matcher openDotaMatcher = OPENDOTA_PLAYER_URL_PATTERN.matcher(normalized);
+        if (openDotaMatcher.find()) {
+            normalized = openDotaMatcher.group(1);
+        }
         if (normalized.length() < MIN_PLAYER_SEARCH_LENGTH) {
             throw new BadRequestException("Player search query must contain at least 2 characters.");
         }

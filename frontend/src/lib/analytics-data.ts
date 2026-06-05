@@ -275,8 +275,13 @@ export interface TeamPlayerLookup {
 }
 
 export interface PlayerComparisonCandidate {
+  analyticsGamesCount: number;
+  avatarUrl: string | null;
   displayName: string;
+  hasAnalyticsData: boolean;
+  label: string | null;
   nickname: string | null;
+  opendotaAccountId: number | null;
   profileId: string;
   teamId: string | null;
   teamName: string | null;
@@ -487,7 +492,9 @@ export interface CompareAnalyticsPlayersInput {
 
 export interface LookupPlayerComparisonCandidatesInput {
   filters?: AnalyticsFilters;
-  query: string;
+  q?: string;
+  query?: string;
+  search?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -852,8 +859,13 @@ function mapPlayerComparisonCandidate(value: unknown): PlayerComparisonCandidate
   const item = isRecord(value) ? value : {};
 
   return {
+    analyticsGamesCount: numberValue(item.analyticsGamesCount),
+    avatarUrl: nullableText(item.avatarUrl),
     displayName: text(item.displayName, "Unknown player"),
+    hasAnalyticsData: Boolean(item.hasAnalyticsData),
+    label: nullableText(item.label),
     nickname: nullableText(item.nickname),
+    opendotaAccountId: nullableNumber(item.opendotaAccountId),
     profileId: text(item.profileId, "unknown-player"),
     teamId: nullableText(item.teamId),
     teamName: nullableText(item.teamName)
@@ -1368,10 +1380,12 @@ export async function compareAnalyticsPlayers({ filters, profileAId, profileBId 
   );
 }
 
-export async function lookupPlayerComparisonCandidates({ filters, query }: LookupPlayerComparisonCandidatesInput) {
+export async function lookupPlayerComparisonCandidates({ filters, q, query, search }: LookupPlayerComparisonCandidatesInput) {
   const params = new URLSearchParams();
+  const searchValue = query ?? q ?? search;
+  const searchParam = query ? "query" : q ? "q" : "search";
 
-  setStringParam(params, "query", query);
+  setStringParam(params, searchParam, searchValue);
   setStringParam(params, "tournamentId", filters?.tournamentId);
   setStringParam(params, "teamId", filters?.teamId);
   setStringParam(params, "heroId", filters?.heroId);

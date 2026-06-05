@@ -124,7 +124,7 @@ class AnalyticsComparisonServiceTest {
 
     @Test
     void playerCandidateLookupReturnsExactNameMatch() {
-        var candidate = playerCandidate(OTHER_PROFILE_ID, "Aegis Ace", "aegis_ace");
+        var candidate = playerCandidate(OTHER_PROFILE_ID, "Aegis Ace", "aegis_ace", 12, 123456789L);
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
         when(lookupRepository.findAnalyzedPlayerComparisonCandidates(
                 eq(CURRENT_PROFILE_ID),
@@ -145,6 +145,132 @@ class AnalyticsComparisonServiceTest {
         assertThat(response.candidates()).hasSize(1);
         assertThat(response.candidates().getFirst().profileId()).isEqualTo(OTHER_PROFILE_ID);
         assertThat(response.candidates().getFirst().displayName()).isEqualTo("Aegis Ace");
+        assertThat(response.candidates().getFirst().opendotaAccountId()).isEqualTo(123456789L);
+        assertThat(response.candidates().getFirst().analyticsGamesCount()).isEqualTo(12);
+        assertThat(response.candidates().getFirst().hasAnalyticsData()).isTrue();
+    }
+
+    @Test
+    void playerCandidateLookupFallsBackToPartialDisplayNameSearch() {
+        var candidate = playerCandidate(OTHER_PROFILE_ID, "Aegis Ace", "aegis_ace", 5, null);
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(lookupRepository.findAnalyzedPlayerComparisonCandidates(
+                eq(CURRENT_PROFILE_ID),
+                eq("aegis"),
+                any(),
+                eq(true),
+                eq(true),
+                eq(10)))
+                .thenReturn(List.of());
+        when(lookupRepository.findAnalyzedPlayerComparisonCandidates(
+                eq(CURRENT_PROFILE_ID),
+                eq("aegis"),
+                any(),
+                eq(true),
+                eq(false),
+                eq(10)))
+                .thenReturn(List.of(candidate));
+
+        var response = service.playerComparisonCandidates(
+                "aegis",
+                new AnalyticsFilters(null, null, null, null, 10));
+
+        assertThat(response.query()).isEqualTo("aegis");
+        assertThat(response.exactMatch()).isFalse();
+        assertThat(response.candidates()).hasSize(1);
+        assertThat(response.candidates().getFirst().displayName()).isEqualTo("Aegis Ace");
+    }
+
+    @Test
+    void playerCandidateLookupCanMatchNickname() {
+        var candidate = playerCandidate(OTHER_PROFILE_ID, "Aegis Ace", "aegis_ace", 7, null);
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(lookupRepository.findAnalyzedPlayerComparisonCandidates(
+                eq(CURRENT_PROFILE_ID),
+                eq("aegis_ace"),
+                any(),
+                eq(true),
+                eq(true),
+                eq(10)))
+                .thenReturn(List.of(candidate));
+
+        var response = service.playerComparisonCandidates(
+                "aegis_ace",
+                new AnalyticsFilters(null, null, null, null, 10));
+
+        assertThat(response.exactMatch()).isTrue();
+        assertThat(response.candidates().getFirst().nickname()).isEqualTo("aegis_ace");
+    }
+
+    @Test
+    void playerCandidateLookupNormalizesOpenDotaPlayerUrl() {
+        var candidate = playerCandidate(OTHER_PROFILE_ID, "Aegis Ace", "aegis_ace", 7, 123456789L);
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(lookupRepository.findAnalyzedPlayerComparisonCandidates(
+                eq(CURRENT_PROFILE_ID),
+                eq("123456789"),
+                any(),
+                eq(true),
+                eq(true),
+                eq(10)))
+                .thenReturn(List.of(candidate));
+
+        var response = service.playerComparisonCandidates(
+                "https://www.opendota.com/players/123456789",
+                new AnalyticsFilters(null, null, null, null, 10));
+
+        assertThat(response.query()).isEqualTo("123456789");
+        assertThat(response.candidates().getFirst().opendotaAccountId()).isEqualTo(123456789L);
+    }
+
+    @Test
+    void playerCandidateLookupCapsLimitAtTwenty() {
+        var candidate = playerCandidate(OTHER_PROFILE_ID, "Aegis Ace", "aegis_ace", 7, null);
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(lookupRepository.findAnalyzedPlayerComparisonCandidates(
+                eq(CURRENT_PROFILE_ID),
+                eq("Aegis"),
+                any(),
+                eq(true),
+                eq(true),
+                eq(20)))
+                .thenReturn(List.of(candidate));
+
+        var response = service.playerComparisonCandidates(
+                "Aegis",
+                new AnalyticsFilters(null, null, null, null, 100));
+
+        assertThat(response.candidates()).hasSize(1);
+        verify(lookupRepository).findAnalyzedPlayerComparisonCandidates(
+                eq(CURRENT_PROFILE_ID),
+                eq("Aegis"),
+                any(),
+                eq(true),
+                eq(true),
+                eq(20));
+    }
+
+    @Test
+    void playerCandidateLookupCanReturnTeamCandidateWithoutAnalyticsData() {
+        var candidate = playerCandidate(OTHER_PROFILE_ID, "Bench Player", "bench", 0, null);
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(lookupRepository.isActiveTeamMember(TEAM_A_ID, CURRENT_PROFILE_ID)).thenReturn(true);
+        when(lookupRepository.findActiveTeamPlayerComparisonCandidates(
+                eq(TEAM_A_ID),
+                eq(CURRENT_PROFILE_ID),
+                eq("Bench"),
+                eq(true),
+                eq(10)))
+                .thenReturn(List.of(candidate));
+
+        var response = service.playerComparisonCandidates(
+                "Bench",
+                new AnalyticsFilters(null, TEAM_A_ID, null, null, 10));
+
+        assertThat(response.candidates()).hasSize(1);
+        assertThat(response.candidates().getFirst().hasAnalyticsData()).isFalse();
+        assertThat(response.candidates().getFirst().analyticsGamesCount()).isZero();
+        assertThat(response.candidates().getFirst().label()).isEqualTo("No imported matches yet");
     }
 
     @Test
@@ -407,11 +533,24 @@ class AnalyticsComparisonServiceTest {
             String displayName,
             String nickname
     ) {
+        return playerCandidate(profileId, displayName, nickname, 0, null);
+    }
+
+    private AnalyticsLookupRepository.PlayerComparisonCandidate playerCandidate(
+            UUID profileId,
+            String displayName,
+            String nickname,
+            int analyticsGamesCount,
+            Long opendotaAccountId
+    ) {
         return new AnalyticsLookupRepository.PlayerComparisonCandidate(
                 profileId,
                 displayName,
                 nickname,
                 TEAM_A_ID,
-                "Radiant Wolves");
+                "Radiant Wolves",
+                "https://cdn.example.test/avatar.png",
+                opendotaAccountId,
+                analyticsGamesCount);
     }
 }

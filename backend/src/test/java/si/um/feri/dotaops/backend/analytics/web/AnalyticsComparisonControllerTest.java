@@ -95,6 +95,59 @@ class AnalyticsComparisonControllerTest {
                 .andExpect(jsonPath("$.data.warnings[0].code").value("LOW_SHARED_HERO_SAMPLE"));
     }
 
+    @Test
+    void playerCandidatesAcceptQAliasAndReturnAutocompleteFieldsWithoutSensitiveData() throws Exception {
+        when(analyticsComparisonService.playerComparisonCandidates(eq("Aegis"), any()))
+                .thenReturn(new PlayerComparisonLookupResponse(
+                        "Aegis",
+                        false,
+                        false,
+                        List.of(new PlayerComparisonCandidateResponse(
+                                PROFILE_B_ID,
+                                "Aegis Ace",
+                                "aegis_ace",
+                                null,
+                                "Radiant Wolves",
+                                "https://cdn.example.test/avatar.png",
+                                123456789L,
+                                8,
+                                true,
+                                "8 imported analytics matches"))));
+
+        mockMvc.perform(get("/api/analytics/compare/players/candidates")
+                        .queryParam("q", "Aegis")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.query").value("Aegis"))
+                .andExpect(jsonPath("$.data.candidates[0].profileId").value(PROFILE_B_ID.toString()))
+                .andExpect(jsonPath("$.data.candidates[0].displayName").value("Aegis Ace"))
+                .andExpect(jsonPath("$.data.candidates[0].nickname").value("aegis_ace"))
+                .andExpect(jsonPath("$.data.candidates[0].avatarUrl").value("https://cdn.example.test/avatar.png"))
+                .andExpect(jsonPath("$.data.candidates[0].opendotaAccountId").value(123456789))
+                .andExpect(jsonPath("$.data.candidates[0].analyticsGamesCount").value(8))
+                .andExpect(jsonPath("$.data.candidates[0].hasAnalyticsData").value(true))
+                .andExpect(jsonPath("$.data.candidates[0].label").value("8 imported analytics matches"))
+                .andExpect(jsonPath("$.data.candidates[0].email").doesNotExist())
+                .andExpect(jsonPath("$.data.candidates[0].authUserId").doesNotExist())
+                .andExpect(jsonPath("$.data.candidates[0].userId").doesNotExist());
+    }
+
+    @Test
+    void playerCandidatesAcceptSearchAliasAndReturnStableEmptyResponse() throws Exception {
+        when(analyticsComparisonService.playerComparisonCandidates(eq("Nope"), any()))
+                .thenReturn(new PlayerComparisonLookupResponse("Nope", false, false, List.of()));
+
+        mockMvc.perform(get("/api/analytics/compare/players/candidates")
+                        .queryParam("search", "Nope")
+                        .header("Authorization", bearerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.query").value("Nope"))
+                .andExpect(jsonPath("$.data.exactMatch").value(false))
+                .andExpect(jsonPath("$.data.ambiguous").value(false))
+                .andExpect(jsonPath("$.data.candidates").isArray())
+                .andExpect(jsonPath("$.data.candidates").isEmpty());
+    }
+
     private static PlayerComparisonResponse comparisonResponse() {
         PlayerComparisonMetricResponse profileA = metric(PROFILE_A_ID, "Carry One", "620.00", "5.50");
         PlayerComparisonMetricResponse profileB = metric(PROFILE_B_ID, "Carry Two", "580.00", "4.40");
