@@ -12,8 +12,9 @@ import {
   Trophy,
   UsersRound
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PlayerComparisonSearch } from "@/components/player-comparison-search";
 import { SectionHeader } from "@/components/section-header";
 import { TelemetryCard } from "@/components/telemetry-card";
 import { useTournamentLiveRefresh } from "@/hooks/use-tournament-live-refresh";
@@ -30,7 +31,6 @@ import {
   getPublicAnalyticsSnapshot,
   getHeroLookups,
   getTeamPlayerLookups,
-  lookupPlayerComparisonCandidates,
   refreshAnalyticsAdmin,
   type AnalyticsFilters,
   type AnalyticsMatchHistory,
@@ -42,9 +42,13 @@ import {
   type OrganizerAnalyticsResponse,
   type OrganizerTournamentLookup,
   type OrganizerTournamentAnalyticsResponse,
+  type PlayerComparisonMatch,
+  type PlayerComparisonMatchPlayer,
+  type PlayerComparisonMetric,
   type PlayerComparisonResponse,
   type PlayerComparisonCandidate,
-  type PlayerComparisonLookupResponse,
+  type PlayerComparisonSharedHero,
+  type PlayerComparisonWarning,
   type PlayerAnalyticsMetric,
   type PlayerAnalyticsResponse,
   type PlayerHeroPerformance,
@@ -703,6 +707,7 @@ function AnalyticsTabContent({
       <PlayerRoleAnalyticsPanel
         activeTab={activeTab}
         appliedFilters={appliedFilters}
+        currentProfile={currentProfile}
         currentProfileId={currentProfile?.profileId ?? ""}
         personal={roleAnalytics.personal}
         team={roleAnalytics.team}
@@ -755,12 +760,14 @@ function AnalyticsTabContent({
 function PlayerRoleAnalyticsPanel({
   activeTab,
   appliedFilters,
+  currentProfile,
   currentProfileId,
   personal,
   team
 }: {
   activeTab: string;
   appliedFilters: AnalyticsFilters;
+  currentProfile: CurrentUserProfile | null;
   currentProfileId: string;
   personal: PlayerAnalyticsResponse;
   team: CurrentTeamAnalyticsResponse;
@@ -953,6 +960,7 @@ function PlayerRoleAnalyticsPanel({
     return (
       <PlayerRosterComparison
         appliedFilters={appliedFilters}
+        currentProfile={currentProfile}
         currentProfileId={currentProfileId}
         fallbackPlayers={team.rosterPerformance}
       />
@@ -1692,33 +1700,27 @@ function PublicAggregatePanel({
 
 function PlayerRosterComparison({
   appliedFilters,
+  currentProfile,
   currentProfileId,
   fallbackPlayers
 }: {
   appliedFilters: AnalyticsFilters;
+  currentProfile: CurrentUserProfile | null;
   currentProfileId: string;
   fallbackPlayers: PlayerAnalyticsMetric[];
 }) {
-  const [candidateLookup, setCandidateLookup] = useState<PlayerComparisonLookupResponse | null>(null);
   const [comparison, setComparison] = useState<PlayerComparisonResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isComparing, setIsComparing] = useState(false);
   const [isLoadingLookups, setIsLoadingLookups] = useState(false);
-  const [isSearchingPlayers, setIsSearchingPlayers] = useState(false);
   const [leftId, setLeftId] = useState("");
-  const [nameQuery, setNameQuery] = useState("");
-  const [nameSearchError, setNameSearchError] = useState<string | null>(null);
+  const [leftSearchSelection, setLeftSearchSelection] = useState<PlayerComparisonCandidate | null>(null);
   const [playerLookups, setPlayerLookups] = useState<TeamPlayerLookup[]>([]);
   const [rightId, setRightId] = useState("");
-  const [selectedCandidate, setSelectedCandidate] = useState<PlayerComparisonCandidate | null>(null);
+  const [rightSearchSelection, setRightSearchSelection] = useState<PlayerComparisonCandidate | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState(appliedFilters.teamId ?? "");
   const [teamLookups, setTeamLookups] = useState<TeamLookup[]>([]);
-
-  function clearNameComparison() {
-    setCandidateLookup(null);
-    setNameSearchError(null);
-    setSelectedCandidate(null);
-  }
+  const [useCurrentProfileDefault, setUseCurrentProfileDefault] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -1789,66 +1791,72 @@ function PlayerRosterComparison({
     };
   }, [selectedTeamId]);
 
-  const players = playerLookups.length > 0
-    ? playerLookups.map((player) => ({
-      displayName: player.displayName,
-      profileId: player.profileId
-    }))
-    : fallbackPlayers.map((player) => ({
-      displayName: player.displayName,
-      profileId: player.profileId
-    }));
-  const selectedCandidateId = selectedCandidate?.profileId ?? "";
-  const nameComparisonActive = Boolean(currentProfileId && selectedCandidateId);
+  const players = useMemo(
+    () => playerLookups.length > 0
+      ? playerLookups.map((player) => ({
+        displayName: player.displayName,
+        profileId: player.profileId
+      }))
+      : fallbackPlayers.map((player) => ({
+        displayName: player.displayName,
+        profileId: player.profileId
+      })),
+    [fallbackPlayers, playerLookups]
+  );
   const candidateTeamFilter = selectedTeamId || appliedFilters.teamId;
-  const effectiveLeftId = nameComparisonActive ? currentProfileId : leftId || players[0]?.profileId || "";
-  const effectiveRightId = nameComparisonActive
-    ? selectedCandidateId
-    : (rightId && rightId !== effectiveLeftId ? rightId : "") ||
-      players.find((player) => player.profileId !== effectiveLeftId)?.profileId ||
-      "";
-
-  async function searchPlayersByName(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const query = nameQuery.trim();
-    clearNameComparison();
-    setComparison(null);
-    setError(null);
-
-    if (!currentProfileId) {
-      setNameSearchError("Current player profile is unavailable.");
-      return;
+  const currentPlayerMetric = useMemo(
+    () => fallbackPlayers.find((player) => player.profileId === currentProfileId) ?? null,
+    [currentProfileId, fallbackPlayers]
+  );
+  const currentProfileCandidate = useMemo(() => {
+    if (!currentProfileId || !currentProfile) {
+      return null;
     }
 
-    if (query.length < 2) {
-      setNameSearchError("Enter at least two characters.");
-      return;
-    }
+    const analyticsGamesCount = currentPlayerMetric?.gamesPlayed ?? 0;
 
-    setIsSearchingPlayers(true);
+    return {
+      analyticsGamesCount,
+      avatarUrl: currentProfile.avatarUrl,
+      displayName: currentProfile.displayName ?? currentProfile.nickname,
+      hasAnalyticsData: analyticsGamesCount > 0,
+      label: analyticsGamesCount > 0
+        ? `${analyticsGamesCount.toLocaleString("en-US")} analytics games`
+        : "Current profile",
+      nickname: currentProfile.nickname,
+      opendotaAccountId: currentProfile.opendotaAccountId,
+      profileId: currentProfileId,
+      teamId: currentPlayerMetric?.teamId ?? candidateTeamFilter ?? null,
+      teamName: currentPlayerMetric?.teamName ?? null
+    };
+  }, [candidateTeamFilter, currentPlayerMetric, currentProfile, currentProfileId]);
+  const searchFilters = useMemo(
+    () => ({
+      from: appliedFilters.from,
+      heroId: appliedFilters.heroId,
+      limit: 10,
+      teamId: candidateTeamFilter,
+      to: appliedFilters.to,
+      tournamentId: appliedFilters.tournamentId
+    }),
+    [
+      appliedFilters.from,
+      appliedFilters.heroId,
+      appliedFilters.to,
+      appliedFilters.tournamentId,
+      candidateTeamFilter
+    ]
+  );
 
-    try {
-      const response = await lookupPlayerComparisonCandidates({
-        filters: {
-          from: appliedFilters.from,
-          heroId: appliedFilters.heroId,
-          limit: appliedFilters.limit,
-          teamId: candidateTeamFilter,
-          to: appliedFilters.to,
-          tournamentId: appliedFilters.tournamentId
-        },
-        query
-      });
-
-      setCandidateLookup(response);
-      setSelectedCandidate(response.exactMatch && response.candidates.length === 1 ? response.candidates[0] : null);
-    } catch (caught) {
-      setNameSearchError(analyticsErrorMessage(caught));
-    } finally {
-      setIsSearchingPlayers(false);
-    }
-  }
+  const activeLeftSearchSelection =
+    useCurrentProfileDefault ? leftSearchSelection ?? currentProfileCandidate : leftSearchSelection;
+  const effectiveLeftId = activeLeftSearchSelection?.profileId || leftId || players[0]?.profileId || "";
+  const effectiveRightId =
+    rightSearchSelection?.profileId ||
+    (rightId && rightId !== effectiveLeftId ? rightId : "") ||
+    players.find((player) => player.profileId !== effectiveLeftId)?.profileId ||
+    "";
+  const searchComparisonActive = Boolean(activeLeftSearchSelection || rightSearchSelection);
 
   useEffect(() => {
     let cancelled = false;
@@ -1858,7 +1866,7 @@ function PlayerRosterComparison({
         !effectiveLeftId ||
         !effectiveRightId ||
         effectiveLeftId === effectiveRightId ||
-        (!nameComparisonActive && !selectedTeamId)
+        (!searchComparisonActive && !selectedTeamId)
       ) {
         setComparison(null);
         return;
@@ -1873,7 +1881,7 @@ function PlayerRosterComparison({
             from: appliedFilters.from,
             heroId: appliedFilters.heroId,
             limit: appliedFilters.limit,
-            teamId: nameComparisonActive ? candidateTeamFilter : selectedTeamId,
+            teamId: searchComparisonActive ? candidateTeamFilter : selectedTeamId,
             to: appliedFilters.to,
             tournamentId: appliedFilters.tournamentId
           },
@@ -1901,7 +1909,7 @@ function PlayerRosterComparison({
     return () => {
       cancelled = true;
     };
-  }, [appliedFilters.from, appliedFilters.heroId, appliedFilters.limit, appliedFilters.to, appliedFilters.tournamentId, candidateTeamFilter, effectiveLeftId, effectiveRightId, nameComparisonActive, selectedTeamId]);
+  }, [appliedFilters.from, appliedFilters.heroId, appliedFilters.limit, appliedFilters.to, appliedFilters.tournamentId, candidateTeamFilter, effectiveLeftId, effectiveRightId, searchComparisonActive, selectedTeamId]);
 
   if (!currentProfileId && teamLookups.length === 0 && fallbackPlayers.length < 2 && !isLoadingLookups) {
     return (
@@ -1936,7 +1944,9 @@ function PlayerRosterComparison({
             setSelectedTeamId(event.target.value);
             setLeftId("");
             setRightId("");
-            clearNameComparison();
+            setUseCurrentProfileDefault(true);
+            setLeftSearchSelection(null);
+            setRightSearchSelection(null);
             setComparison(null);
           }}>
             <option value="">Select team</option>
@@ -1948,9 +1958,10 @@ function PlayerRosterComparison({
           </select>
         </label>
         <label>
-          <span>Player A</span>
-          <select value={nameComparisonActive ? "" : effectiveLeftId} onChange={(event) => {
-            clearNameComparison();
+          <span>Roster Player A</span>
+          <select value={activeLeftSearchSelection ? "" : effectiveLeftId} onChange={(event) => {
+            setUseCurrentProfileDefault(false);
+            setLeftSearchSelection(null);
             setLeftId(event.target.value);
           }}>
             <option value="">Select player</option>
@@ -1962,9 +1973,9 @@ function PlayerRosterComparison({
           </select>
         </label>
         <label>
-          <span>Player B</span>
-          <select value={nameComparisonActive ? "" : effectiveRightId} onChange={(event) => {
-            clearNameComparison();
+          <span>Roster Player B</span>
+          <select value={rightSearchSelection ? "" : effectiveRightId} onChange={(event) => {
+            setRightSearchSelection(null);
             setRightId(event.target.value);
           }}>
             <option value="">Select player</option>
@@ -1978,53 +1989,46 @@ function PlayerRosterComparison({
           </select>
         </label>
       </div>
-      <form className="analytics-filter-grid" onSubmit={searchPlayersByName}>
-        <label>
-          <span>Player name</span>
-          <input
-            disabled={!currentProfileId || isSearchingPlayers}
-            onChange={(event) => setNameQuery(event.target.value)}
-            placeholder="Display name or nickname"
-            type="search"
-            value={nameQuery}
-          />
-        </label>
-        <div className="analytics-filter-actions">
-          <button className="button ops-button-primary" disabled={!currentProfileId || isSearchingPlayers} type="submit">
-            Search
-          </button>
-        </div>
-      </form>
+      <div className="analytics-player-search-grid">
+        <PlayerComparisonSearch
+          excludedProfileId={effectiveRightId}
+          filters={searchFilters}
+          label="Search Player A"
+          onClear={() => {
+            setUseCurrentProfileDefault(false);
+            setLeftSearchSelection(null);
+            setLeftId("");
+            setComparison(null);
+          }}
+          onSelect={(candidate) => {
+            setUseCurrentProfileDefault(false);
+            setLeftSearchSelection(candidate);
+            setLeftId("");
+            setComparison(null);
+          }}
+          selectedCandidate={activeLeftSearchSelection}
+        />
+        <PlayerComparisonSearch
+          excludedProfileId={effectiveLeftId}
+          filters={searchFilters}
+          label="Search Player B"
+          onClear={() => {
+            setRightSearchSelection(null);
+            setRightId("");
+            setComparison(null);
+          }}
+          onSelect={(candidate) => {
+            setRightSearchSelection(candidate);
+            setRightId("");
+            setComparison(null);
+          }}
+          selectedCandidate={rightSearchSelection}
+        />
+      </div>
       {isLoadingLookups ? <p className="analytics-slow-query">Loading roster options...</p> : null}
-      {isSearchingPlayers ? <p className="analytics-slow-query">Searching players...</p> : null}
       {isComparing ? <p className="analytics-slow-query">Comparing players...</p> : null}
       {error ? <AnalyticsEmptyBlock title="Player comparison unavailable." detail={error} /> : null}
-      {nameSearchError ? <AnalyticsEmptyBlock title="Player search unavailable." detail={nameSearchError} /> : null}
-      {!nameSearchError && candidateLookup && candidateLookup.candidates.length === 0 ? (
-        <AnalyticsEmptyBlock
-          title="No matching player found."
-          detail="Try an exact display name, nickname, or a broader public analytics filter."
-        />
-      ) : null}
-      {!nameSearchError && candidateLookup && candidateLookup.candidates.length > 0 && !selectedCandidate ? (
-        <div className="analytics-comparison-cards">
-          {candidateLookup.candidates.map((candidate) => (
-            <article className="analytics-comparison-card" key={candidate.profileId}>
-              <span className="ops-label">{candidate.nickname ?? "Player candidate"}</span>
-              <h3>{candidate.displayName}</h3>
-              <p>{candidate.teamName ?? "Public analytics player"}</p>
-              <button
-                className="button ops-button-secondary"
-                onClick={() => setSelectedCandidate(candidate)}
-                type="button"
-              >
-                Compare
-              </button>
-            </article>
-          ))}
-        </div>
-      ) : null}
-      {!error && !nameComparisonActive && players.length < 2 ? (
+      {!error && !searchComparisonActive && players.length < 2 ? (
         <AnalyticsEmptyBlock
           title="Player comparison requires at least two players."
           detail="The selected team roster lookup returned fewer than two players."
@@ -2033,40 +2037,27 @@ function PlayerRosterComparison({
       {!error && comparison && leftPlayer && rightPlayer ? (
         <>
           <span className="ops-badge">Access scope: {comparison.filters.accessScope}</span>
-          <ComparisonCards
-            left={{
-              metrics: playerComparisonMetrics(leftPlayer),
-              name: leftPlayer.displayName,
-              subtitle: leftPlayer.teamName ?? "Selected player"
-            }}
-            right={{
-              metrics: playerComparisonMetrics(rightPlayer),
-              name: rightPlayer.displayName,
-              subtitle: rightPlayer.teamName ?? "Selected player"
-            }}
+          <PlayerComparisonWarnings warnings={comparison.warnings} />
+          <PlayerHeadlineComparison
+            comparison={comparison}
+            leftPlayer={leftPlayer}
+            rightPlayer={rightPlayer}
           />
-          {comparison.profileAHeroPerformance.length > 0 || comparison.profileBHeroPerformance.length > 0 ? (
+          {comparison.profileAHeroDetails.length > 0 ||
+          comparison.profileBHeroDetails.length > 0 ||
+          comparison.profileAHeroPerformance.length > 0 ||
+          comparison.profileBHeroPerformance.length > 0 ? (
             <section className="analytics-terminal-grid analytics-terminal-grid-secondary">
-              {comparison.profileAHeroPerformance.length > 0 ? (
-                <div className="analytics-terminal-panel analytics-data-panel ops-panel">
-                  <SectionHeader
-                    eyebrow="Hero performance"
-                    title={`${leftPlayer.displayName} Heroes`}
-                    description="Hero performance returned for the first compared player."
-                  />
-                  <HeroMatrix heroes={comparison.profileAHeroPerformance} />
-                </div>
-              ) : null}
-              {comparison.profileBHeroPerformance.length > 0 ? (
-                <div className="analytics-terminal-panel analytics-data-panel ops-panel">
-                  <SectionHeader
-                    eyebrow="Hero performance"
-                    title={`${rightPlayer.displayName} Heroes`}
-                    description="Hero performance returned for the second compared player."
-                  />
-                  <HeroMatrix heroes={comparison.profileBHeroPerformance} />
-                </div>
-              ) : null}
+              <PlayerHeroPoolBlock
+                fallbackHeroes={comparison.profileAHeroPerformance}
+                heroDetails={comparison.profileAHeroDetails}
+                playerName={leftPlayer.displayName}
+              />
+              <PlayerHeroPoolBlock
+                fallbackHeroes={comparison.profileBHeroPerformance}
+                heroDetails={comparison.profileBHeroDetails}
+                playerName={rightPlayer.displayName}
+              />
             </section>
           ) : null}
           <section className="analytics-terminal-grid analytics-terminal-grid-secondary">
@@ -2076,7 +2067,10 @@ function PlayerRosterComparison({
                 title="Shared Heroes"
                 description="Hero overlap returned by the player comparison endpoint."
               />
-              <HeroMatrix heroes={comparison.sharedHeroes} />
+              <SharedHeroComparisonTable
+                heroes={comparison.sharedHeroComparisons}
+                fallbackHeroes={comparison.sharedHeroes}
+              />
             </div>
             <div className="analytics-terminal-panel analytics-data-panel ops-panel">
               <SectionHeader
@@ -2084,12 +2078,306 @@ function PlayerRosterComparison({
                 title="Shared Match History"
                 description="Matches where both compared players appear in normalized analytics data."
               />
-              <MatchHistoryList emptyText="No shared matches returned." matches={comparison.recentMatches} />
+              <EnrichedMatchHistoryTable
+                fallbackMatches={comparison.recentMatches}
+                leftName={leftPlayer.displayName}
+                matches={comparison.enrichedMatchHistory}
+                rightName={rightPlayer.displayName}
+              />
             </div>
           </section>
         </>
       ) : null}
     </section>
+  );
+}
+
+function playerHeadlineMetrics(
+  metric: PlayerComparisonMetric | null,
+  fallback: PlayerAnalyticsMetric | null
+) {
+  const gamesPlayed = metric?.gamesPlayed ?? fallback?.gamesPlayed;
+  const wins = metric?.wins ?? fallback?.wins;
+  const losses = metric?.losses ?? fallback?.losses;
+  const winRate = metric?.winRate ?? fallback?.winRate;
+  const kda = metric?.kda ?? fallback?.kda;
+  const avgKills = metric?.avgKills ?? fallback?.avgKills;
+  const avgDeaths = metric?.avgDeaths ?? fallback?.avgDeaths;
+  const avgAssists = metric?.avgAssists ?? fallback?.avgAssists;
+  const avgGpm = metric?.avgGpm ?? fallback?.avgGpm;
+  const avgXpm = metric?.avgXpm ?? fallback?.avgXpm;
+  const avgHeroDamage = metric?.avgHeroDamage ?? fallback?.avgHeroDamage;
+
+  return [
+    { label: "Games", value: countMetricValue(gamesPlayed) },
+    { label: "Wins", value: countMetricValue(wins) },
+    { label: "Losses", value: countMetricValue(losses) },
+    { label: "Win rate", value: typeof winRate === "number" ? formatPercent(winRate) : "No data" },
+    { label: "KDA", value: safeMetricNumber(kda, 2) },
+    { label: "Avg kills", value: safeMetricNumber(avgKills) },
+    { label: "Avg deaths", value: safeMetricNumber(avgDeaths) },
+    { label: "Avg assists", value: safeMetricNumber(avgAssists) },
+    { label: "GPM", value: safeMetricNumber(avgGpm) },
+    { label: "XPM", value: safeMetricNumber(avgXpm) },
+    { label: "Last hits", value: safeMetricNumber(metric?.avgLastHits) },
+    { label: "Denies", value: safeMetricNumber(metric?.avgDenies) },
+    { label: "Net worth", value: safeMetricNumber(metric?.avgNetWorth) },
+    { label: "Hero damage", value: safeMetricNumber(avgHeroDamage) },
+    { label: "Tower damage", value: safeMetricNumber(metric?.avgTowerDamage) },
+    { label: "Hero healing", value: safeMetricNumber(metric?.avgHeroHealing) }
+  ];
+}
+
+function PlayerHeadlineComparison({
+  comparison,
+  leftPlayer,
+  rightPlayer
+}: {
+  comparison: PlayerComparisonResponse;
+  leftPlayer: PlayerAnalyticsMetric;
+  rightPlayer: PlayerAnalyticsMetric;
+}) {
+  const headline = comparison.headlineComparison;
+  const profileA = headline?.profileA ?? null;
+  const profileB = headline?.profileB ?? null;
+
+  return (
+    <ComparisonCards
+      left={{
+        metrics: playerHeadlineMetrics(profileA, leftPlayer),
+        name: profileA?.displayName ?? leftPlayer.displayName,
+        subtitle: leftPlayer.teamName ?? "Selected player"
+      }}
+      right={{
+        metrics: playerHeadlineMetrics(profileB, rightPlayer),
+        name: profileB?.displayName ?? rightPlayer.displayName,
+        subtitle: rightPlayer.teamName ?? "Selected player"
+      }}
+    />
+  );
+}
+
+function PlayerComparisonWarnings({ warnings }: { warnings: PlayerComparisonWarning[] }) {
+  if (warnings.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="analytics-warning-list">
+      {warnings.map((warning, index) => (
+        <article key={`${warning.code}-${warning.profileId ?? "shared"}-${warning.heroId ?? index}`}>
+          <span className="ops-label">{warning.severity}</span>
+          <strong>{warning.message}</strong>
+          <p>
+            {warning.metricName} sample {warning.sampleSize.toLocaleString("en-US")} /
+            recommended {warning.recommendedMinimum.toLocaleString("en-US")}
+          </p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function heroStatsSummary(stats: PlayerComparisonSharedHero["profileA"]) {
+  if (!stats) {
+    return (
+      <>
+        <strong>No data</strong>
+        <span>Hero row unavailable</span>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <strong>{stats.gamesPlayed} games / {formatPercent(stats.winRate)} WR</strong>
+      <span>KDA {safeMetricNumber(stats.kda, 2)} / deaths {safeMetricNumber(stats.avgDeaths)}</span>
+      <span>GPM/XPM {safeMetricNumber(stats.avgGpm)} / {safeMetricNumber(stats.avgXpm)}</span>
+      <span>{Math.round(stats.avgHeroDamage).toLocaleString("en-US")} hero / {Math.round(stats.avgTowerDamage).toLocaleString("en-US")} tower</span>
+    </>
+  );
+}
+
+function signedMetric(value: number | null | undefined, digits = 1, suffix = "") {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "No data";
+  }
+
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(digits)}${suffix}`;
+}
+
+function SharedHeroComparisonTable({
+  fallbackHeroes,
+  heroes
+}: {
+  fallbackHeroes: HeroAnalyticsMetric[];
+  heroes: PlayerComparisonSharedHero[];
+}) {
+  if (heroes.length === 0) {
+    return <HeroMatrix heroes={fallbackHeroes} />;
+  }
+
+  return (
+    <div className="analytics-real-table-wrap">
+      <table className="analytics-real-table">
+        <thead>
+          <tr>
+            <th>Hero</th>
+            <th>Profile A</th>
+            <th>Profile B</th>
+            <th>Delta</th>
+          </tr>
+        </thead>
+        <tbody>
+          {heroes.slice(0, 12).map((hero) => {
+            const smallestSample = Math.min(
+              hero.profileA?.gamesPlayed ?? 0,
+              hero.profileB?.gamesPlayed ?? 0
+            );
+
+            return (
+              <tr key={`${hero.heroId ?? hero.heroName ?? "hero"}-${hero.profileA?.profileId ?? "a"}-${hero.profileB?.profileId ?? "b"}`}>
+                <td>
+                  <strong>{hero.heroName ?? "Hero unavailable"}</strong>
+                  <span>{smallestSample < 3 ? "Small sample" : hero.heroId ?? "Shared hero"}</span>
+                </td>
+                <td>{heroStatsSummary(hero.profileA)}</td>
+                <td>{heroStatsSummary(hero.profileB)}</td>
+                <td>
+                  <strong>WR {signedMetric(hero.delta?.winRate, 1, "%")}</strong>
+                  <span>KDA {signedMetric(hero.delta?.kda, 2)}</span>
+                  <span>GPM/XPM {signedMetric(hero.delta?.avgGpm)} / {signedMetric(hero.delta?.avgXpm)}</span>
+                  <span>Damage {signedMetric(hero.delta?.avgHeroDamage)}</span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PlayerHeroPoolBlock({
+  fallbackHeroes,
+  heroDetails,
+  playerName
+}: {
+  fallbackHeroes: HeroAnalyticsMetric[];
+  heroDetails: PlayerHeroPerformance[];
+  playerName: string;
+}) {
+  return (
+    <div className="analytics-terminal-panel analytics-data-panel ops-panel">
+      <SectionHeader
+        eyebrow="Hero performance"
+        title={`${playerName} Hero Pool`}
+        description="Most played and best available hero rows from the player comparison response."
+      />
+      {heroDetails.length > 0 ? (
+        <PlayerHeroPerformanceTable heroes={heroDetails} />
+      ) : (
+        <HeroMatrix heroes={fallbackHeroes} />
+      )}
+    </div>
+  );
+}
+
+function comparisonMatchResult(player: PlayerComparisonMatchPlayer | null) {
+  if (!player) {
+    return "No player row";
+  }
+
+  if (player.won === true) {
+    return "Win";
+  }
+
+  if (player.won === false) {
+    return "Loss";
+  }
+
+  return "Result unavailable";
+}
+
+function comparisonMatchPlayerCell(player: PlayerComparisonMatchPlayer | null, fallbackName: string) {
+  if (!player) {
+    return (
+      <>
+        <strong>{fallbackName}</strong>
+        <span>No player match row</span>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <strong>{player.heroName ?? "Hero unavailable"} / {comparisonMatchResult(player)}</strong>
+      <span>K/D/A {player.kills}-{player.deaths}-{player.assists} / KDA {safeMetricNumber(player.kda, 2)}</span>
+      <span>GPM/XPM {countMetricValue(player.goldPerMin)} / {countMetricValue(player.xpPerMin)}</span>
+      <span>{countMetricValue(player.heroDamage)} hero / {countMetricValue(player.towerDamage)} tower / heal {countMetricValue(player.heroHealing)}</span>
+      <span>Net worth {countMetricValue(player.netWorth)} / side {player.teamSide ?? "unknown"}</span>
+    </>
+  );
+}
+
+function EnrichedMatchHistoryTable({
+  fallbackMatches,
+  leftName,
+  matches,
+  rightName
+}: {
+  fallbackMatches: AnalyticsMatchHistory[];
+  leftName: string;
+  matches: PlayerComparisonMatch[];
+  rightName: string;
+}) {
+  if (matches.length === 0) {
+    return <MatchHistoryList emptyText="No shared matches returned." matches={fallbackMatches} />;
+  }
+
+  return (
+    <div className="analytics-real-table-wrap">
+      <table className="analytics-real-table">
+        <thead>
+          <tr>
+            <th>Match</th>
+            <th>{leftName}</th>
+            <th>{rightName}</th>
+            <th>Context</th>
+          </tr>
+        </thead>
+        <tbody>
+          {matches.slice(0, 12).map((match, index) => (
+            <tr key={`${match.matchId ?? match.dotaMatchId ?? "match"}-${match.matchGameId ?? index}`}>
+              <td>
+                <strong>{match.dotaMatchId ? `Dota ${match.dotaMatchId}` : match.matchId ?? "Match unavailable"}</strong>
+                <span>{formatAnalyticsDateTime(match.playedAt)}</span>
+              </td>
+              <td>{comparisonMatchPlayerCell(match.profileA, leftName)}</td>
+              <td>{comparisonMatchPlayerCell(match.profileB, rightName)}</td>
+              <td>
+                <strong>{match.tournamentName ?? "Tournament unavailable"}</strong>
+                <span>{matchTeamsLabel({
+                  dotaMatchId: match.dotaMatchId,
+                  matchGameId: match.matchGameId,
+                  matchId: match.matchId,
+                  playedAt: match.playedAt,
+                  teamAId: match.teamAId,
+                  teamAName: match.teamAName,
+                  teamBId: match.teamBId,
+                  teamBName: match.teamBName,
+                  tournamentId: match.tournamentId,
+                  tournamentName: match.tournamentName,
+                  winnerTeamId: match.winnerTeamId
+                })}</span>
+                <span>Winner side {match.winnerSide ?? "unknown"}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -2257,20 +2545,6 @@ function TeamComparisonPanel({
       ) : null}
     </section>
   );
-}
-
-function playerComparisonMetrics(player: PlayerAnalyticsMetric) {
-  return [
-    { label: "Games", value: countMetricValue(player.gamesPlayed) },
-    { label: "W-L", value: `${player.wins}-${player.losses}` },
-    { label: "Win rate", value: formatPercent(player.winRate) },
-    { label: "KDA", value: safeMetricNumber(player.kda, 2) },
-    {
-      label: "K/D/A",
-      value: `${safeMetricNumber(player.avgKills)} / ${safeMetricNumber(player.avgDeaths)} / ${safeMetricNumber(player.avgAssists)}`
-    },
-    { label: "GPM/XPM", value: `${safeMetricNumber(player.avgGpm)} / ${safeMetricNumber(player.avgXpm)}` }
-  ];
 }
 
 function teamComparisonMetrics(team: TeamAnalyticsMetric) {
