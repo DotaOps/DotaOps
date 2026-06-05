@@ -13,6 +13,8 @@ import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.repository.AnalyticsLookupRepository;
 import si.um.feri.dotaops.backend.analytics.web.AnalyticsComparisonFiltersResponse;
 import si.um.feri.dotaops.backend.analytics.web.HeroMetricsResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerComparisonCandidateResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerComparisonLookupResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerComparisonResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerMetricsResponse;
 import si.um.feri.dotaops.backend.analytics.web.TeamComparisonResponse;
@@ -28,6 +30,8 @@ public class AnalyticsComparisonService {
 
     private static final String ACCESS_SCOPE_PROTECTED = "protected";
     private static final String ACCESS_SCOPE_PUBLIC = "public";
+    private static final int MIN_PLAYER_SEARCH_LENGTH = 2;
+    private static final int MAX_PLAYER_SEARCH_LIMIT = 20;
 
     private final AnalyticsQueryService analyticsQueryService;
     private final AnalyticsLookupRepository lookupRepository;
@@ -122,6 +126,34 @@ public class AnalyticsComparisonService {
                 analyticsQueryService.recentMatchesForPlayers(profileAId, profileBId, filters, access.publicOnly()));
     }
 
+    @Transactional(readOnly = true)
+    public PlayerComparisonLookupResponse playerComparisonCandidates(
+            String query,
+            AnalyticsFilters requestedFilters
+    ) {
+        String normalizedQuery = normalizePlayerSearchQuery(query);
+        AuthenticatedActor actor = currentUserProvider.requireActor();
+        CandidateSearch search = playerCandidateSearch(actor, requestedFilters);
+        int limit = Math.min(requestedFilters.limit(), MAX_PLAYER_SEARCH_LIMIT);
+
+        List<AnalyticsLookupRepository.PlayerComparisonCandidate> exactCandidates =
+                search.find(normalizedQuery, true, limit);
+        boolean exactMatch = !exactCandidates.isEmpty();
+        List<AnalyticsLookupRepository.PlayerComparisonCandidate> candidates = exactMatch
+                ? exactCandidates
+                : search.find(normalizedQuery, false, limit);
+
+        List<PlayerComparisonCandidateResponse> responses = candidates.stream()
+                .map(PlayerComparisonCandidateResponse::from)
+                .toList();
+
+        return new PlayerComparisonLookupResponse(
+                normalizedQuery,
+                exactMatch,
+                responses.size() > 1,
+                responses);
+    }
+
     private List<HeroMetricsResponse> heroPerformance(UUID profileId, AnalyticsFilters filters, boolean publicOnly) {
         AnalyticsFilters scopedFilters = filters.withProfileId(profileId);
         return publicOnly
@@ -178,6 +210,71 @@ public class AnalyticsComparisonService {
         throw new AccessDeniedException("You cannot compare these players.");
     }
 
+    private CandidateSearch playerCandidateSearch(AuthenticatedActor actor, AnalyticsFilters requestedFilters) {
+        UUID profileId = actor.requireProfileId();
+        AnalyticsFilters filters = new AnalyticsFilters(
+                requestedFilters.tournamentId(),
+                requestedFilters.teamId(),
+                null,
+                requestedFilters.heroId(),
+                requestedFilters.from(),
+                requestedFilters.to(),
+                requestedFilters.limit());
+
+        if (actor.isAdmin()) {
+            return (query, exact, limit) -> lookupRepository.findAnalyzedPlayerComparisonCandidates(
+                    null,
+                    query,
+                    filters,
+                    false,
+                    exact,
+                    limit);
+        }
+
+        if (actor.role() == ProfileRole.ORGANIZER) {
+            requireOrganizerTournamentScope(actor, filters.tournamentId());
+            return (query, exact, limit) -> lookupRepository.findAnalyzedPlayerComparisonCandidates(
+                    null,
+                    query,
+                    filters,
+                    false,
+                    exact,
+                    limit);
+        }
+
+        if (actor.role() == ProfileRole.PLAYER
+                && filters.teamId() != null
+                && lookupRepository.isActiveTeamMember(filters.teamId(), profileId)) {
+            return (query, exact, limit) -> lookupRepository.findActiveTeamPlayerComparisonCandidates(
+                    filters.teamId(),
+                    profileId,
+                    query,
+                    exact,
+                    limit);
+        }
+
+        if (actor.role() == ProfileRole.PLAYER) {
+            return (query, exact, limit) -> lookupRepository.findAnalyzedPlayerComparisonCandidates(
+                    profileId,
+                    query,
+                    filters.withTeamId(null),
+                    true,
+                    exact,
+                    limit);
+        }
+
+        throw new AccessDeniedException("You cannot search player comparison candidates.");
+    }
+
+    private String normalizePlayerSearchQuery(String query) {
+        String normalized = query == null ? "" : query.trim().replaceAll("\\s+", " ");
+        if (normalized.length() < MIN_PLAYER_SEARCH_LENGTH) {
+            throw new BadRequestException("Player search query must contain at least 2 characters.");
+        }
+
+        return normalized;
+    }
+
     private void requireOrganizerTournamentScope(AuthenticatedActor actor, UUID tournamentId) {
         if (tournamentId == null) {
             throw new BadRequestException("Organizer comparisons require tournamentId.");
@@ -185,6 +282,11 @@ public class AnalyticsComparisonService {
         if (!tournamentRepository.canManage(tournamentId, actor.requireProfileId(), actor.isAdmin())) {
             throw new AccessDeniedException("Only tournament organizers can compare private tournament analytics.");
         }
+    }
+
+    @FunctionalInterface
+    private interface CandidateSearch {
+        List<AnalyticsLookupRepository.PlayerComparisonCandidate> find(String query, boolean exact, int limit);
     }
 
     private record ComparisonAccess(String scope, boolean publicOnly) {

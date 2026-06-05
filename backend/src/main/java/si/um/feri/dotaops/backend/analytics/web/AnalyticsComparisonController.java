@@ -5,7 +5,9 @@ import java.util.UUID;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
@@ -77,6 +79,33 @@ public class AnalyticsComparisonController {
         return ApiResponse.of(analyticsComparisonService.comparePlayers(
                 profileAId,
                 profileBId,
+                new AnalyticsFilters(
+                        firstNonNull(tournamentId, tournamentIdSnake),
+                        firstNonNull(teamId, teamIdSnake),
+                        null,
+                        firstNonNull(heroId, heroIdSnake),
+                        from,
+                        to,
+                        limit)));
+    }
+
+    @GetMapping("/players/candidates")
+    ApiResponse<PlayerComparisonLookupResponse> playerComparisonCandidates(
+            @RequestParam @NotBlank @Size(max = 80) String query,
+            @RequestParam(required = false) UUID tournamentId,
+            @RequestParam(name = "tournament_id", required = false) UUID tournamentIdSnake,
+            @RequestParam(required = false) UUID teamId,
+            @RequestParam(name = "team_id", required = false) UUID teamIdSnake,
+            @RequestParam(required = false) UUID heroId,
+            @RequestParam(name = "hero_id", required = false) UUID heroIdSnake,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime to,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(20) int limit
+    ) {
+        return ApiResponse.of(analyticsComparisonService.playerComparisonCandidates(
+                query,
                 new AnalyticsFilters(
                         firstNonNull(tournamentId, tournamentIdSnake),
                         firstNonNull(teamId, teamIdSnake),

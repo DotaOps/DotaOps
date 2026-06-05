@@ -79,6 +79,97 @@ class AnalyticsComparisonServiceTest {
     }
 
     @Test
+    void playerCandidateLookupReturnsExactNameMatch() {
+        var candidate = playerCandidate(OTHER_PROFILE_ID, "Aegis Ace", "aegis_ace");
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(lookupRepository.findAnalyzedPlayerComparisonCandidates(
+                eq(CURRENT_PROFILE_ID),
+                eq("Aegis Ace"),
+                any(),
+                eq(true),
+                eq(true),
+                eq(10)))
+                .thenReturn(List.of(candidate));
+
+        var response = service.playerComparisonCandidates(
+                "  Aegis   Ace ",
+                new AnalyticsFilters(null, null, null, null, 10));
+
+        assertThat(response.query()).isEqualTo("Aegis Ace");
+        assertThat(response.exactMatch()).isTrue();
+        assertThat(response.ambiguous()).isFalse();
+        assertThat(response.candidates()).hasSize(1);
+        assertThat(response.candidates().getFirst().profileId()).isEqualTo(OTHER_PROFILE_ID);
+        assertThat(response.candidates().getFirst().displayName()).isEqualTo("Aegis Ace");
+    }
+
+    @Test
+    void playerCandidateLookupReturnsAmbiguousExactMatches() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(lookupRepository.findAnalyzedPlayerComparisonCandidates(
+                eq(CURRENT_PROFILE_ID),
+                eq("Carry"),
+                any(),
+                eq(true),
+                eq(true),
+                eq(10)))
+                .thenReturn(List.of(
+                        playerCandidate(OTHER_PROFILE_ID, "Carry", "safe_carry"),
+                        playerCandidate(THIRD_PROFILE_ID, "Carry", "greedy_carry")));
+
+        var response = service.playerComparisonCandidates(
+                "Carry",
+                new AnalyticsFilters(null, null, null, null, 10));
+
+        assertThat(response.exactMatch()).isTrue();
+        assertThat(response.ambiguous()).isTrue();
+        assertThat(response.candidates())
+                .extracting("profileId")
+                .containsExactly(OTHER_PROFILE_ID, THIRD_PROFILE_ID);
+    }
+
+    @Test
+    void playerCandidateLookupFallsBackToPartialSearchAndCanReturnNoMatches() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(lookupRepository.findAnalyzedPlayerComparisonCandidates(
+                eq(CURRENT_PROFILE_ID),
+                eq("Unknown"),
+                any(),
+                eq(true),
+                eq(true),
+                eq(10)))
+                .thenReturn(List.of());
+        when(lookupRepository.findAnalyzedPlayerComparisonCandidates(
+                eq(CURRENT_PROFILE_ID),
+                eq("Unknown"),
+                any(),
+                eq(true),
+                eq(false),
+                eq(10)))
+                .thenReturn(List.of());
+
+        var response = service.playerComparisonCandidates(
+                "Unknown",
+                new AnalyticsFilters(null, null, null, null, 10));
+
+        assertThat(response.exactMatch()).isFalse();
+        assertThat(response.ambiguous()).isFalse();
+        assertThat(response.candidates()).isEmpty();
+    }
+
+    @Test
+    void organizerCandidateLookupRequiresManageableTournament() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(tournamentRepository.canManage(TOURNAMENT_ID, CURRENT_PROFILE_ID, false)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.playerComparisonCandidates(
+                "Carry",
+                new AnalyticsFilters(TOURNAMENT_ID, null, null, null, 10)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only tournament organizers can compare private tournament analytics.");
+    }
+
+    @Test
     void organizerComparisonRequiresTournamentScope() {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
 
@@ -140,5 +231,18 @@ class AnalyticsComparisonServiceTest {
                 BigDecimal.valueOf(610),
                 BigDecimal.valueOf(720),
                 BigDecimal.valueOf(22000));
+    }
+
+    private AnalyticsLookupRepository.PlayerComparisonCandidate playerCandidate(
+            UUID profileId,
+            String displayName,
+            String nickname
+    ) {
+        return new AnalyticsLookupRepository.PlayerComparisonCandidate(
+                profileId,
+                displayName,
+                nickname,
+                TEAM_A_ID,
+                "Radiant Wolves");
     }
 }

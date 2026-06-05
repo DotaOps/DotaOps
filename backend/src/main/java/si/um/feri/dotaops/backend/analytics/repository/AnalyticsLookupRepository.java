@@ -2,11 +2,14 @@ package si.um.feri.dotaops.backend.analytics.repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+
+import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 
 @Repository
 public class AnalyticsLookupRepository {
@@ -101,6 +104,115 @@ public class AnalyticsLookupRepository {
                 this::mapPlayerLookup,
                 teamId,
                 limit);
+    }
+
+    public List<PlayerComparisonCandidate> findAnalyzedPlayerComparisonCandidates(
+            UUID excludedProfileId,
+            String query,
+            AnalyticsFilters filters,
+            boolean publicOnly,
+            boolean exact,
+            int limit
+    ) {
+        PlayerCandidateQueryParts queryParts = playerAnalyticsFilters(filters);
+        String normalizedQuery = query.toLowerCase();
+        String queryPattern = "%" + escapedLikePattern(normalizedQuery) + "%";
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(excludedProfileId != null);
+        parameters.add(excludedProfileId);
+        addNameParameters(parameters, normalizedQuery, queryPattern, exact);
+        parameters.addAll(queryParts.parameters());
+        parameters.add(normalizedQuery);
+        parameters.add(normalizedQuery);
+        parameters.add(limit);
+
+        return jdbcTemplate.query(
+                """
+                select
+                  p.id as profile_id,
+                  coalesce(p.display_name, p.nickname, 'Unknown player') as display_name,
+                  p.nickname,
+                  case
+                    when count(distinct mp.team_id) = 1 then min(mp.team_id::text)::uuid
+                    else null::uuid
+                  end as team_id,
+                  string_agg(distinct tm.name, ', ' order by tm.name) as team_name,
+                  count(*)::integer as analyzed_games
+                from public.match_players mp
+                left join public.match_games mg on mg.id = mp.match_game_id
+                join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
+                join public.tournaments t on t.id = m.tournament_id
+                join public.profiles p on p.id = mp.profile_id
+                left join public.teams tm on tm.id = mp.team_id
+                """ + "where " + tournamentVisibilityCondition(publicOnly) + "\n" + """
+                  and mp.profile_id is not null
+                  and p.role = 'player'::public.dotaops_user_role
+                  and (? = false or p.id <> ?)
+                  """ + "and " + playerNameCondition(exact) + "\n"
+                  + queryParts.sql() + """
+                group by p.id, p.display_name, p.nickname
+                order by
+                  case
+                    when lower(coalesce(p.display_name, '')) = ? or lower(coalesce(p.nickname, '')) = ? then 0
+                    else 1
+                  end,
+                  analyzed_games desc,
+                  lower(coalesce(p.display_name, p.nickname, '')) asc,
+                  p.id asc
+                limit ?
+                """,
+                this::mapPlayerComparisonCandidate,
+                parameters.toArray());
+    }
+
+    public List<PlayerComparisonCandidate> findActiveTeamPlayerComparisonCandidates(
+            UUID teamId,
+            UUID excludedProfileId,
+            String query,
+            boolean exact,
+            int limit
+    ) {
+        String normalizedQuery = query.toLowerCase();
+        String queryPattern = "%" + escapedLikePattern(normalizedQuery) + "%";
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(teamId);
+        parameters.add(excludedProfileId != null);
+        parameters.add(excludedProfileId);
+        addNameParameters(parameters, normalizedQuery, queryPattern, exact);
+        parameters.add(normalizedQuery);
+        parameters.add(normalizedQuery);
+        parameters.add(limit);
+
+        return jdbcTemplate.query(
+                """
+                select
+                  p.id as profile_id,
+                  coalesce(p.display_name, p.nickname, 'Unknown player') as display_name,
+                  p.nickname,
+                  t.id as team_id,
+                  t.name as team_name,
+                  0::integer as analyzed_games
+                from public.team_members tm
+                join public.profiles p on p.id = tm.profile_id
+                join public.teams t on t.id = tm.team_id
+                where tm.team_id = ?
+                  and tm.is_active = true
+                  and t.disbanded_at is null
+                  and p.role = 'player'::public.dotaops_user_role
+                  and (? = false or p.id <> ?)
+                  """ + "and " + playerNameCondition(exact) + """
+                order by
+                  case
+                    when lower(coalesce(p.display_name, '')) = ? or lower(coalesce(p.nickname, '')) = ? then 0
+                    else 1
+                  end,
+                  tm.joined_at asc,
+                  lower(coalesce(p.display_name, p.nickname, '')) asc,
+                  p.id asc
+                limit ?
+                """,
+                this::mapPlayerComparisonCandidate,
+                parameters.toArray());
     }
 
     public List<HeroLookup> findHeroes(int limit) {
@@ -340,6 +452,90 @@ public class AnalyticsLookupRepository {
                 resultSet.getString("team_name"));
     }
 
+    private PlayerComparisonCandidate mapPlayerComparisonCandidate(ResultSet resultSet, int rowNumber)
+            throws SQLException {
+        return new PlayerComparisonCandidate(
+                resultSet.getObject("profile_id", UUID.class),
+                resultSet.getString("display_name"),
+                resultSet.getString("nickname"),
+                resultSet.getObject("team_id", UUID.class),
+                resultSet.getString("team_name"));
+    }
+
+    private PlayerCandidateQueryParts playerAnalyticsFilters(AnalyticsFilters filters) {
+        List<String> clauses = new ArrayList<>();
+        List<Object> parameters = new ArrayList<>();
+        String analyticsTimestamp = analyticsTimestampExpression();
+
+        if (filters.tournamentId() != null) {
+            clauses.add("m.tournament_id = ?");
+            parameters.add(filters.tournamentId());
+        }
+        if (filters.teamId() != null) {
+            clauses.add("mp.team_id = ?");
+            parameters.add(filters.teamId());
+        }
+        if (filters.heroId() != null) {
+            clauses.add("mp.hero_id = ?");
+            parameters.add(filters.heroId());
+        }
+        if (filters.from() != null) {
+            clauses.add(analyticsTimestamp + " >= ?");
+            parameters.add(filters.from());
+        }
+        if (filters.to() != null) {
+            clauses.add(analyticsTimestamp + " < ?");
+            parameters.add(filters.to());
+        }
+
+        if (clauses.isEmpty()) {
+            return new PlayerCandidateQueryParts("", parameters);
+        }
+
+        return new PlayerCandidateQueryParts("  and " + String.join("\n  and ", clauses) + "\n", parameters);
+    }
+
+    private String analyticsTimestampExpression() {
+        return "coalesce(mg.started_at, mg.finished_at, m.started_at, m.finished_at, "
+                + "m.scheduled_at, mg.created_at, m.created_at)";
+    }
+
+    private String tournamentVisibilityCondition(boolean publicOnly) {
+        return publicOnly ? "t.is_public = true" : "true";
+    }
+
+    private String playerNameCondition(boolean exact) {
+        if (exact) {
+            return "(lower(coalesce(p.display_name, '')) = ? or lower(coalesce(p.nickname, '')) = ?)";
+        }
+
+        return "(lower(coalesce(p.display_name, '')) like ? escape '\\' "
+                + "or lower(coalesce(p.nickname, '')) like ? escape '\\')";
+    }
+
+    private void addNameParameters(
+            List<Object> parameters,
+            String normalizedQuery,
+            String queryPattern,
+            boolean exact
+    ) {
+        if (exact) {
+            parameters.add(normalizedQuery);
+            parameters.add(normalizedQuery);
+            return;
+        }
+
+        parameters.add(queryPattern);
+        parameters.add(queryPattern);
+    }
+
+    private String escapedLikePattern(String value) {
+        return value
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+    }
+
     public record TournamentLookup(
             UUID tournamentId,
             String title,
@@ -363,6 +559,15 @@ public class AnalyticsLookupRepository {
     ) {
     }
 
+    public record PlayerComparisonCandidate(
+            UUID profileId,
+            String displayName,
+            String nickname,
+            UUID teamId,
+            String teamName
+    ) {
+    }
+
     public record HeroLookup(
             UUID heroId,
             Integer dotaHeroId,
@@ -370,6 +575,12 @@ public class AnalyticsLookupRepository {
             String localizedName,
             String imageUrl,
             String iconUrl
+    ) {
+    }
+
+    private record PlayerCandidateQueryParts(
+            String sql,
+            List<Object> parameters
     ) {
     }
 }

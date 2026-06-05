@@ -12,7 +12,7 @@ import {
   Trophy,
   UsersRound
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { SectionHeader } from "@/components/section-header";
 import { TelemetryCard } from "@/components/telemetry-card";
@@ -30,6 +30,7 @@ import {
   getPublicAnalyticsSnapshot,
   getHeroLookups,
   getTeamPlayerLookups,
+  lookupPlayerComparisonCandidates,
   refreshAnalyticsAdmin,
   type AnalyticsFilters,
   type AnalyticsMatchHistory,
@@ -42,9 +43,12 @@ import {
   type OrganizerTournamentLookup,
   type OrganizerTournamentAnalyticsResponse,
   type PlayerComparisonResponse,
+  type PlayerComparisonCandidate,
+  type PlayerComparisonLookupResponse,
   type PlayerAnalyticsMetric,
   type PlayerAnalyticsResponse,
   type PlayerHeroPerformance,
+  type PlayerInsight,
   type PlayerProgressPoint,
   type RecentImportMetric,
   type TeamComparisonResponse,
@@ -217,6 +221,16 @@ function playerHeroReferenceLabel(hero: PlayerHeroPerformance) {
   return hero.recentDotaMatchId
     ? `Dota ${hero.recentDotaMatchId}`
     : hero.recentMatchId ?? "Recent match unavailable";
+}
+
+function insightMetricLabel(insight: PlayerInsight) {
+  const current = safeMetricNumber(insight.currentValue, 2);
+
+  if (insight.comparisonValue === null) {
+    return `${insight.metricName}: ${current}`;
+  }
+
+  return `${insight.metricName}: ${current} vs ${safeMetricNumber(insight.comparisonValue, 2)}`;
 }
 
 function average(values: number[]) {
@@ -570,6 +584,7 @@ export function AnalyticsDashboard() {
           activeTab={activeTab}
           appliedFilters={appliedPublicFilters}
           canRefreshAnalytics={canRefreshAnalytics}
+          currentProfile={profile}
           filterDraft={filterDraft}
           isRefreshing={isRefreshing}
           onApplyFilters={applyPublicFilters}
@@ -619,6 +634,7 @@ function AnalyticsTabContent({
   activeTab,
   appliedFilters,
   canRefreshAnalytics,
+  currentProfile,
   filterDraft,
   isRefreshing,
   onApplyFilters,
@@ -636,6 +652,7 @@ function AnalyticsTabContent({
   activeTab: string;
   appliedFilters: AnalyticsFilters;
   canRefreshAnalytics: boolean;
+  currentProfile: CurrentUserProfile | null;
   filterDraft: AnalyticsFilterForm;
   isRefreshing: boolean;
   onApplyFilters: (filters: AnalyticsFilterForm) => void;
@@ -686,6 +703,7 @@ function AnalyticsTabContent({
       <PlayerRoleAnalyticsPanel
         activeTab={activeTab}
         appliedFilters={appliedFilters}
+        currentProfileId={currentProfile?.profileId ?? ""}
         personal={roleAnalytics.personal}
         team={roleAnalytics.team}
       />
@@ -737,11 +755,13 @@ function AnalyticsTabContent({
 function PlayerRoleAnalyticsPanel({
   activeTab,
   appliedFilters,
+  currentProfileId,
   personal,
   team
 }: {
   activeTab: string;
   appliedFilters: AnalyticsFilters;
+  currentProfileId: string;
   personal: PlayerAnalyticsResponse;
   team: CurrentTeamAnalyticsResponse;
 }) {
@@ -807,6 +827,14 @@ function PlayerRoleAnalyticsPanel({
           description="Protected analytics scoped to the current player profile."
         />
         <section className="analytics-terminal-grid analytics-terminal-grid-secondary">
+          <div className="analytics-terminal-panel analytics-data-panel ops-panel">
+            <SectionHeader
+              eyebrow="Gameplay insights"
+              title="Personal Insights"
+              description="Rule-based signals from your recent match and hero analytics."
+            />
+            <PlayerInsightsList insights={personal.insights} />
+          </div>
           <div className="analytics-terminal-panel analytics-data-panel ops-panel">
             <SectionHeader
               eyebrow="Personal hero pool"
@@ -922,7 +950,13 @@ function PlayerRoleAnalyticsPanel({
   }
 
   if (activeTab === "compare") {
-    return <PlayerRosterComparison appliedFilters={appliedFilters} fallbackPlayers={team.rosterPerformance} />;
+    return (
+      <PlayerRosterComparison
+        appliedFilters={appliedFilters}
+        currentProfileId={currentProfileId}
+        fallbackPlayers={team.rosterPerformance}
+      />
+    );
   }
 
   return (
@@ -1658,20 +1692,33 @@ function PublicAggregatePanel({
 
 function PlayerRosterComparison({
   appliedFilters,
+  currentProfileId,
   fallbackPlayers
 }: {
   appliedFilters: AnalyticsFilters;
+  currentProfileId: string;
   fallbackPlayers: PlayerAnalyticsMetric[];
 }) {
+  const [candidateLookup, setCandidateLookup] = useState<PlayerComparisonLookupResponse | null>(null);
   const [comparison, setComparison] = useState<PlayerComparisonResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isComparing, setIsComparing] = useState(false);
   const [isLoadingLookups, setIsLoadingLookups] = useState(false);
+  const [isSearchingPlayers, setIsSearchingPlayers] = useState(false);
   const [leftId, setLeftId] = useState("");
+  const [nameQuery, setNameQuery] = useState("");
+  const [nameSearchError, setNameSearchError] = useState<string | null>(null);
   const [playerLookups, setPlayerLookups] = useState<TeamPlayerLookup[]>([]);
   const [rightId, setRightId] = useState("");
+  const [selectedCandidate, setSelectedCandidate] = useState<PlayerComparisonCandidate | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState(appliedFilters.teamId ?? "");
   const [teamLookups, setTeamLookups] = useState<TeamLookup[]>([]);
+
+  function clearNameComparison() {
+    setCandidateLookup(null);
+    setNameSearchError(null);
+    setSelectedCandidate(null);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -1751,17 +1798,68 @@ function PlayerRosterComparison({
       displayName: player.displayName,
       profileId: player.profileId
     }));
-  const effectiveLeftId = leftId || players[0]?.profileId || "";
-  const effectiveRightId =
-    (rightId && rightId !== effectiveLeftId ? rightId : "") ||
-    players.find((player) => player.profileId !== effectiveLeftId)?.profileId ||
-    "";
+  const selectedCandidateId = selectedCandidate?.profileId ?? "";
+  const nameComparisonActive = Boolean(currentProfileId && selectedCandidateId);
+  const candidateTeamFilter = selectedTeamId || appliedFilters.teamId;
+  const effectiveLeftId = nameComparisonActive ? currentProfileId : leftId || players[0]?.profileId || "";
+  const effectiveRightId = nameComparisonActive
+    ? selectedCandidateId
+    : (rightId && rightId !== effectiveLeftId ? rightId : "") ||
+      players.find((player) => player.profileId !== effectiveLeftId)?.profileId ||
+      "";
+
+  async function searchPlayersByName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const query = nameQuery.trim();
+    clearNameComparison();
+    setComparison(null);
+    setError(null);
+
+    if (!currentProfileId) {
+      setNameSearchError("Current player profile is unavailable.");
+      return;
+    }
+
+    if (query.length < 2) {
+      setNameSearchError("Enter at least two characters.");
+      return;
+    }
+
+    setIsSearchingPlayers(true);
+
+    try {
+      const response = await lookupPlayerComparisonCandidates({
+        filters: {
+          from: appliedFilters.from,
+          heroId: appliedFilters.heroId,
+          limit: appliedFilters.limit,
+          teamId: candidateTeamFilter,
+          to: appliedFilters.to,
+          tournamentId: appliedFilters.tournamentId
+        },
+        query
+      });
+
+      setCandidateLookup(response);
+      setSelectedCandidate(response.exactMatch && response.candidates.length === 1 ? response.candidates[0] : null);
+    } catch (caught) {
+      setNameSearchError(analyticsErrorMessage(caught));
+    } finally {
+      setIsSearchingPlayers(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
 
     async function runComparison() {
-      if (!effectiveLeftId || !effectiveRightId || effectiveLeftId === effectiveRightId || !selectedTeamId) {
+      if (
+        !effectiveLeftId ||
+        !effectiveRightId ||
+        effectiveLeftId === effectiveRightId ||
+        (!nameComparisonActive && !selectedTeamId)
+      ) {
         setComparison(null);
         return;
       }
@@ -1775,7 +1873,7 @@ function PlayerRosterComparison({
             from: appliedFilters.from,
             heroId: appliedFilters.heroId,
             limit: appliedFilters.limit,
-            teamId: selectedTeamId,
+            teamId: nameComparisonActive ? candidateTeamFilter : selectedTeamId,
             to: appliedFilters.to,
             tournamentId: appliedFilters.tournamentId
           },
@@ -1803,9 +1901,9 @@ function PlayerRosterComparison({
     return () => {
       cancelled = true;
     };
-  }, [appliedFilters.from, appliedFilters.heroId, appliedFilters.limit, appliedFilters.to, appliedFilters.tournamentId, effectiveLeftId, effectiveRightId, selectedTeamId]);
+  }, [appliedFilters.from, appliedFilters.heroId, appliedFilters.limit, appliedFilters.to, appliedFilters.tournamentId, candidateTeamFilter, effectiveLeftId, effectiveRightId, nameComparisonActive, selectedTeamId]);
 
-  if (teamLookups.length === 0 && fallbackPlayers.length < 2 && !isLoadingLookups) {
+  if (!currentProfileId && teamLookups.length === 0 && fallbackPlayers.length < 2 && !isLoadingLookups) {
     return (
       <section className="analytics-terminal-panel analytics-data-panel ops-panel">
         <SectionHeader
@@ -1838,6 +1936,7 @@ function PlayerRosterComparison({
             setSelectedTeamId(event.target.value);
             setLeftId("");
             setRightId("");
+            clearNameComparison();
             setComparison(null);
           }}>
             <option value="">Select team</option>
@@ -1850,7 +1949,10 @@ function PlayerRosterComparison({
         </label>
         <label>
           <span>Player A</span>
-          <select value={effectiveLeftId} onChange={(event) => setLeftId(event.target.value)}>
+          <select value={nameComparisonActive ? "" : effectiveLeftId} onChange={(event) => {
+            clearNameComparison();
+            setLeftId(event.target.value);
+          }}>
             <option value="">Select player</option>
             {players.map((player) => (
               <option key={`left-${player.profileId}`} value={player.profileId}>
@@ -1861,7 +1963,10 @@ function PlayerRosterComparison({
         </label>
         <label>
           <span>Player B</span>
-          <select value={effectiveRightId} onChange={(event) => setRightId(event.target.value)}>
+          <select value={nameComparisonActive ? "" : effectiveRightId} onChange={(event) => {
+            clearNameComparison();
+            setRightId(event.target.value);
+          }}>
             <option value="">Select player</option>
             {players
               .filter((player) => player.profileId !== effectiveLeftId)
@@ -1873,10 +1978,53 @@ function PlayerRosterComparison({
           </select>
         </label>
       </div>
+      <form className="analytics-filter-grid" onSubmit={searchPlayersByName}>
+        <label>
+          <span>Player name</span>
+          <input
+            disabled={!currentProfileId || isSearchingPlayers}
+            onChange={(event) => setNameQuery(event.target.value)}
+            placeholder="Display name or nickname"
+            type="search"
+            value={nameQuery}
+          />
+        </label>
+        <div className="analytics-filter-actions">
+          <button className="button ops-button-primary" disabled={!currentProfileId || isSearchingPlayers} type="submit">
+            Search
+          </button>
+        </div>
+      </form>
       {isLoadingLookups ? <p className="analytics-slow-query">Loading roster options...</p> : null}
+      {isSearchingPlayers ? <p className="analytics-slow-query">Searching players...</p> : null}
       {isComparing ? <p className="analytics-slow-query">Comparing players...</p> : null}
       {error ? <AnalyticsEmptyBlock title="Player comparison unavailable." detail={error} /> : null}
-      {!error && players.length < 2 ? (
+      {nameSearchError ? <AnalyticsEmptyBlock title="Player search unavailable." detail={nameSearchError} /> : null}
+      {!nameSearchError && candidateLookup && candidateLookup.candidates.length === 0 ? (
+        <AnalyticsEmptyBlock
+          title="No matching player found."
+          detail="Try an exact display name, nickname, or a broader public analytics filter."
+        />
+      ) : null}
+      {!nameSearchError && candidateLookup && candidateLookup.candidates.length > 0 && !selectedCandidate ? (
+        <div className="analytics-comparison-cards">
+          {candidateLookup.candidates.map((candidate) => (
+            <article className="analytics-comparison-card" key={candidate.profileId}>
+              <span className="ops-label">{candidate.nickname ?? "Player candidate"}</span>
+              <h3>{candidate.displayName}</h3>
+              <p>{candidate.teamName ?? "Public analytics player"}</p>
+              <button
+                className="button ops-button-secondary"
+                onClick={() => setSelectedCandidate(candidate)}
+                type="button"
+              >
+                Compare
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : null}
+      {!error && !nameComparisonActive && players.length < 2 ? (
         <AnalyticsEmptyBlock
           title="Player comparison requires at least two players."
           detail="The selected team roster lookup returned fewer than two players."
@@ -2190,6 +2338,35 @@ function RecentImportsList({ imports }: { imports: RecentImportMetric[] }) {
           <div>
             <span>{item.status}</span>
             <em>{item.errorCode ?? "No error"}</em>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function PlayerInsightsList({ insights }: { insights: PlayerInsight[] }) {
+  if (insights.length === 0) {
+    return (
+      <AnalyticsEmptyBlock
+        title="Not enough match data yet."
+        detail="Insights appear after enough recent and hero-specific match data exists."
+      />
+    );
+  }
+
+  return (
+    <div className="analytics-real-stack">
+      {insights.slice(0, 5).map((insight) => (
+        <article className="analytics-rank-row" key={`${insight.category}-${insight.metricName}-${insight.title}`}>
+          <span className="ops-mono">{insight.category.slice(0, 3)}</span>
+          <div>
+            <strong>{insight.title}</strong>
+            <p>{insight.description}</p>
+          </div>
+          <div>
+            <span>{insightMetricLabel(insight)}</span>
+            <em>{insight.evidence}</em>
           </div>
         </article>
       ))}

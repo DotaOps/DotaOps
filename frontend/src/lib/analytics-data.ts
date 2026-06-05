@@ -185,6 +185,19 @@ export interface PlayerHeroPerformance {
   wins: number;
 }
 
+export type PlayerInsightCategory = "INFO" | "WARNING" | "POSITIVE";
+
+export interface PlayerInsight {
+  category: PlayerInsightCategory;
+  comparisonValue: number | null;
+  currentValue: number;
+  description: string;
+  evidence: string;
+  metricName: string;
+  sampleSize: number;
+  title: string;
+}
+
 export interface RoleAnalyticsTeam {
   captainNickname: string | null;
   captainProfileId: string | null;
@@ -197,6 +210,7 @@ export interface RoleAnalyticsTeam {
 export interface PlayerAnalyticsResponse {
   heroDetails: PlayerHeroPerformance[];
   heroPerformance: HeroAnalyticsMetric[];
+  insights: PlayerInsight[];
   matchHistory: AnalyticsMatchHistory[];
   metrics: PlayerAnalyticsMetric[];
   progress: PlayerProgressPoint[];
@@ -260,6 +274,21 @@ export interface TeamPlayerLookup {
   teamName: string;
 }
 
+export interface PlayerComparisonCandidate {
+  displayName: string;
+  nickname: string | null;
+  profileId: string;
+  teamId: string | null;
+  teamName: string | null;
+}
+
+export interface PlayerComparisonLookupResponse {
+  ambiguous: boolean;
+  candidates: PlayerComparisonCandidate[];
+  exactMatch: boolean;
+  query: string;
+}
+
 export interface HeroLookup {
   dotaHeroId: number | null;
   heroId: string;
@@ -314,6 +343,11 @@ export interface CompareAnalyticsPlayersInput {
   filters?: AnalyticsFilters;
   profileAId: string;
   profileBId: string;
+}
+
+export interface LookupPlayerComparisonCandidatesInput {
+  filters?: AnalyticsFilters;
+  query: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -381,6 +415,14 @@ function nullableNumber(value: unknown) {
 
 function nullableBoolean(value: unknown) {
   return typeof value === "boolean" ? value : null;
+}
+
+function playerInsightCategory(value: unknown): PlayerInsightCategory {
+  if (value === "WARNING" || value === "POSITIVE" || value === "INFO") {
+    return value;
+  }
+
+  return "INFO";
 }
 
 function setStringParam(params: URLSearchParams, key: string, value?: string | null) {
@@ -619,6 +661,21 @@ function mapPlayerHeroPerformance(value: unknown): PlayerHeroPerformance {
   };
 }
 
+function mapPlayerInsight(value: unknown): PlayerInsight {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    category: playerInsightCategory(item.category),
+    comparisonValue: nullableNumber(item.comparisonValue),
+    currentValue: numberValue(item.currentValue),
+    description: text(item.description, "Insight based on recent match data."),
+    evidence: text(item.evidence, "No evidence details"),
+    metricName: text(item.metricName, "metric"),
+    sampleSize: numberValue(item.sampleSize),
+    title: text(item.title, "Analytics insight")
+  };
+}
+
 function mapOrganizerTournamentLookup(value: unknown): OrganizerTournamentLookup {
   const item = isRecord(value) ? value : {};
 
@@ -648,6 +705,29 @@ function mapTeamPlayerLookup(value: unknown): TeamPlayerLookup {
     profileId: text(item.profileId, "unknown-player"),
     teamId: text(item.teamId, "unknown-team"),
     teamName: text(item.teamName, "Unknown team")
+  };
+}
+
+function mapPlayerComparisonCandidate(value: unknown): PlayerComparisonCandidate {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    displayName: text(item.displayName, "Unknown player"),
+    nickname: nullableText(item.nickname),
+    profileId: text(item.profileId, "unknown-player"),
+    teamId: nullableText(item.teamId),
+    teamName: nullableText(item.teamName)
+  };
+}
+
+function mapPlayerComparisonLookupResponse(value: unknown): PlayerComparisonLookupResponse {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    ambiguous: Boolean(item.ambiguous),
+    candidates: (arrayPayload(item.candidates) ?? []).map(mapPlayerComparisonCandidate),
+    exactMatch: Boolean(item.exactMatch),
+    query: text(item.query, "")
   };
 }
 
@@ -700,6 +780,7 @@ function mapPlayerAnalyticsResponse(value: unknown): PlayerAnalyticsResponse {
   return {
     heroDetails: (arrayPayload(item.heroDetails) ?? []).map(mapPlayerHeroPerformance),
     heroPerformance: (arrayPayload(item.heroPerformance) ?? []).map(mapHero),
+    insights: (arrayPayload(item.insights) ?? []).map(mapPlayerInsight),
     matchHistory: (arrayPayload(item.matchHistory) ?? []).map(mapMatchHistory),
     metrics: (arrayPayload(item.metrics) ?? []).map(mapPlayer),
     progress: (arrayPayload(item.progress) ?? []).map(mapPlayerProgressPoint)
@@ -856,16 +937,25 @@ export async function getMyPlayerHeroPerformance(filters?: AnalyticsFilters) {
   ).map(mapPlayerHeroPerformance);
 }
 
+export async function getMyPlayerInsights(filters?: AnalyticsFilters) {
+  return analyticsArrayPayload(
+    await getApiAuthenticated<unknown>(`/me/analytics/insights${queryString(filters)}`),
+    "player insights"
+  ).map(mapPlayerInsight);
+}
+
 export async function getMyPlayerAnalytics(filters?: AnalyticsFilters) {
-  const [analytics, progress, heroDetails] = await Promise.all([
+  const [analytics, progress, heroDetails, insights] = await Promise.all([
     getApiAuthenticated<unknown>(`/me/analytics${queryString(filters)}`),
     getMyPlayerProgress(filters),
-    getMyPlayerHeroPerformance(filters)
+    getMyPlayerHeroPerformance(filters),
+    getMyPlayerInsights(filters)
   ]);
 
   return {
     ...mapPlayerAnalyticsResponse(analytics),
     heroDetails,
+    insights,
     progress
   };
 }
@@ -947,6 +1037,22 @@ export async function compareAnalyticsPlayers({ filters, profileAId, profileBId 
 
   return mapPlayerComparisonResponse(
     await getApiAuthenticated<unknown>(`/analytics/compare/players?${params.toString()}`)
+  );
+}
+
+export async function lookupPlayerComparisonCandidates({ filters, query }: LookupPlayerComparisonCandidatesInput) {
+  const params = new URLSearchParams();
+
+  setStringParam(params, "query", query);
+  setStringParam(params, "tournamentId", filters?.tournamentId);
+  setStringParam(params, "teamId", filters?.teamId);
+  setStringParam(params, "heroId", filters?.heroId);
+  setStringParam(params, "from", filters?.from);
+  setStringParam(params, "to", filters?.to);
+  setLimitParam(params, filters?.limit);
+
+  return mapPlayerComparisonLookupResponse(
+    await getApiAuthenticated<unknown>(`/analytics/compare/players/candidates?${params.toString()}`)
   );
 }
 
