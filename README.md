@@ -69,6 +69,22 @@ Podrobnosti o demo seedu so v `docs/backend-demo-seed.md`.
 
 Krovni seznam API dokumentacije je v `docs/api/README.md`.
 
+## E2E Smoke Testi
+
+Frontend ima minimalne Cypress smoke teste za public strani, protected route gate in demo player/organizer prijavo.
+Pred zagonom mora aplikacija teci na `http://localhost:3000`; za auth smoke teste mora biti nalozen demo seed.
+
+```powershell
+cd C:\DotaOpsProjekt\DotaOps\frontend
+npm run e2e
+```
+
+Za interaktivni Cypress runner:
+
+```powershell
+npm run e2e:open
+```
+
 ## Tehnologije
 
 - Frontend: Next.js 16 App Router, React 19, TypeScript

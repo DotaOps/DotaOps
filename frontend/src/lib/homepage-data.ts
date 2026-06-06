@@ -29,7 +29,7 @@ function timestamp(value: string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
-function isRegistrationOpen(tournament: Tournament, now = Date.now()) {
+function isRegistrationOpen(tournament: Tournament, now: number) {
   if (tournament.status === "registration") {
     return true;
   }
@@ -70,7 +70,13 @@ function sortTournamentsForLanding(tournaments: Tournament[]) {
       return priorityDiff;
     }
 
-    return timestamp(left.startsAt) - timestamp(right.startsAt);
+    const startDiff = timestamp(left.startsAt) - timestamp(right.startsAt);
+
+    if (Number.isFinite(startDiff) && startDiff !== 0) {
+      return startDiff;
+    }
+
+    return `${left.title}-${left.id}`.localeCompare(`${right.title}-${right.id}`);
   });
 }
 
@@ -98,10 +104,11 @@ export async function getPublicHomepageData(): Promise<PublicHomepageData> {
   ]);
 
   const sortedTournaments = sortTournamentsForLanding(tournaments);
+  const referenceTime = Date.now();
   const activeOrPublishedCount = tournaments.filter((tournament) =>
     ["registration", "published", "live"].includes(tournament.status)
   ).length;
-  const registrationOpenCount = tournaments.filter((tournament) => isRegistrationOpen(tournament)).length;
+  const registrationOpenCount = tournaments.filter((tournament) => isRegistrationOpen(tournament, referenceTime)).length;
   const analyzedMatchesCount =
     analytics.tournaments.length > 0
       ? analytics.tournaments.reduce((total, tournament) => total + tournament.gamesPlayed, 0)
