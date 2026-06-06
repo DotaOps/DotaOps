@@ -2,6 +2,73 @@
 
 DotaOps je aplikacija za organizacijo Dota 2 turnirjev, prijavo ekip, vodenje tekem in kasnejso analitiko podatkov iz OpenDota. Projekt je razdeljen na Next.js frontend, Spring Boot backend in Supabase Postgres bazo.
 
+## Quick Start
+
+Najhitrejsi lokalni zagon celotnega okolja:
+
+```powershell
+cd C:\DotaOpsProjekt\DotaOps
+docker compose up --build
+```
+
+Privzeti naslovi:
+
+- Frontend: `http://localhost:3000`
+- Backend API: `http://localhost:8080/api`
+- Backend health: `http://localhost:8080/api/health`
+
+Za ustavitev okolja:
+
+```powershell
+docker compose down
+```
+
+## Docker Zagon
+
+Docker zagon uporablja root `.env` za backend in skupne nastavitve. Pred prvim zagonom pripravite `.env` po navodilih v poglavju Environment Datoteke.
+
+```powershell
+docker compose down
+docker compose up --build
+```
+
+Ce zelite zagnati containerje v ozadju:
+
+```powershell
+docker compose up -d --build
+```
+
+## Lokalni Frontend/Backend Zagon
+
+Backend:
+
+```powershell
+cd C:\DotaOpsProjekt\DotaOps\backend
+.\mvnw.cmd spring-boot:run
+```
+
+Frontend:
+
+```powershell
+cd C:\DotaOpsProjekt\DotaOps\frontend
+npm install
+npm run dev
+```
+
+## Demo Logini
+
+Ce je demo seed nalozen, lahko za lokalno preverjanje uporabite:
+
+- Organizer: `demo.organizer@dotaops.local`
+- Playerji: `demo.player1@dotaops.local` do `demo.player30@dotaops.local`
+- Geslo: `DotaOpsDemo123!`
+
+Podrobnosti o demo seedu so v `docs/backend-demo-seed.md`.
+
+## API Dokumentacija
+
+Krovni seznam API dokumentacije je v `docs/api/README.md`.
+
 ## Tehnologije
 
 - Frontend: Next.js 16 App Router, React 19, TypeScript
@@ -334,7 +401,7 @@ http://localhost:3000
 
 Production deployment (hosted): https://dotaops-frontend.vercel.app/
 
-Ce backend ni zagnan ali API se nima podatkov, frontend uporablja fallback/mock podatke iz `frontend/src/lib/mock-data.ts`.
+Produkcijski uporabniski tokovi uporabljajo realne backend API-je. Legacy mock podatki v frontendu so namenjeni samo razvojnim/demo pomocnim komponentam in se ne smejo prikazovati kot realni podatki.
 
 ## Preverjanje Projekta
 

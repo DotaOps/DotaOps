@@ -21,7 +21,7 @@ export function PublicDashboardGate() {
               <span>View Public Tournaments</span>
             </Link>
             <button className="role-action-button role-action-secondary is-disabled" type="button" disabled>
-              Sign-in coming soon
+              Sign in to open your dashboard.
             </button>
           </div>
         </section>

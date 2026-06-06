@@ -176,7 +176,7 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
   const validationItems = [
     {
       ok: Boolean(data?.team),
-      text: data?.team ? "Current team resolved from backend." : "Missing team profile."
+      text: data?.team ? "Selected team is ready." : "Missing team profile."
     },
     {
       ok: isCaptain,
@@ -186,7 +186,7 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
       ok: rosterReady,
       text:
         requiredTeamSize === null
-          ? `Roster readiness will be validated by backend (${rosterParticipantCount} participants loaded).`
+          ? `Roster readiness will be checked during registration (${rosterParticipantCount} participants loaded).`
           : rosterReady
             ? `Roster matches required team size (${rosterParticipantCount}/${requiredTeamSize}).`
             : `Tournament requires exactly ${requiredTeamSize} roster participants; ${rosterParticipantCount} loaded.`
@@ -201,8 +201,8 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
     {
       ok: hasRealTournamentId,
       text: hasRealTournamentId
-        ? "Tournament backend id is available."
-        : "Real tournament backend id is required."
+        ? "Tournament registration is available."
+        : "Tournament registration is not available for this listing."
     }
   ];
 
@@ -210,7 +210,7 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
     event.preventDefault();
 
     if (!data?.team) {
-      setError("A real backend team is required before submitting a tournament registration.");
+      setError("A selected team is required before submitting a tournament registration.");
       return;
     }
 
@@ -220,7 +220,7 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
     }
 
     if (!hasRealTournamentId) {
-      setError("Registration requires a real backend tournament id.");
+      setError("Registration is not available for this tournament listing.");
       return;
     }
 
@@ -384,7 +384,7 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
             <p className="ops-label">Registration protocol</p>
             <h2>Team Submission</h2>
             <p>
-              Submit the current team roster for organizer review. Backend validation will enforce
+              Submit the current team roster for organizer review. Registration rules will enforce
               duplicate registrations, roster readiness, captain permission, capacity, and timing.
             </p>
 
@@ -416,7 +416,7 @@ export function TournamentRegistrationPanel({ tournament }: TournamentRegistrati
             <form className="tournament-registration-form" onSubmit={submit}>
               <label>
                 <span>Selected Team</span>
-                <input readOnly value={data?.team ? `${data.team.name} (${data.team.tag ?? "NO TAG"})` : "No backend team"} />
+                <input readOnly value={data?.team ? `${data.team.name} (${data.team.tag ?? "NO TAG"})` : "No selected team"} />
               </label>
               <label>
                 <span>Captain Contact Email</span>

@@ -65,7 +65,7 @@ function requestErrorMessage(error: unknown) {
 
     if (error.errors.length > 0) {
       return error.errors
-        .map((fieldError) => fieldError.message ?? "Backend validation error.")
+        .map((fieldError) => fieldError.message ?? "Import validation error.")
         .join(" ");
     }
 
@@ -188,7 +188,7 @@ export function MatchImportPanel() {
       const createdJob = await createMatchImport({ dotaMatchId: trimmedMatchId });
       const events = createdJob.id ? await getMatchImportEvents(createdJob.id) : createdJob.events;
       setJob(mergeEvents(createdJob, events));
-      setNotice("Import job accepted by backend.");
+      setNotice("Import job accepted.");
     } catch (importError) {
       setError(requestErrorMessage(importError));
     } finally {
@@ -209,7 +209,7 @@ export function MatchImportPanel() {
       const retriedJob = await retryMatchImportJob(job.id);
       const events = await getMatchImportEvents(retriedJob.id);
       setJob(mergeEvents(retriedJob, events));
-      setNotice("Retry requested. Backend restarted the import flow.");
+      setNotice("Retry requested. The import flow restarted.");
     } catch (retryError) {
       setError(requestErrorMessage(retryError));
     } finally {
@@ -262,7 +262,7 @@ export function MatchImportPanel() {
       </div>
 
       <p className="import-panel-copy">
-        Import OpenDota match data by match_id. Backend will normalize the match and update analytics records.
+        Import OpenDota match data by match ID. DotaOps will normalize the match and update analytics records.
       </p>
 
       <form className="import-form" onSubmit={handleSubmit}>
@@ -271,7 +271,7 @@ export function MatchImportPanel() {
           <input
             inputMode="numeric"
             onChange={(event) => setMatchId(event.target.value)}
-            placeholder="7894561230"
+            placeholder="Enter Dota match ID"
             value={matchId}
           />
         </label>
@@ -316,7 +316,7 @@ export function MatchImportPanel() {
               <AlertTriangle size={16} />
               <span>
                 {readableErrorCode(job.errorCode) ? `${readableErrorCode(job.errorCode)}: ` : null}
-                {job.errorMessage ?? "Backend reported an import error."}
+                {job.errorMessage ?? "The import service reported an error."}
               </span>
             </div>
           ) : null}
@@ -340,7 +340,7 @@ export function MatchImportPanel() {
               <strong>Event History</strong>
             </div>
             {job.events.length === 0 ? (
-              <p className="ops-label">No backend import events recorded yet.</p>
+              <p className="ops-label">No import events recorded yet.</p>
             ) : (
               job.events.map((event) => (
                 <article key={event.id}>
@@ -360,7 +360,7 @@ export function MatchImportPanel() {
 
       <div className="pipeline-grid">
         <span>Input</span>
-        <span>Backend Fetch</span>
+        <span>OpenDota import</span>
         <span>Normalization</span>
         <span>Metrics</span>
       </div>
@@ -373,7 +373,7 @@ export function MatchImportPanel() {
       </div>
 
       <p className="import-helper">
-        Backend currently imports by Dota match ID only. Tournament assignment can be added later if backend exposes it.
+        Match import currently uses Dota match ID only. Tournament assignment can be added when that workflow is available.
       </p>
     </section>
   );

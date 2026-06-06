@@ -3,11 +3,7 @@ import {
   getPublicHeroMetrics,
   getPublicTeamMetrics
 } from "@/lib/analytics-data";
-import {
-  matches,
-  roadmap,
-  teams
-} from "@/lib/mock-data";
+import { roadmap } from "@/lib/mock-data";
 import {
   getPublicTournamentBySlug,
   getPublicTournaments
@@ -40,8 +36,6 @@ interface BackendTeamMemberResponse {
   active: boolean;
 }
 
-const fallbackForm: Team["lastFive"] = ["W", "L", "W", "L", "W"];
-
 function roleLabel(role: string) {
   return role
     .split("_")
@@ -61,21 +55,18 @@ function toPlayer(member: BackendTeamMemberResponse): Player {
 }
 
 function toTeam(team: BackendTeamResponse, members: BackendTeamMemberResponse[]): Team {
-  const demoFallback = teams.find(
-    (fallbackTeam) => fallbackTeam.id === team.id || fallbackTeam.name === team.name
-  );
   const roster = members.filter((member) => member.active).map(toPlayer);
 
   return {
-    captain: team.captainNickname ?? demoFallback?.captain ?? "Unassigned",
-    favoriteHeroes: demoFallback?.favoriteHeroes ?? [],
+    captain: team.captainNickname ?? "Unassigned",
+    favoriteHeroes: [],
     id: team.id,
-    kda: demoFallback?.kda ?? 0,
-    lastFive: demoFallback?.lastFive ?? fallbackForm,
+    kda: 0,
+    lastFive: [],
     name: team.name,
-    region: team.region ?? demoFallback?.region ?? "N/A",
-    roster: roster.length > 0 ? roster : demoFallback?.roster ?? [],
-    winRate: demoFallback?.winRate ?? 0
+    region: team.region ?? "N/A",
+    roster,
+    winRate: 0
   };
 }
 
@@ -91,7 +82,7 @@ export async function getTeams() {
   const result = await fetchApi<BackendTeamResponse[]>("/teams", []);
 
   if (result.source !== "api") {
-    return teams;
+    return [];
   }
 
   return Promise.all(
@@ -107,7 +98,7 @@ export async function getTeams() {
 }
 
 export async function getMatches() {
-  const result = await fetchApi<Match[]>("/matches", matches);
+  const result = await fetchApi<Match[]>("/matches", []);
 
   return result.data;
 }

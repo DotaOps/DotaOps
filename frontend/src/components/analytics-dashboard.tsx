@@ -515,7 +515,7 @@ export function AnalyticsDashboard() {
           <div className="analytics-terminal-copy">
             <p className="ops-label">DotaOps Analytics Terminal</p>
             <h1>Analytics Terminal</h1>
-            <p className="ops-mono">Loading role-based backend analytics.</p>
+            <p className="ops-mono">Loading official analytics.</p>
             {isSlowLoading ? <p className="analytics-slow-query">Still loading analytics...</p> : null}
           </div>
         </section>
@@ -530,7 +530,7 @@ export function AnalyticsDashboard() {
           <p className="ops-label">DOTAOPS ANALYTICS ENGINE</p>
           <h1>Analytics Terminal</h1>
           <p className="ops-mono">
-            Role-based analytics from backend APIs, with public aggregate metrics retained as a
+            Authenticated analytics overview with aggregated tournament metrics retained as a
             secondary read-only signal.
           </p>
         </div>
@@ -539,7 +539,7 @@ export function AnalyticsDashboard() {
           <div>
             <DatabaseZap size={18} />
             <span className="ops-label">Data source</span>
-            <strong className="ops-data">BACKEND</strong>
+            <strong className="ops-data">OFFICIAL</strong>
           </div>
           <div>
             <ShieldCheck size={18} />
@@ -949,7 +949,7 @@ function PlayerRoleAnalyticsPanel({
         ) : (
           <AnalyticsEmptyBlock
             title="Team analytics unavailable."
-            detail="The backend returned no current team for this player account."
+            detail="No current team analytics are available for this player account."
           />
         )}
       </section>
@@ -1094,14 +1094,14 @@ function OrganizerRoleAnalyticsPanel({
       ) : null}
       <div className="analytics-overview-note">
         <strong>Tournament-level analytics are available in the Tournament Drilldown tab.</strong>
-        <p>Team comparison uses the selected tournament analytics response and stays scoped to returned backend data.</p>
+        <p>Team comparison uses the selected tournament analytics response and stays scoped to available official data.</p>
       </div>
       {canRefreshAnalytics ? (
         <section className="analytics-admin-panel ops-panel">
           <SectionHeader
             eyebrow="Admin operation"
             title="Analytics Refresh"
-            description="Refreshes backend analytics materialized views. This action is only visible to admin accounts."
+            description="Refreshes official analytics aggregates. This action is only visible to admin accounts."
             action={
               <button className="button ops-button-primary" disabled={isRefreshing} onClick={() => void onRefreshAnalytics()} type="button">
                 <RefreshCw size={16} />
@@ -1271,7 +1271,7 @@ function AdvancedAnalyticsFilters({
           ) : (
             <input
               autoComplete="off"
-              placeholder="Optional tournament UUID"
+              placeholder="Advanced tournament filter"
               type="text"
               value={draft.tournamentId}
               onChange={(event) => updateField("tournamentId", event.target.value)}
@@ -1301,7 +1301,7 @@ function AdvancedAnalyticsFilters({
           ) : (
             <input
               autoComplete="off"
-              placeholder="Optional team UUID"
+              placeholder="Advanced team filter"
               type="text"
               value={draft.teamId}
               onChange={(event) => updateField("teamId", event.target.value)}
@@ -1364,7 +1364,7 @@ function AdvancedAnalyticsFilters({
             value={draft.to}
             onChange={(event) => updateField("to", event.target.value)}
           />
-          <span>Optional backend time filter</span>
+          <span>Optional time range filter</span>
         </fieldset>
         <div className="analytics-filter-actions">
           <button className="button ops-button-primary" type="submit">
@@ -1552,7 +1552,7 @@ function OrganizerTournamentAnalyticsView({
       ) : (
         <AnalyticsEmptyBlock
           title="Tournament summary unavailable."
-          detail="The backend returned no tournament summary for this drilldown."
+          detail="No tournament summary is available for this drilldown."
         />
       )}
 
@@ -1608,8 +1608,8 @@ function PublicAggregatePanel({
       <section className="analytics-terminal-panel analytics-data-panel ops-panel">
         <SectionHeader
           eyebrow="Public analytics aggregate"
-          title="Read-only Public Metrics"
-          description="These panels use public aggregate backend endpoints and the same applied filters as the analytics workspace."
+          title="Aggregated Tournament Metrics"
+          description="These panels use public tournament aggregates and the same applied filters as the analytics workspace."
         />
         {publicAggregateError ? (
           <AnalyticsEmptyBlock title="Public aggregate unavailable." detail={publicAggregateError} />
@@ -1617,7 +1617,7 @@ function PublicAggregatePanel({
         {!publicAggregateError && allEmpty(snapshot) ? (
           <AnalyticsEmptyBlock
             title="No imported match analytics yet."
-            detail="Import OpenDota matches first. Public analytics will appear after backend processing."
+            detail="Import OpenDota matches first. Analytics will appear after processing."
           />
         ) : null}
       </section>
@@ -1629,7 +1629,7 @@ function PublicAggregatePanel({
               icon={DatabaseZap}
               label="Public analyzed matches"
               value={integerOrNoData(publicSummary.analyzedMatches)}
-              delta="backend aggregate"
+              delta="aggregated metric"
               tone="cyan"
             />
             <TelemetryCard
@@ -1659,7 +1659,7 @@ function PublicAggregatePanel({
             <SectionHeader
               eyebrow="Hero performance"
               title="Hero Performance Matrix"
-              description="Win rate, KDA, and damage metrics from backend hero analytics."
+              description="Win rate, KDA, and damage metrics from official hero analytics."
             />
             <HeroMatrix heroes={snapshot.heroes} />
           </section>
@@ -1688,7 +1688,7 @@ function PublicAggregatePanel({
             <SectionHeader
               eyebrow="Tournament aggregates"
               title="Tournament Analytics"
-              description="Backend-calculated tournament summaries and most picked heroes."
+              description="Official tournament summaries and most picked heroes."
             />
             <TournamentMatrix tournaments={snapshot.tournaments} />
           </section>
@@ -2656,7 +2656,7 @@ function MatchHistoryList({
   matches: AnalyticsMatchHistory[];
 }) {
   if (matches.length === 0) {
-    return <AnalyticsEmptyBlock title={emptyText} detail="Match history rows will appear after backend analytics links imported match records." />;
+    return <AnalyticsEmptyBlock title={emptyText} detail="Match history rows will appear after imported match records are processed." />;
   }
 
   return (
@@ -2675,7 +2675,7 @@ function MatchHistoryList({
             <tr key={`${match.matchId ?? "match"}-${match.matchGameId ?? index}`}>
               <td>
                 <strong>{match.dotaMatchId ?? "No data"}</strong>
-                <span>Backend match history</span>
+                <span>Official match history</span>
               </td>
               <td>
                 <strong>{match.tournamentName ?? "Tournament unavailable"}</strong>
@@ -2851,7 +2851,7 @@ function HeroMatrix({ heroes }: { heroes: HeroAnalyticsMetric[] }) {
 
 function TeamMatrix({ teams }: { teams: TeamAnalyticsMetric[] }) {
   if (teams.length === 0) {
-    return <AnalyticsEmptyBlock title="No team metrics available." detail="Team comparison stays empty until backend analytics receives imported team match data." />;
+    return <AnalyticsEmptyBlock title="No team metrics available." detail="Team comparison stays empty until imported team match data is processed." />;
   }
 
   return (
@@ -2902,7 +2902,7 @@ function PlayerMatrix({ players }: { players: PlayerAnalyticsMetric[] }) {
 
 function TournamentMatrix({ tournaments }: { tournaments: TournamentAnalyticsMetric[] }) {
   if (tournaments.length === 0) {
-    return <AnalyticsEmptyBlock title="No tournament metrics available." detail="Tournament aggregates require processed match analytics from the backend." />;
+    return <AnalyticsEmptyBlock title="No tournament metrics available." detail="Tournament aggregates require processed match analytics." />;
   }
 
   return (
@@ -2923,7 +2923,7 @@ function TournamentMatrix({ tournaments }: { tournaments: TournamentAnalyticsMet
             <tr key={tournament.tournamentId}>
               <td>
                 <strong>{tournament.tournamentName}</strong>
-                <span>Backend calculated</span>
+                <span>Official metric</span>
               </td>
               <td>{tournament.gamesPlayed}</td>
               <td>{secondsToDuration(tournament.avgDurationSeconds)}</td>
@@ -2954,7 +2954,7 @@ function AnalyticsEmptyBlock({
 }) {
   return (
     <div className="analytics-empty-block">
-      <span className="ops-label">Awaiting backend data</span>
+      <span className="ops-label">Awaiting analytics data</span>
       <strong>{title}</strong>
       <p>{detail}</p>
     </div>
