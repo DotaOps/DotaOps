@@ -1,7 +1,7 @@
 /// <reference types="cypress" />
 
-const demoPassword = "DotaOpsDemo123!";
-const demoPlayerEmail = "demo.player1@dotaops.local";
+const demoPassword = String(Cypress.env("DEMO_PASSWORD"));
+const demoPlayerEmail = String(Cypress.env("DEMO_PLAYER_EMAIL"));
 
 function login(email: string) {
   cy.visit("/login");

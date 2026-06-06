@@ -497,6 +497,18 @@ export interface LookupPlayerComparisonCandidatesInput {
   search?: string;
 }
 
+function playerComparisonSearchParam({ q, query }: LookupPlayerComparisonCandidatesInput) {
+  if (query) {
+    return "query";
+  }
+
+  if (q) {
+    return "q";
+  }
+
+  return "search";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -1383,7 +1395,7 @@ export async function compareAnalyticsPlayers({ filters, profileAId, profileBId 
 export async function lookupPlayerComparisonCandidates({ filters, q, query, search }: LookupPlayerComparisonCandidatesInput) {
   const params = new URLSearchParams();
   const searchValue = query ?? q ?? search;
-  const searchParam = query ? "query" : q ? "q" : "search";
+  const searchParam = playerComparisonSearchParam({ q, query });
 
   setStringParam(params, searchParam, searchValue);
   setStringParam(params, "tournamentId", filters?.tournamentId);

@@ -79,6 +79,18 @@ cd C:\DotaOpsProjekt\DotaOps\frontend
 npm run e2e
 ```
 
+Demo prijavne podatke lahko preglasite z okolijskimi spremenljivkami:
+
+```powershell
+cd C:\DotaOpsProjekt\DotaOps\frontend
+$env:CYPRESS_DEMO_PLAYER_EMAIL="demo.player1@dotaops.local"
+$env:CYPRESS_DEMO_ORGANIZER_EMAIL="demo.organizer@dotaops.local"
+$env:CYPRESS_DEMO_PASSWORD="DotaOpsDemo123!"
+npm run e2e
+```
+
+Ce spremenljivke niso nastavljene, Cypress uporabi lokalne demo-seed vrednosti iz `frontend/cypress.config.ts`. Te fallback vrednosti so namenjene samo lokalnemu demo okolju.
+
 Za interaktivni Cypress runner:
 
 ```powershell

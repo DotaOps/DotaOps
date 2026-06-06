@@ -12,7 +12,7 @@ import {
 } from "@/lib/analytics-data";
 import { classNames } from "@/lib/utils";
 
-interface PlayerComparisonSearchProps {
+type PlayerComparisonSearchProps = Readonly<{
   disabled?: boolean;
   excludedProfileId?: string;
   filters: AnalyticsFilters;
@@ -21,15 +21,15 @@ interface PlayerComparisonSearchProps {
   onSelect: (candidate: PlayerComparisonCandidate) => void;
   placeholder?: string;
   selectedCandidate: PlayerComparisonCandidate | null;
-}
+}>;
 
 function useDebouncedValue(value: string, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    const timer = globalThis.setTimeout(() => setDebouncedValue(value), delayMs);
 
-    return () => window.clearTimeout(timer);
+    return () => globalThis.clearTimeout(timer);
   }, [delayMs, value]);
 
   return debouncedValue;
@@ -108,10 +108,10 @@ export function PlayerComparisonSearch({
         if (!cancelled) {
           setCandidates(response.candidates);
         }
-      } catch (caught) {
+      } catch (error) {
         if (!cancelled) {
           setCandidates([]);
-          setError(playerSearchErrorMessage(caught));
+          setError(playerSearchErrorMessage(error));
         }
       } finally {
         if (!cancelled) {
