@@ -41,6 +41,7 @@ class AnalyticsLookupRepositoryTest {
         assertThat(jdbcTemplate.sql).contains("lower(coalesce(p.display_name, '')) like ? escape");
         assertThat(jdbcTemplate.sql).contains("lower(coalesce(p.nickname, '')) like ? escape");
         assertThat(jdbcTemplate.sql).contains("coalesce(p.opendota_account_id::text, '') like ? escape");
+        assertThat(jdbcTemplate.sql).contains("analytics_games_count desc");
         assertThat(jdbcTemplate.sql).contains("p.avatar_url");
         assertThat(jdbcTemplate.sql).contains("p.opendota_account_id");
         assertThat(jdbcTemplate.sql).contains("count(*)::integer as analytics_games_count");
@@ -64,6 +65,9 @@ class AnalyticsLookupRepositoryTest {
                         "aegis",
                         "aegis",
                         "aegis",
+                        "aegis%",
+                        "aegis%",
+                        "aegis%",
                         10);
     }
 
@@ -82,6 +86,7 @@ class AnalyticsLookupRepositoryTest {
         assertThat(jdbcTemplate.sql).contains("lower(coalesce(p.display_name, '')) = ?");
         assertThat(jdbcTemplate.sql).contains("lower(coalesce(p.nickname, '')) = ?");
         assertThat(jdbcTemplate.sql).contains("coalesce(p.opendota_account_id::text, '') = ?");
+        assertThat(jdbcTemplate.sql).contains("analytics_games_count desc");
         assertThat(jdbcTemplate.sql).contains("p.avatar_url");
         assertThat(jdbcTemplate.sql).contains("p.opendota_account_id");
         assertThat(jdbcTemplate.sql).contains("analytics_games_count");
@@ -98,6 +103,9 @@ class AnalyticsLookupRepositoryTest {
                         "aegis ace",
                         "aegis ace",
                         "aegis ace",
+                        "aegis ace%",
+                        "aegis ace%",
+                        "aegis ace%",
                         5);
     }
 

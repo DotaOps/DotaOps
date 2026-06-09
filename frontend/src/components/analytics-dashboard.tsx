@@ -1850,13 +1850,20 @@ function PlayerRosterComparison({
 
   const activeLeftSearchSelection =
     useCurrentProfileDefault ? leftSearchSelection ?? currentProfileCandidate : leftSearchSelection;
-  const effectiveLeftId = activeLeftSearchSelection?.profileId || leftId || players[0]?.profileId || "";
+  const selectedLeftId = activeLeftSearchSelection?.profileId || leftId;
+  const selectedRightId = rightSearchSelection?.profileId || rightId;
+  const samePlayerSelected = Boolean(selectedLeftId && selectedRightId && selectedLeftId === selectedRightId);
+  const effectiveLeftId = selectedLeftId || players[0]?.profileId || "";
   const effectiveRightId =
-    rightSearchSelection?.profileId ||
-    (rightId && rightId !== effectiveLeftId ? rightId : "") ||
-    players.find((player) => player.profileId !== effectiveLeftId)?.profileId ||
-    "";
+    samePlayerSelected
+      ? ""
+      : selectedRightId ||
+        players.find((player) => player.profileId !== effectiveLeftId)?.profileId ||
+        "";
   const searchComparisonActive = Boolean(activeLeftSearchSelection || rightSearchSelection);
+  const selectedCandidateWarnings = [activeLeftSearchSelection, rightSearchSelection]
+    .filter((candidate): candidate is PlayerComparisonCandidate => Boolean(candidate))
+    .filter((candidate) => !candidate.hasAnalyticsData);
 
   useEffect(() => {
     let cancelled = false;
@@ -1865,7 +1872,7 @@ function PlayerRosterComparison({
       if (
         !effectiveLeftId ||
         !effectiveRightId ||
-        effectiveLeftId === effectiveRightId ||
+        samePlayerSelected ||
         (!searchComparisonActive && !selectedTeamId)
       ) {
         setComparison(null);
@@ -1909,7 +1916,7 @@ function PlayerRosterComparison({
     return () => {
       cancelled = true;
     };
-  }, [appliedFilters.from, appliedFilters.heroId, appliedFilters.limit, appliedFilters.to, appliedFilters.tournamentId, candidateTeamFilter, effectiveLeftId, effectiveRightId, searchComparisonActive, selectedTeamId]);
+  }, [appliedFilters.from, appliedFilters.heroId, appliedFilters.limit, appliedFilters.to, appliedFilters.tournamentId, candidateTeamFilter, effectiveLeftId, effectiveRightId, samePlayerSelected, searchComparisonActive, selectedTeamId]);
 
   if (!currentProfileId && teamLookups.length === 0 && fallbackPlayers.length < 2 && !isLoadingLookups) {
     return (
@@ -2028,10 +2035,25 @@ function PlayerRosterComparison({
       {isLoadingLookups ? <p className="analytics-slow-query">Loading roster options...</p> : null}
       {isComparing ? <p className="analytics-slow-query">Comparing players...</p> : null}
       {error ? <AnalyticsEmptyBlock title="Player comparison unavailable." detail={error} /> : null}
+      {samePlayerSelected ? (
+        <AnalyticsEmptyBlock
+          title="Select two different players."
+          detail="Player comparison needs distinct Player A and Player B profiles."
+        />
+      ) : null}
+      {selectedCandidateWarnings.length > 0 ? (
+        <PlayerCandidateDataWarnings candidates={selectedCandidateWarnings} />
+      ) : null}
       {!error && !searchComparisonActive && players.length < 2 ? (
         <AnalyticsEmptyBlock
           title="Player comparison requires at least two players."
           detail="The selected team roster lookup returned fewer than two players."
+        />
+      ) : null}
+      {!error && comparison && (!leftPlayer || !rightPlayer) ? (
+        <AnalyticsEmptyBlock
+          title="Not enough analytics data for this comparison."
+          detail="At least one selected player has no aggregate analytics row in the current filter scope."
         />
       ) : null}
       {!error && comparison && leftPlayer && rightPlayer ? (
@@ -2172,6 +2194,24 @@ function PlayerComparisonWarnings({ warnings }: Readonly<{ warnings: PlayerCompa
             {warning.metricName} sample {warning.sampleSize.toLocaleString("en-US")} /
             recommended {warning.recommendedMinimum.toLocaleString("en-US")}
           </p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function PlayerCandidateDataWarnings({
+  candidates
+}: Readonly<{
+  candidates: PlayerComparisonCandidate[];
+}>) {
+  return (
+    <div className="analytics-warning-list">
+      {candidates.map((candidate) => (
+        <article key={`candidate-warning-${candidate.profileId}`}>
+          <span className="ops-label">Candidate warning</span>
+          <strong>{candidate.displayName} has no analytics data in this scope.</strong>
+          <p>{candidate.label ?? "Comparison can still be attempted, but aggregate cards may be empty."}</p>
         </article>
       ))}
     </div>

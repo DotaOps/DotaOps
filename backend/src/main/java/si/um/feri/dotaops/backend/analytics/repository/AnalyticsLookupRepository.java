@@ -117,6 +117,7 @@ public class AnalyticsLookupRepository {
         PlayerCandidateQueryParts queryParts = playerAnalyticsFilters(filters);
         String normalizedQuery = query.toLowerCase();
         String queryPattern = "%" + escapedLikePattern(normalizedQuery) + "%";
+        String startsWithPattern = escapedLikePattern(normalizedQuery) + "%";
         List<Object> parameters = new ArrayList<>();
         parameters.add(excludedProfileId != null);
         parameters.add(excludedProfileId);
@@ -125,6 +126,9 @@ public class AnalyticsLookupRepository {
         parameters.add(normalizedQuery);
         parameters.add(normalizedQuery);
         parameters.add(normalizedQuery);
+        parameters.add(startsWithPattern);
+        parameters.add(startsWithPattern);
+        parameters.add(startsWithPattern);
         parameters.add(limit);
 
         return jdbcTemplate.query(
@@ -159,7 +163,10 @@ public class AnalyticsLookupRepository {
                     when lower(coalesce(p.display_name, '')) = ?
                       or lower(coalesce(p.nickname, '')) = ?
                       or coalesce(p.opendota_account_id::text, '') = ? then 0
-                    else 1
+                    when lower(coalesce(p.display_name, '')) like ? escape '\\'
+                      or lower(coalesce(p.nickname, '')) like ? escape '\\'
+                      or coalesce(p.opendota_account_id::text, '') like ? escape '\\' then 1
+                    else 2
                   end,
                   analytics_games_count desc,
                   lower(coalesce(p.display_name, p.nickname, '')) asc,
@@ -179,6 +186,7 @@ public class AnalyticsLookupRepository {
     ) {
         String normalizedQuery = query.toLowerCase();
         String queryPattern = "%" + escapedLikePattern(normalizedQuery) + "%";
+        String startsWithPattern = escapedLikePattern(normalizedQuery) + "%";
         List<Object> parameters = new ArrayList<>();
         parameters.add(teamId);
         parameters.add(excludedProfileId != null);
@@ -187,6 +195,9 @@ public class AnalyticsLookupRepository {
         parameters.add(normalizedQuery);
         parameters.add(normalizedQuery);
         parameters.add(normalizedQuery);
+        parameters.add(startsWithPattern);
+        parameters.add(startsWithPattern);
+        parameters.add(startsWithPattern);
         parameters.add(limit);
 
         return jdbcTemplate.query(
@@ -212,13 +223,16 @@ public class AnalyticsLookupRepository {
                   and t.disbanded_at is null
                   and p.role = 'player'::public.dotaops_user_role
                   and (? = false or p.id <> ?)
-                  """ + "and " + playerNameCondition(exact) + """
+                  """ + "and " + playerNameCondition(exact) + "\n" + """
                 order by
                   case
                     when lower(coalesce(p.display_name, '')) = ?
                       or lower(coalesce(p.nickname, '')) = ?
                       or coalesce(p.opendota_account_id::text, '') = ? then 0
-                    else 1
+                    when lower(coalesce(p.display_name, '')) like ? escape '\\'
+                      or lower(coalesce(p.nickname, '')) like ? escape '\\'
+                      or coalesce(p.opendota_account_id::text, '') like ? escape '\\' then 1
+                    else 2
                   end,
                   analytics_games_count desc,
                   tm.joined_at asc,

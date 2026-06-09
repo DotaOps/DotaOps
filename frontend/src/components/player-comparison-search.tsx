@@ -74,13 +74,15 @@ export function PlayerComparisonSearch({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [query, setQuery] = useState("");
-  const debouncedQuery = useDebouncedValue(query.trim(), 320);
+  const trimmedQuery = query.trim();
+  const debouncedQuery = useDebouncedValue(trimmedQuery, 320);
 
   const visibleCandidates = useMemo(
     () => candidates.filter((candidate) => candidate.profileId !== excludedProfileId),
     [candidates, excludedProfileId]
   );
   const canSearch = debouncedQuery.length >= 2;
+  const isSearchPending = trimmedQuery.length >= 2 && trimmedQuery !== debouncedQuery;
 
   useEffect(() => {
     let cancelled = false;
@@ -164,13 +166,16 @@ export function PlayerComparisonSearch({
         </div>
       ) : null}
 
-      {!selectedCandidate && query.trim().length > 0 && query.trim().length < 2 ? (
+      {!selectedCandidate && trimmedQuery.length > 0 && trimmedQuery.length < 2 ? (
         <p className="analytics-player-search-state">Enter at least two characters.</p>
       ) : null}
+      {isSearchPending ? <p className="analytics-player-search-state">Preparing search...</p> : null}
       {isLoading ? <p className="analytics-player-search-state">Searching players...</p> : null}
       {error ? <p className="analytics-player-search-state analytics-player-search-error">{error}</p> : null}
-      {!isLoading && !error && canSearch && visibleCandidates.length === 0 ? (
-        <p className="analytics-player-search-state">No matching players found.</p>
+      {!isLoading && !error && canSearch && !isSearchPending && visibleCandidates.length === 0 ? (
+        <p className="analytics-player-search-state">
+          {candidates.length > 0 ? "Only the already selected player matched." : "No matching players found."}
+        </p>
       ) : null}
       {!isLoading && visibleCandidates.length > 0 ? (
         <div className="analytics-player-search-results">
@@ -178,6 +183,7 @@ export function PlayerComparisonSearch({
             <button
               className={classNames(
                 "analytics-player-search-result",
+                candidate.hasAnalyticsData && "analytics-player-search-result-ready",
                 !candidate.hasAnalyticsData && "analytics-player-search-result-muted"
               )}
               key={candidate.profileId}
@@ -192,6 +198,9 @@ export function PlayerComparisonSearch({
               <span>
                 <strong>{candidate.analyticsGamesCount.toLocaleString("en-US")}</strong>
                 <em>{candidate.hasAnalyticsData ? "analytics games" : candidate.label ?? "No analytics data"}</em>
+              </span>
+              <span className="analytics-player-search-status">
+                {candidate.hasAnalyticsData ? "Ready" : "No data"}
               </span>
             </button>
           ))}
