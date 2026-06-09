@@ -25,7 +25,14 @@ public record PlayerProgressPointResponse(
         Integer heroHealing,
         Integer lastHits,
         Integer denies,
-        Boolean won
+        Boolean won,
+        Integer netWorth,
+        Integer level,
+        Integer durationSeconds,
+        String teamSide,
+        Integer radiantScore,
+        Integer direScore,
+        String winnerSide
 ) {
 
     public static PlayerProgressPointResponse from(PlayerProgressPoint point) {
@@ -48,6 +55,13 @@ public record PlayerProgressPointResponse(
                 point.heroHealing(),
                 point.lastHits(),
                 point.denies(),
-                point.won());
+                point.won(),
+                point.netWorth(),
+                point.level(),
+                point.durationSeconds(),
+                point.teamSide(),
+                point.radiantScore(),
+                point.direScore(),
+                point.winnerSide());
     }
 }

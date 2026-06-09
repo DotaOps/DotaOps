@@ -865,7 +865,14 @@ public class AnalyticsRepository {
                     mp.hero_healing,
                     mp.last_hits,
                     mp.denies,
-                    mp.is_winner as won
+                    mp.is_winner as won,
+                    mp.net_worth,
+                    mp.level,
+                    coalesce(mg.duration_seconds, mp.duration_seconds) as duration_seconds,
+                    mp.team_side,
+                    mg.radiant_score,
+                    mg.dire_score,
+                    mg.winner_side
                   from public.match_players mp
                   left join public.match_games mg on mg.id = mp.match_game_id
                   join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
@@ -1418,7 +1425,14 @@ public class AnalyticsRepository {
                 resultSet.getObject("hero_healing", Integer.class),
                 resultSet.getObject("last_hits", Integer.class),
                 resultSet.getObject("denies", Integer.class),
-                resultSet.getObject("won", Boolean.class));
+                resultSet.getObject("won", Boolean.class),
+                resultSet.getObject("net_worth", Integer.class),
+                resultSet.getObject("level", Integer.class),
+                resultSet.getObject("duration_seconds", Integer.class),
+                resultSet.getString("team_side"),
+                resultSet.getObject("radiant_score", Integer.class),
+                resultSet.getObject("dire_score", Integer.class),
+                resultSet.getString("winner_side"));
     }
 
     private PlayerHeroPerformance mapPlayerHeroPerformance(ResultSet resultSet, int rowNumber) throws SQLException {

@@ -11,6 +11,8 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.security.access.AccessDeniedException;
 
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
+import si.um.feri.dotaops.backend.analytics.domain.ContextWeightClassification;
+import si.um.feri.dotaops.backend.analytics.domain.ContextWeightReason;
 import si.um.feri.dotaops.backend.analytics.repository.RoleBasedAnalyticsRepository;
 import si.um.feri.dotaops.backend.analytics.web.AnalyticsMatchHistoryResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerHeroPerformanceResponse;
@@ -54,13 +56,15 @@ class RoleBasedAnalyticsServiceTest {
     private final TeamMemberRepository teamMemberRepository = mock(TeamMemberRepository.class);
     private final TournamentRepository tournamentRepository = mock(TournamentRepository.class);
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
+    private final AnalyticsContextWeightingService contextWeightingService = new AnalyticsContextWeightingService();
     private final RoleBasedAnalyticsService service = new RoleBasedAnalyticsService(
             analyticsQueryService,
             roleBasedAnalyticsRepository,
             teamRepository,
             teamMemberRepository,
             tournamentRepository,
-            currentUserProvider);
+            currentUserProvider,
+            contextWeightingService);
 
     @Test
     void playerAnalyticsAreScopedToCurrentProfileAndHaveStableEmptyHistory() {
@@ -181,6 +185,13 @@ class RoleBasedAnalyticsServiceTest {
             assertThat(point.lastHits()).isEqualTo(320);
             assertThat(point.denies()).isEqualTo(12);
             assertThat(point.won()).isTrue();
+            assertThat(point.netWorth()).isEqualTo(21000);
+            assertThat(point.level()).isEqualTo(22);
+            assertThat(point.durationSeconds()).isEqualTo(2400);
+            assertThat(point.teamSide()).isEqualTo("RADIANT");
+            assertThat(point.radiantScore()).isEqualTo(38);
+            assertThat(point.direScore()).isEqualTo(24);
+            assertThat(point.winnerSide()).isEqualTo("RADIANT");
         });
     }
 
@@ -317,6 +328,47 @@ class RoleBasedAnalyticsServiceTest {
         assertThat(insight.comparisonValue()).isEqualByComparingTo("2.10");
         assertThat(insight.sampleSize()).isEqualTo(6);
         assertThat(insight.evidence()).contains("3 recent matches");
+    }
+
+    @Test
+    void currentPlayerInsightsReturnContextWeightInsightForRoughGames() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(6), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(5), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(4), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(3), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(2), "3.00", 3, 520, 580),
+                        progressPoint(
+                                NOW.minusDays(1),
+                                "0.40",
+                                2,
+                                16,
+                                2,
+                                220,
+                                280,
+                                3000,
+                                0,
+                                0,
+                                false)));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of());
+
+        var response = service.currentPlayerInsights(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        PlayerInsightResponse insight = response.stream()
+                .filter(item -> item.metricName().equals("contextWeight"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(insight.category()).isEqualTo(PlayerInsightCategory.INFO);
+        assertThat(insight.currentValue()).isEqualByComparingTo("0.35");
+        assertThat(insight.comparisonValue()).isEqualByComparingTo("1.00");
+        assertThat(insight.contextWeight()).isNotNull();
+        assertThat(insight.contextWeight().classification()).isEqualTo(ContextWeightClassification.STOMP_LOSS);
+        assertThat(insight.contextWeight().reasons())
+                .contains(ContextWeightReason.HIGH_DEATHS, ContextWeightReason.LOW_KDA);
+        assertThat(insight.description()).contains("Raw match values stay unchanged");
     }
 
     @Test
@@ -547,7 +599,14 @@ class RoleBasedAnalyticsServiceTest {
                 0,
                 320,
                 12,
-                true);
+                true,
+                21000,
+                22,
+                2400,
+                "RADIANT",
+                38,
+                24,
+                "RADIANT");
     }
 
     private PlayerProgressPointResponse progressPoint(
@@ -576,7 +635,56 @@ class RoleBasedAnalyticsServiceTest {
                 0,
                 210,
                 8,
-                true);
+                true,
+                18000,
+                18,
+                2400,
+                "RADIANT",
+                38,
+                24,
+                "RADIANT");
+    }
+
+    private PlayerProgressPointResponse progressPoint(
+            OffsetDateTime playedAt,
+            String kda,
+            int kills,
+            int deaths,
+            int assists,
+            Integer goldPerMin,
+            Integer xpPerMin,
+            Integer heroDamage,
+            Integer towerDamage,
+            Integer heroHealing,
+            Boolean won
+    ) {
+        return new PlayerProgressPointResponse(
+                playedAt,
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                HERO_ID,
+                1,
+                "Anti-Mage",
+                kills,
+                deaths,
+                assists,
+                new BigDecimal(kda),
+                goldPerMin,
+                xpPerMin,
+                heroDamage,
+                towerDamage,
+                heroHealing,
+                210,
+                8,
+                won,
+                Boolean.FALSE.equals(won) ? 5200 : 18000,
+                Boolean.FALSE.equals(won) ? 10 : 18,
+                1900,
+                "RADIANT",
+                Boolean.FALSE.equals(won) ? 8 : 38,
+                Boolean.FALSE.equals(won) ? 42 : 24,
+                Boolean.FALSE.equals(won) ? "DIRE" : "RADIANT");
     }
 
     private PlayerHeroPerformanceResponse heroPerformance() {

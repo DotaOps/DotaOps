@@ -52,6 +52,38 @@ Response:
 - `heroPerformance`: hero agregati za trenutnega igralca
 - `matchHistory`: trenutno stabilen empty-state seznam
 
+`GET /api/me/analytics/progress` vraca surove match-level vrednosti za trenutnega
+igralca. Te vrednosti se ne utezujejo in ostanejo enake podatkom iz normaliziranega
+`match_players` vira.
+
+`GET /api/me/analytics/insights` vraca determinicne interpretacije za trenutnega
+igralca. Trend insighti lahko uporabijo context-aware utezi za zelo slabe ali stomp
+igre, vendar samo pri interpretaciji dolgorocnih povprecij. Surovi progress in match
+history podatki se ne spremenijo.
+
+Context weight ima razpon `0.35` do `1.00`:
+
+- `1.00`: normalna igra ali premalo konteksta za varno korekcijo.
+- `0.35`: minimalna utez za ekstremno slab/stomp kontekst.
+- `classification`: `NORMAL`, `ROUGH_GAME`, `STOMP_LOSS` ali `LOW_CONFIDENCE`.
+- `reasons`: determinicni razlogi, npr. `HIGH_DEATHS`, `LOW_KDA`,
+  `LOW_OBJECTIVE_PRESSURE`, `TEAM_SCORE_DISADVANTAGE`, `SUPPORT_IMPACT_PROTECTED`,
+  `INSUFFICIENT_BASELINE`.
+
+Trenutna formula deluje on-the-fly iz obstojecih polj:
+
+- high deaths: lazja/srednja/mocna kazen pri 7/10/14+ deaths,
+- low KDA: kazen pod `1.50`, mocnejsa pod `1.00` in `0.60`,
+- low objective pressure: nizka tower damage vrednost skupaj z nizkim damage ali
+  assists kontekstom,
+- team score disadvantage: uporabi team side in radiant/dire score, kadar sta na voljo,
+- support protection: visoki assists ali healing zmanjsajo kazen, da support impact ni
+  prevec kaznovan.
+
+`PlayerInsightResponse` ima additivno polje `contextWeight`, kadar je insight nastal
+iz utezenega rough-game konteksta ali ko endpoint vrne locen `contextWeight` insight.
+Stari response fieldi ostanejo nespremenjeni.
+
 ### Current player team
 
 `GET /api/me/team/analytics`

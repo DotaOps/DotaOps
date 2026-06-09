@@ -137,8 +137,10 @@ export interface PlayerProgressPoint {
   assists: number;
   deaths: number;
   denies: number | null;
+  direScore: number | null;
   dotaHeroId: number | null;
   dotaMatchId: string | null;
+  durationSeconds: number | null;
   goldPerMin: number | null;
   heroDamage: number | null;
   heroHealing: number | null;
@@ -147,11 +149,16 @@ export interface PlayerProgressPoint {
   kda: number;
   kills: number;
   lastHits: number | null;
+  level: number | null;
   matchGameId: string | null;
   matchId: string | null;
+  netWorth: number | null;
   playedAt: string | null;
+  radiantScore: number | null;
+  teamSide: string | null;
   towerDamage: number | null;
   won: boolean | null;
+  winnerSide: string | null;
   xpPerMin: number | null;
 }
 
@@ -186,10 +193,28 @@ export interface PlayerHeroPerformance {
 }
 
 export type PlayerInsightCategory = "INFO" | "WARNING" | "POSITIVE";
+export type ContextWeightClassification = "NORMAL" | "ROUGH_GAME" | "STOMP_LOSS" | "LOW_CONFIDENCE";
+export type ContextWeightReason =
+  | "HIGH_DEATHS"
+  | "LOW_KDA"
+  | "LOW_OBJECTIVE_PRESSURE"
+  | "TEAM_SCORE_DISADVANTAGE"
+  | "STOMP_LOSS_CONTEXT"
+  | "LOW_NET_WORTH_OR_LEVEL"
+  | "SUPPORT_IMPACT_PROTECTED"
+  | "INSUFFICIENT_BASELINE";
+
+export interface PlayerInsightContextWeight {
+  classification: ContextWeightClassification;
+  message: string;
+  reasons: ContextWeightReason[];
+  weight: number;
+}
 
 export interface PlayerInsight {
   category: PlayerInsightCategory;
   comparisonValue: number | null;
+  contextWeight: PlayerInsightContextWeight | null;
   currentValue: number;
   description: string;
   evidence: string;
@@ -584,6 +609,31 @@ function playerInsightCategory(value: unknown): PlayerInsightCategory {
   return "INFO";
 }
 
+function contextWeightClassification(value: unknown): ContextWeightClassification {
+  if (value === "NORMAL" || value === "ROUGH_GAME" || value === "STOMP_LOSS" || value === "LOW_CONFIDENCE") {
+    return value;
+  }
+
+  return "LOW_CONFIDENCE";
+}
+
+function contextWeightReason(value: unknown): ContextWeightReason {
+  if (
+    value === "HIGH_DEATHS" ||
+    value === "LOW_KDA" ||
+    value === "LOW_OBJECTIVE_PRESSURE" ||
+    value === "TEAM_SCORE_DISADVANTAGE" ||
+    value === "STOMP_LOSS_CONTEXT" ||
+    value === "LOW_NET_WORTH_OR_LEVEL" ||
+    value === "SUPPORT_IMPACT_PROTECTED" ||
+    value === "INSUFFICIENT_BASELINE"
+  ) {
+    return value;
+  }
+
+  return "INSUFFICIENT_BASELINE";
+}
+
 function setStringParam(params: URLSearchParams, key: string, value?: string | null) {
   const cleanValue = value?.trim();
 
@@ -767,8 +817,10 @@ function mapPlayerProgressPoint(value: unknown): PlayerProgressPoint {
     assists: numberValue(item.assists),
     deaths: numberValue(item.deaths),
     denies: nullableNumber(item.denies),
+    direScore: nullableNumber(item.direScore),
     dotaHeroId: nullableNumber(item.dotaHeroId),
     dotaMatchId: nullableText(item.dotaMatchId),
+    durationSeconds: nullableNumber(item.durationSeconds),
     goldPerMin: nullableNumber(item.goldPerMin),
     heroDamage: nullableNumber(item.heroDamage),
     heroHealing: nullableNumber(item.heroHealing),
@@ -777,11 +829,16 @@ function mapPlayerProgressPoint(value: unknown): PlayerProgressPoint {
     kda: numberValue(item.kda),
     kills: numberValue(item.kills),
     lastHits: nullableNumber(item.lastHits),
+    level: nullableNumber(item.level),
     matchGameId: nullableText(item.matchGameId),
     matchId: nullableText(item.matchId),
+    netWorth: nullableNumber(item.netWorth),
     playedAt: nullableText(item.playedAt),
+    radiantScore: nullableNumber(item.radiantScore),
+    teamSide: nullableText(item.teamSide),
     towerDamage: nullableNumber(item.towerDamage),
     won: nullableBoolean(item.won),
+    winnerSide: nullableText(item.winnerSide),
     xpPerMin: nullableNumber(item.xpPerMin)
   };
 }
@@ -826,12 +883,26 @@ function mapPlayerInsight(value: unknown): PlayerInsight {
   return {
     category: playerInsightCategory(item.category),
     comparisonValue: nullableNumber(item.comparisonValue),
+    contextWeight: mapPlayerInsightContextWeight(item.contextWeight),
     currentValue: numberValue(item.currentValue),
     description: text(item.description, "Insight based on recent match data."),
     evidence: text(item.evidence, "No evidence details"),
     metricName: text(item.metricName, "metric"),
     sampleSize: numberValue(item.sampleSize),
     title: text(item.title, "Analytics insight")
+  };
+}
+
+function mapPlayerInsightContextWeight(value: unknown): PlayerInsightContextWeight | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    classification: contextWeightClassification(value.classification),
+    message: text(value.message, "No context weighting details"),
+    reasons: (arrayPayload(value.reasons) ?? []).map(contextWeightReason),
+    weight: nullableNumber(value.weight) ?? 1
   };
 }
 

@@ -15,12 +15,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
+import si.um.feri.dotaops.backend.analytics.domain.ContextWeightClassification;
+import si.um.feri.dotaops.backend.analytics.domain.ContextWeightInput;
+import si.um.feri.dotaops.backend.analytics.domain.ContextWeightResult;
 import si.um.feri.dotaops.backend.analytics.repository.RoleBasedAnalyticsRepository;
 import si.um.feri.dotaops.backend.analytics.web.CurrentTeamAnalyticsResponse;
 import si.um.feri.dotaops.backend.analytics.web.OrganizerAnalyticsResponse;
 import si.um.feri.dotaops.backend.analytics.web.OrganizerTournamentAnalyticsResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerAnalyticsResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerHeroPerformanceResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerInsightContextResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerInsightCategory;
 import si.um.feri.dotaops.backend.analytics.web.PlayerInsightResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerProgressPointResponse;
@@ -56,6 +60,7 @@ public class RoleBasedAnalyticsService {
     private final TeamMemberRepository teamMemberRepository;
     private final TournamentRepository tournamentRepository;
     private final CurrentUserProvider currentUserProvider;
+    private final AnalyticsContextWeightingService contextWeightingService;
 
     public RoleBasedAnalyticsService(
             AnalyticsQueryService analyticsQueryService,
@@ -63,7 +68,8 @@ public class RoleBasedAnalyticsService {
             TeamRepository teamRepository,
             TeamMemberRepository teamMemberRepository,
             TournamentRepository tournamentRepository,
-            CurrentUserProvider currentUserProvider
+            CurrentUserProvider currentUserProvider,
+            AnalyticsContextWeightingService contextWeightingService
     ) {
         this.analyticsQueryService = analyticsQueryService;
         this.roleBasedAnalyticsRepository = roleBasedAnalyticsRepository;
@@ -71,6 +77,7 @@ public class RoleBasedAnalyticsService {
         this.teamMemberRepository = teamMemberRepository;
         this.tournamentRepository = tournamentRepository;
         this.currentUserProvider = currentUserProvider;
+        this.contextWeightingService = contextWeightingService;
     }
 
     @Transactional(readOnly = true)
@@ -256,9 +263,11 @@ public class RoleBasedAnalyticsService {
     ) {
         List<PlayerInsightResponse> insights = new ArrayList<>();
         List<PlayerProgressPointResponse> chronologicalProgress = chronologicalProgress(progress);
+        List<WeightedProgressPoint> weightedProgress = weightedProgress(chronologicalProgress);
 
-        addKdaTrendInsight(insights, chronologicalProgress);
-        addEconomyTrendInsight(insights, chronologicalProgress);
+        addKdaTrendInsight(insights, weightedProgress);
+        addEconomyTrendInsight(insights, weightedProgress);
+        addContextWeightInsight(insights, weightedProgress);
         addHighDeathsHeroInsight(insights, chronologicalProgress, heroPerformance);
         addHeroKdaInsight(insights, chronologicalProgress, heroPerformance);
         addHeroWinRateInsight(insights, heroPerformance);
@@ -270,20 +279,16 @@ public class RoleBasedAnalyticsService {
 
     private void addKdaTrendInsight(
             List<PlayerInsightResponse> insights,
-            List<PlayerProgressPointResponse> progress
+            List<WeightedProgressPoint> progress
     ) {
         if (progress.size() < MIN_TREND_SAMPLE_SIZE) {
             return;
         }
 
-        List<PlayerProgressPointResponse> previous = previousTrendWindow(progress);
-        List<PlayerProgressPointResponse> recent = recentTrendWindow(progress);
-        Optional<BigDecimal> previousAverage = averageDecimals(previous.stream()
-                .map(PlayerProgressPointResponse::kda)
-                .toList());
-        Optional<BigDecimal> recentAverage = averageDecimals(recent.stream()
-                .map(PlayerProgressPointResponse::kda)
-                .toList());
+        List<WeightedProgressPoint> previous = previousTrendWindow(progress);
+        List<WeightedProgressPoint> recent = recentTrendWindow(progress);
+        Optional<BigDecimal> previousAverage = weightedAverageDecimals(previous, PlayerProgressPointResponse::kda);
+        Optional<BigDecimal> recentAverage = weightedAverageDecimals(recent, PlayerProgressPointResponse::kda);
         if (previousAverage.isEmpty() || recentAverage.isEmpty()) {
             return;
         }
@@ -293,9 +298,11 @@ public class RoleBasedAnalyticsService {
             return;
         }
 
+        boolean contextAdjusted = hasAdjustedContext(previous) || hasAdjustedContext(recent);
+        String averageLabel = contextAdjusted ? "context-weighted average KDA" : "average KDA";
         insights.add(new PlayerInsightResponse(
                 "KDA trend is improving",
-                "Your average KDA over the last " + TREND_WINDOW + " matches is "
+                "Your " + averageLabel + " over the last " + TREND_WINDOW + " matches is "
                         + formatDecimal(recentAverage.get()) + ", up from "
                         + formatDecimal(previousAverage.get()) + " in the previous " + TREND_WINDOW + ".",
                 PlayerInsightCategory.POSITIVE,
@@ -303,31 +310,30 @@ public class RoleBasedAnalyticsService {
                 scaleMetric(recentAverage.get()),
                 scaleMetric(previousAverage.get()),
                 MIN_TREND_SAMPLE_SIZE,
-                "Compared " + TREND_WINDOW + " recent matches against the previous " + TREND_WINDOW + "."));
+                trendEvidence(previous, recent),
+                lowestAdjustedContext(previous, recent)
+                        .map(PlayerInsightContextResponse::from)
+                        .orElse(null)));
     }
 
     private void addEconomyTrendInsight(
             List<PlayerInsightResponse> insights,
-            List<PlayerProgressPointResponse> progress
+            List<WeightedProgressPoint> progress
     ) {
         if (progress.size() < MIN_TREND_SAMPLE_SIZE) {
             return;
         }
 
-        List<PlayerProgressPointResponse> previous = previousTrendWindow(progress);
-        List<PlayerProgressPointResponse> recent = recentTrendWindow(progress);
+        List<WeightedProgressPoint> previous = previousTrendWindow(progress);
+        List<WeightedProgressPoint> recent = recentTrendWindow(progress);
 
         String metricName = null;
         BigDecimal currentValue = null;
         BigDecimal comparisonValue = null;
         BigDecimal largestDrop = BigDecimal.ZERO;
 
-        Optional<BigDecimal> previousGpm = averageIntegers(previous.stream()
-                .map(PlayerProgressPointResponse::goldPerMin)
-                .toList());
-        Optional<BigDecimal> recentGpm = averageIntegers(recent.stream()
-                .map(PlayerProgressPointResponse::goldPerMin)
-                .toList());
+        Optional<BigDecimal> previousGpm = weightedAverageIntegers(previous, PlayerProgressPointResponse::goldPerMin);
+        Optional<BigDecimal> recentGpm = weightedAverageIntegers(recent, PlayerProgressPointResponse::goldPerMin);
         if (previousGpm.isPresent() && recentGpm.isPresent()) {
             BigDecimal drop = previousGpm.get().subtract(recentGpm.get());
             if (drop.compareTo(ECONOMY_TREND_THRESHOLD) >= 0) {
@@ -338,12 +344,8 @@ public class RoleBasedAnalyticsService {
             }
         }
 
-        Optional<BigDecimal> previousXpm = averageIntegers(previous.stream()
-                .map(PlayerProgressPointResponse::xpPerMin)
-                .toList());
-        Optional<BigDecimal> recentXpm = averageIntegers(recent.stream()
-                .map(PlayerProgressPointResponse::xpPerMin)
-                .toList());
+        Optional<BigDecimal> previousXpm = weightedAverageIntegers(previous, PlayerProgressPointResponse::xpPerMin);
+        Optional<BigDecimal> recentXpm = weightedAverageIntegers(recent, PlayerProgressPointResponse::xpPerMin);
         if (previousXpm.isPresent() && recentXpm.isPresent()) {
             BigDecimal drop = previousXpm.get().subtract(recentXpm.get());
             if (drop.compareTo(ECONOMY_TREND_THRESHOLD) >= 0 && drop.compareTo(largestDrop) > 0) {
@@ -357,9 +359,11 @@ public class RoleBasedAnalyticsService {
             return;
         }
 
+        boolean contextAdjusted = hasAdjustedContext(previous) || hasAdjustedContext(recent);
+        String averageLabel = contextAdjusted ? "context-weighted average " : "average ";
         insights.add(new PlayerInsightResponse(
                 "Recent " + metricName + " trend is declining",
-                "Your average " + metricName + " over the last " + TREND_WINDOW + " matches is "
+                "Your " + averageLabel + metricName + " over the last " + TREND_WINDOW + " matches is "
                         + formatDecimal(currentValue) + ", down from "
                         + formatDecimal(comparisonValue) + " in the previous " + TREND_WINDOW + ".",
                 PlayerInsightCategory.WARNING,
@@ -367,7 +371,46 @@ public class RoleBasedAnalyticsService {
                 scaleMetric(currentValue),
                 scaleMetric(comparisonValue),
                 MIN_TREND_SAMPLE_SIZE,
-                "Compared " + TREND_WINDOW + " recent matches against the previous " + TREND_WINDOW + "."));
+                trendEvidence(previous, recent),
+                lowestAdjustedContext(previous, recent)
+                        .map(PlayerInsightContextResponse::from)
+                        .orElse(null)));
+    }
+
+    private void addContextWeightInsight(
+            List<PlayerInsightResponse> insights,
+            List<WeightedProgressPoint> progress
+    ) {
+        List<WeightedProgressPoint> adjusted = progress.stream()
+                .filter(point -> point.contextWeight().isAdjusted())
+                .toList();
+        if (adjusted.isEmpty()) {
+            return;
+        }
+
+        ContextWeightResult lowestWeight = adjusted.stream()
+                .map(WeightedProgressPoint::contextWeight)
+                .min(Comparator.comparing(ContextWeightResult::weight))
+                .orElseThrow();
+        long stompLosses = adjusted.stream()
+                .filter(point -> point.contextWeight().classification() == ContextWeightClassification.STOMP_LOSS)
+                .count();
+
+        String roughSummary = stompLosses > 0
+                ? stompLosses + " stomp-like loss(es) and " + adjusted.size() + " rough match(es)"
+                : adjusted.size() + " rough match(es)";
+        insights.add(new PlayerInsightResponse(
+                "Rough games are context-weighted",
+                "Detected " + roughSummary
+                        + ". Raw match values stay unchanged; trend insights reduce their influence.",
+                PlayerInsightCategory.INFO,
+                "contextWeight",
+                lowestWeight.weight(),
+                BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP),
+                adjusted.size(),
+                "Lowest context weight was " + formatDecimal(lowestWeight.weight())
+                        + " across " + progress.size() + " filtered match(es).",
+                PlayerInsightContextResponse.from(lowestWeight)));
     }
 
     private void addHighDeathsHeroInsight(
@@ -470,12 +513,70 @@ public class RoleBasedAnalyticsService {
                 .toList();
     }
 
-    private List<PlayerProgressPointResponse> previousTrendWindow(List<PlayerProgressPointResponse> progress) {
+    private List<WeightedProgressPoint> weightedProgress(List<PlayerProgressPointResponse> progress) {
+        return progress.stream()
+                .map(point -> new WeightedProgressPoint(
+                        point,
+                        contextWeightingService.evaluate(contextWeightInput(point))))
+                .toList();
+    }
+
+    private ContextWeightInput contextWeightInput(PlayerProgressPointResponse point) {
+        return new ContextWeightInput(
+                point.kills(),
+                point.deaths(),
+                point.assists(),
+                point.kda(),
+                point.goldPerMin(),
+                point.xpPerMin(),
+                point.heroDamage(),
+                point.towerDamage(),
+                point.heroHealing(),
+                point.lastHits(),
+                point.denies(),
+                point.netWorth(),
+                point.level(),
+                point.won(),
+                point.teamSide(),
+                point.radiantScore(),
+                point.direScore());
+    }
+
+    private <T> List<T> previousTrendWindow(List<T> progress) {
         return progress.subList(progress.size() - MIN_TREND_SAMPLE_SIZE, progress.size() - TREND_WINDOW);
     }
 
-    private List<PlayerProgressPointResponse> recentTrendWindow(List<PlayerProgressPointResponse> progress) {
+    private <T> List<T> recentTrendWindow(List<T> progress) {
         return progress.subList(progress.size() - TREND_WINDOW, progress.size());
+    }
+
+    private boolean hasAdjustedContext(List<WeightedProgressPoint> progress) {
+        return progress.stream()
+                .anyMatch(point -> point.contextWeight().isAdjusted());
+    }
+
+    private String trendEvidence(
+            List<WeightedProgressPoint> previous,
+            List<WeightedProgressPoint> recent
+    ) {
+        String evidence = "Compared " + TREND_WINDOW + " recent matches against the previous " + TREND_WINDOW + ".";
+        if (!hasAdjustedContext(previous) && !hasAdjustedContext(recent)) {
+            return evidence;
+        }
+
+        return evidence + " Context weights reduce rough-game influence while raw match history stays unchanged.";
+    }
+
+    private Optional<ContextWeightResult> lowestAdjustedContext(
+            List<WeightedProgressPoint> previous,
+            List<WeightedProgressPoint> recent
+    ) {
+        List<WeightedProgressPoint> combined = new ArrayList<>(previous);
+        combined.addAll(recent);
+        return combined.stream()
+                .map(WeightedProgressPoint::contextWeight)
+                .filter(ContextWeightResult::isAdjusted)
+                .min(Comparator.comparing(ContextWeightResult::weight));
     }
 
     private Optional<BigDecimal> playerAverageDeaths(
@@ -539,11 +640,38 @@ public class RoleBasedAnalyticsService {
         return Optional.of(total.divide(BigDecimal.valueOf(usable.size()), 2, RoundingMode.HALF_UP));
     }
 
-    private Optional<BigDecimal> averageIntegers(List<Integer> values) {
-        return averageDecimals(values.stream()
-                .filter(Objects::nonNull)
-                .map(BigDecimal::valueOf)
-                .toList());
+    private Optional<BigDecimal> weightedAverageDecimals(
+            List<WeightedProgressPoint> values,
+            Function<PlayerProgressPointResponse, BigDecimal> metric
+    ) {
+        BigDecimal weightedTotal = BigDecimal.ZERO;
+        BigDecimal weightTotal = BigDecimal.ZERO;
+
+        for (WeightedProgressPoint value : values) {
+            BigDecimal metricValue = metric.apply(value.point());
+            if (metricValue == null) {
+                continue;
+            }
+            BigDecimal weight = value.contextWeight().weight();
+            weightedTotal = weightedTotal.add(metricValue.multiply(weight));
+            weightTotal = weightTotal.add(weight);
+        }
+
+        if (weightTotal.compareTo(BigDecimal.ZERO) == 0) {
+            return Optional.empty();
+        }
+
+        return Optional.of(weightedTotal.divide(weightTotal, 2, RoundingMode.HALF_UP));
+    }
+
+    private Optional<BigDecimal> weightedAverageIntegers(
+            List<WeightedProgressPoint> values,
+            Function<PlayerProgressPointResponse, Integer> metric
+    ) {
+        return weightedAverageDecimals(values, point -> {
+            Integer value = metric.apply(point);
+            return value == null ? null : BigDecimal.valueOf(value);
+        });
     }
 
     private BigDecimal scaleMetric(BigDecimal value) {
@@ -581,5 +709,8 @@ public class RoleBasedAnalyticsService {
     }
 
     private record HeroInsightCandidate(PlayerHeroPerformanceResponse hero, BigDecimal delta) {
+    }
+
+    private record WeightedProgressPoint(PlayerProgressPointResponse point, ContextWeightResult contextWeight) {
     }
 }

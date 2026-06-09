@@ -10,6 +10,20 @@ public record PlayerInsightResponse(
         BigDecimal currentValue,
         BigDecimal comparisonValue,
         int sampleSize,
-        String evidence
+        String evidence,
+        PlayerInsightContextResponse contextWeight
 ) {
+
+    public PlayerInsightResponse(
+            String title,
+            String description,
+            PlayerInsightCategory category,
+            String metricName,
+            BigDecimal currentValue,
+            BigDecimal comparisonValue,
+            int sampleSize,
+            String evidence
+    ) {
+        this(title, description, category, metricName, currentValue, comparisonValue, sampleSize, evidence, null);
+    }
 }
