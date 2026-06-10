@@ -205,7 +205,7 @@ export type ContextWeightReason =
   | "INSUFFICIENT_BASELINE";
 
 export interface PlayerInsightContextWeight {
-  classification: ContextWeightClassification;
+  classification: ContextWeightClassification | null;
   message: string;
   reasons: ContextWeightReason[];
   weight: number;
@@ -609,15 +609,15 @@ function playerInsightCategory(value: unknown): PlayerInsightCategory {
   return "INFO";
 }
 
-function contextWeightClassification(value: unknown): ContextWeightClassification {
+function contextWeightClassification(value: unknown): ContextWeightClassification | null {
   if (value === "NORMAL" || value === "ROUGH_GAME" || value === "STOMP_LOSS" || value === "LOW_CONFIDENCE") {
     return value;
   }
 
-  return "LOW_CONFIDENCE";
+  return null;
 }
 
-function contextWeightReason(value: unknown): ContextWeightReason {
+function contextWeightReason(value: unknown): ContextWeightReason | null {
   if (
     value === "HIGH_DEATHS" ||
     value === "LOW_KDA" ||
@@ -631,7 +631,7 @@ function contextWeightReason(value: unknown): ContextWeightReason {
     return value;
   }
 
-  return "INSUFFICIENT_BASELINE";
+  return null;
 }
 
 function setStringParam(params: URLSearchParams, key: string, value?: string | null) {
@@ -901,7 +901,9 @@ function mapPlayerInsightContextWeight(value: unknown): PlayerInsightContextWeig
   return {
     classification: contextWeightClassification(value.classification),
     message: text(value.message, "No context weighting details"),
-    reasons: (arrayPayload(value.reasons) ?? []).map(contextWeightReason),
+    reasons: (arrayPayload(value.reasons) ?? [])
+      .map(contextWeightReason)
+      .filter((reason): reason is ContextWeightReason => reason !== null),
     weight: nullableNumber(value.weight) ?? 1
   };
 }

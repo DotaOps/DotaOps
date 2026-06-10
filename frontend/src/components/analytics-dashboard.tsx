@@ -55,6 +55,7 @@ import {
   type PlayerAnalyticsMetric,
   type PlayerAnalyticsResponse,
   type PlayerInsight,
+  type PlayerInsightContextWeight,
   type PlayerProgressPoint,
   type RecentImportMetric,
   type TeamComparisonResponse,
@@ -184,6 +185,50 @@ function insightMetricLabel(insight: PlayerInsight) {
   }
 
   return `${insight.metricName}: ${current} vs ${safeMetricNumber(insight.comparisonValue, 2)}`;
+}
+
+function isContextWeightInsight(insight: PlayerInsight) {
+  return insight.metricName === "contextWeight" || insight.contextWeight !== null;
+}
+
+function contextWeightLabel(contextWeight: PlayerInsightContextWeight | null) {
+  return `Context weight: ${safeMetricNumber(contextWeight?.weight, 2)}`;
+}
+
+function contextEnumLabel(value: string) {
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function progressScoreLabel(point: PlayerProgressPoint) {
+  if (point.radiantScore === null || point.direScore === null) {
+    return null;
+  }
+
+  return `Score R-D ${point.radiantScore}-${point.direScore}`;
+}
+
+function progressSideContextLabel(point: PlayerProgressPoint) {
+  const parts = [
+    point.teamSide ? `Side ${point.teamSide}` : null,
+    point.winnerSide ? `Winner ${point.winnerSide}` : null,
+    progressScoreLabel(point)
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" / ") : null;
+}
+
+function progressResourceContextLabel(point: PlayerProgressPoint) {
+  const parts = [
+    point.netWorth !== null ? `NW ${countMetricValue(point.netWorth)}` : null,
+    point.level !== null ? `Lvl ${point.level}` : null,
+    point.durationSeconds !== null ? `Duration ${secondsToDuration(point.durationSeconds)}` : null
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" / ") : null;
 }
 
 function average(values: number[]) {
@@ -1850,21 +1895,87 @@ function PlayerInsightsList({ insights }: Readonly<{ insights: PlayerInsight[] }
     );
   }
 
+  const hasContextWeight = insights.some(isContextWeightInsight);
+
   return (
     <div className="analytics-real-stack">
+      {hasContextWeight ? (
+        <p className="analytics-context-note">
+          Raw match statistics are unchanged. Context weighting is used only for long-term interpretation and coaching-style insights.
+        </p>
+      ) : null}
       {insights.slice(0, 5).map((insight) => (
-        <article className="analytics-rank-row" key={`${insight.category}-${insight.metricName}-${insight.title}`}>
-          <span className="ops-mono">{insight.category.slice(0, 3)}</span>
-          <div>
-            <strong>{insight.title}</strong>
-            <p>{insight.description}</p>
-          </div>
-          <div>
-            <span>{insightMetricLabel(insight)}</span>
-            <em>{insight.evidence}</em>
-          </div>
-        </article>
+        insight.metricName === "contextWeight"
+          ? <ContextWeightInsightCard insight={insight} key={`${insight.category}-${insight.metricName}-${insight.title}`} />
+          : <PlayerInsightRow insight={insight} key={`${insight.category}-${insight.metricName}-${insight.title}`} />
       ))}
+    </div>
+  );
+}
+
+function PlayerInsightRow({ insight }: Readonly<{ insight: PlayerInsight }>) {
+  return (
+    <article className="analytics-rank-row">
+      <span className="ops-mono">{insight.category.slice(0, 3)}</span>
+      <div>
+        <strong>{insight.title}</strong>
+        <p>{insight.description}</p>
+        <ContextWeightDetails contextWeight={insight.contextWeight} />
+      </div>
+      <div>
+        <span>{insightMetricLabel(insight)}</span>
+        <em>{insight.evidence}</em>
+      </div>
+    </article>
+  );
+}
+
+function ContextWeightInsightCard({ insight }: Readonly<{ insight: PlayerInsight }>) {
+  return (
+    <article className="analytics-context-card">
+      <div>
+        <span className="ops-label">Context layer</span>
+        <strong>{insight.title}</strong>
+        <p>{insight.description}</p>
+        <p>
+          Rough or stomp-like games stay visible with real raw stats. Their context only reduces how much they skew
+          long-term interpretation, so one unusually bad game does not dominate trend analytics.
+        </p>
+      </div>
+      <ContextWeightDetails contextWeight={insight.contextWeight} fallbackMetric={insightMetricLabel(insight)} />
+    </article>
+  );
+}
+
+function ContextWeightDetails({
+  contextWeight,
+  fallbackMetric
+}: Readonly<{
+  contextWeight: PlayerInsightContextWeight | null;
+  fallbackMetric?: string;
+}>) {
+  if (!contextWeight) {
+    return fallbackMetric ? <span className="analytics-context-weight">{fallbackMetric}</span> : null;
+  }
+
+  return (
+    <div className="analytics-context-meta">
+      <span className="analytics-context-weight">{contextWeightLabel(contextWeight)}</span>
+      <p>
+        1.00 means normal game context. Lower values mean rough or stomp game context with less influence on
+        long-term interpretations.
+      </p>
+      {contextWeight.message ? <em>{contextWeight.message}</em> : null}
+      {contextWeight.classification || contextWeight.reasons.length > 0 ? (
+        <div className="analytics-context-badges">
+          {contextWeight.classification ? (
+            <span className="ops-badge">{contextEnumLabel(contextWeight.classification)}</span>
+          ) : null}
+          {contextWeight.reasons.map((reason) => (
+            <span className="ops-badge" key={reason}>{contextEnumLabel(reason)}</span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1893,31 +2004,38 @@ function PlayerProgressTable({ progress }: Readonly<{ progress: PlayerProgressPo
           </tr>
         </thead>
         <tbody>
-          {progress.map((point, index) => (
-            <tr key={`${point.matchId ?? "match"}-${point.matchGameId ?? index}`}>
-              <td>
-                <strong>{formatAnalyticsDateTime(point.playedAt)}</strong>
-                <span>{point.dotaMatchId ? `Dota ${point.dotaMatchId}` : point.matchId ?? "Match ID unavailable"}</span>
-              </td>
-              <td>
-                <strong>{point.heroName ?? "Hero unavailable"}</strong>
-                <span>{point.heroId ?? "Hero ID unavailable"}</span>
-              </td>
-              <td>
-                <strong>{progressResultLabel(point)}</strong>
-                <span>{point.kills}-{point.deaths}-{point.assists}</span>
-              </td>
-              <td>{point.kda.toFixed(2)}</td>
-              <td>
-                <strong>{countMetricValue(point.goldPerMin)} / {countMetricValue(point.xpPerMin)}</strong>
-                <span>LH/DN {countMetricValue(point.lastHits)} / {countMetricValue(point.denies)}</span>
-              </td>
-              <td>
-                <strong>{countMetricValue(point.heroDamage)} hero / {countMetricValue(point.towerDamage)} tower</strong>
-                <span>Healing {countMetricValue(point.heroHealing)}</span>
-              </td>
-            </tr>
-          ))}
+          {progress.map((point, index) => {
+            const sideContext = progressSideContextLabel(point);
+            const resourceContext = progressResourceContextLabel(point);
+
+            return (
+              <tr key={`${point.matchId ?? "match"}-${point.matchGameId ?? index}`}>
+                <td>
+                  <strong>{formatAnalyticsDateTime(point.playedAt)}</strong>
+                  <span>{point.dotaMatchId ? `Dota ${point.dotaMatchId}` : point.matchId ?? "Match ID unavailable"}</span>
+                  {sideContext ? <span className="analytics-progress-context">{sideContext}</span> : null}
+                </td>
+                <td>
+                  <strong>{point.heroName ?? "Hero unavailable"}</strong>
+                  <span>{point.heroId ?? "Hero ID unavailable"}</span>
+                </td>
+                <td>
+                  <strong>{progressResultLabel(point)}</strong>
+                  <span>{point.kills}-{point.deaths}-{point.assists}</span>
+                </td>
+                <td>{point.kda.toFixed(2)}</td>
+                <td>
+                  <strong>{countMetricValue(point.goldPerMin)} / {countMetricValue(point.xpPerMin)}</strong>
+                  <span>LH/DN {countMetricValue(point.lastHits)} / {countMetricValue(point.denies)}</span>
+                  {resourceContext ? <span className="analytics-progress-context">{resourceContext}</span> : null}
+                </td>
+                <td>
+                  <strong>{countMetricValue(point.heroDamage)} hero / {countMetricValue(point.towerDamage)} tower</strong>
+                  <span>Healing {countMetricValue(point.heroHealing)}</span>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
