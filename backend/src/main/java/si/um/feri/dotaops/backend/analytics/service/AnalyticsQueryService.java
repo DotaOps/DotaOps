@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
+import si.um.feri.dotaops.backend.analytics.domain.HeroMasteryMetrics;
 import si.um.feri.dotaops.backend.analytics.repository.AnalyticsRepository;
 import si.um.feri.dotaops.backend.analytics.web.AnalyticsMatchHistoryResponse;
 import si.um.feri.dotaops.backend.analytics.web.HeroMetricsResponse;
@@ -129,6 +130,16 @@ public class AnalyticsQueryService {
                 .stream()
                 .map(PlayerHeroPerformanceResponse::from)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<HeroMasteryMetrics> playerHeroMasteryMetrics(
+            UUID profileId,
+            UUID heroId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        return analyticsRepository.findPlayerHeroMasteryMetrics(profileId, heroId, filters, publicOnly);
     }
 
     @Transactional(readOnly = true)

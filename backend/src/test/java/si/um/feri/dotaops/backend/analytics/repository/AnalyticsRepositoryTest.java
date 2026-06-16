@@ -203,6 +203,26 @@ class AnalyticsRepositoryTest {
     }
 
     @Test
+    void protectedPlayerHeroMasteryMetricsUseExtendedNormalizedColumnsAndBoundFilters() {
+        repository.findPlayerHeroMasteryMetrics(
+                PROFILE_ID,
+                HERO_ID,
+                new AnalyticsFilters(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO, 25),
+                false);
+
+        assertThat(jdbcTemplate.sql).contains("where true");
+        assertThat(jdbcTemplate.sql).contains("mp.profile_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.hero_id = ?");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.net_worth), 2) as avg_net_worth");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.level), 2) as avg_level");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.tower_damage), 2) as avg_tower_damage");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.hero_healing), 2) as avg_hero_healing");
+        assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true", "raw_response", "normalized_payload", "raw_player");
+        assertThat(jdbcTemplate.parameters)
+                .containsExactly(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO);
+    }
+
+    @Test
     void protectedPlayerComparisonHeadlineMetricsUseExtendedNormalizedColumnsAndBoundFilters() {
         repository.findPlayerComparisonHeadlineMetrics(
                 PROFILE_ID,

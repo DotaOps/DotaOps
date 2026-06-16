@@ -223,6 +223,122 @@ export interface PlayerInsight {
   title: string;
 }
 
+export type HeroMasteryVerdict = "STRONG" | "STABLE" | "NEEDS_WORK" | "INSUFFICIENT_DATA";
+export type HeroMasteryComparisonDirection = "BETTER" | "WORSE" | "SIMILAR";
+export type HeroMasteryNoteCategory =
+  | "ECONOMY"
+  | "FIGHTING"
+  | "OBJECTIVE"
+  | "SURVIVABILITY"
+  | "CONTEXT"
+  | "SAMPLE_SIZE";
+export type HeroMasteryNoteSeverity = "INFO" | "LOW" | "MEDIUM" | "HIGH";
+
+export interface HeroMasteryMetricComparison {
+  delta: number;
+  direction: HeroMasteryComparisonDirection;
+  heroValue: number;
+  interpretation: string;
+  metric: string;
+  overallValue: number;
+}
+
+export interface HeroMasteryTrendMetric {
+  delta: number;
+  direction: HeroMasteryComparisonDirection;
+  interpretation: string;
+  metric: string;
+  previousValue: number;
+  recentValue: number;
+}
+
+export interface HeroMasteryRecentTrend {
+  interpretation: string;
+  metrics: HeroMasteryTrendMetric[];
+  previousWindowSize: number;
+  recentWindowSize: number;
+  sampleSize: number;
+}
+
+export interface HeroMasteryContextSummary {
+  averageContextWeight: number;
+  lowConfidenceCount: number;
+  normalGameCount: number;
+  note: string;
+  roughGameCount: number;
+  stompLossCount: number;
+}
+
+export interface HeroMasteryNote {
+  baselineValue: number | null;
+  category: HeroMasteryNoteCategory;
+  currentValue: number | null;
+  message: string;
+  metricName: string | null;
+  severity: HeroMasteryNoteSeverity;
+}
+
+export interface HeroMasteryRecentMatch {
+  assists: number;
+  contextClassification: ContextWeightClassification | null;
+  contextMessage: string;
+  contextReasons: ContextWeightReason[];
+  contextWeight: number;
+  deaths: number;
+  denies: number | null;
+  direScore: number | null;
+  dotaMatchId: string | null;
+  durationSeconds: number | null;
+  goldPerMin: number | null;
+  heroDamage: number | null;
+  heroHealing: number | null;
+  heroId: string | null;
+  heroName: string | null;
+  kda: number;
+  kills: number;
+  lastHits: number | null;
+  level: number | null;
+  matchGameId: string | null;
+  matchId: string | null;
+  netWorth: number | null;
+  playedAt: string | null;
+  radiantScore: number | null;
+  teamSide: string | null;
+  towerDamage: number | null;
+  winnerSide: string | null;
+  won: boolean | null;
+  xpPerMin: number | null;
+}
+
+export interface HeroMasteryResponse {
+  avgAssists: number;
+  avgDeaths: number;
+  avgDenies: number;
+  avgGoldPerMin: number;
+  avgHeroDamage: number;
+  avgHeroHealing: number;
+  avgKills: number;
+  avgLastHits: number;
+  avgLevel: number;
+  avgNetWorth: number;
+  avgTowerDamage: number;
+  avgXpPerMin: number;
+  comparisonToPlayerOverallBaseline: HeroMasteryMetricComparison[];
+  contextSummary: HeroMasteryContextSummary;
+  deterministicNotes: HeroMasteryNote[];
+  games: number;
+  heroId: string;
+  heroName: string | null;
+  kda: number;
+  losses: number;
+  masteryVerdict: HeroMasteryVerdict;
+  profileId: string;
+  recentMatches: HeroMasteryRecentMatch[];
+  recentTrend: HeroMasteryRecentTrend;
+  winRate: number;
+  wins: number;
+}
+
 export interface RoleAnalyticsTeam {
   captainNickname: string | null;
   captainProfileId: string | null;
@@ -634,6 +750,45 @@ function contextWeightReason(value: unknown): ContextWeightReason | null {
   return null;
 }
 
+function heroMasteryVerdict(value: unknown): HeroMasteryVerdict {
+  if (value === "STRONG" || value === "STABLE" || value === "NEEDS_WORK" || value === "INSUFFICIENT_DATA") {
+    return value;
+  }
+
+  return "INSUFFICIENT_DATA";
+}
+
+function heroMasteryComparisonDirection(value: unknown): HeroMasteryComparisonDirection {
+  if (value === "BETTER" || value === "WORSE" || value === "SIMILAR") {
+    return value;
+  }
+
+  return "SIMILAR";
+}
+
+function heroMasteryNoteCategory(value: unknown): HeroMasteryNoteCategory {
+  if (
+    value === "ECONOMY" ||
+    value === "FIGHTING" ||
+    value === "OBJECTIVE" ||
+    value === "SURVIVABILITY" ||
+    value === "CONTEXT" ||
+    value === "SAMPLE_SIZE"
+  ) {
+    return value;
+  }
+
+  return "SAMPLE_SIZE";
+}
+
+function heroMasteryNoteSeverity(value: unknown): HeroMasteryNoteSeverity {
+  if (value === "INFO" || value === "LOW" || value === "MEDIUM" || value === "HIGH") {
+    return value;
+  }
+
+  return "INFO";
+}
+
 function setStringParam(params: URLSearchParams, key: string, value?: string | null) {
   const cleanValue = value?.trim();
 
@@ -905,6 +1060,142 @@ function mapPlayerInsightContextWeight(value: unknown): PlayerInsightContextWeig
       .map(contextWeightReason)
       .filter((reason): reason is ContextWeightReason => reason !== null),
     weight: nullableNumber(value.weight) ?? 1
+  };
+}
+
+function mapHeroMasteryMetricComparison(value: unknown): HeroMasteryMetricComparison {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    delta: numberValue(item.delta),
+    direction: heroMasteryComparisonDirection(item.direction),
+    heroValue: numberValue(item.heroValue),
+    interpretation: text(item.interpretation, "No comparison interpretation available."),
+    metric: text(item.metric, "metric"),
+    overallValue: numberValue(item.overallValue)
+  };
+}
+
+function mapHeroMasteryTrendMetric(value: unknown): HeroMasteryTrendMetric {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    delta: numberValue(item.delta),
+    direction: heroMasteryComparisonDirection(item.direction),
+    interpretation: text(item.interpretation, "No trend interpretation available."),
+    metric: text(item.metric, "metric"),
+    previousValue: numberValue(item.previousValue),
+    recentValue: numberValue(item.recentValue)
+  };
+}
+
+function mapHeroMasteryRecentTrend(value: unknown): HeroMasteryRecentTrend {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    interpretation: text(item.interpretation, "Not enough recent hero matches for a trend window."),
+    metrics: (arrayPayload(item.metrics) ?? []).map(mapHeroMasteryTrendMetric),
+    previousWindowSize: numberValue(item.previousWindowSize),
+    recentWindowSize: numberValue(item.recentWindowSize),
+    sampleSize: numberValue(item.sampleSize)
+  };
+}
+
+function mapHeroMasteryContextSummary(value: unknown): HeroMasteryContextSummary {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    averageContextWeight: nullableNumber(item.averageContextWeight) ?? 1,
+    lowConfidenceCount: numberValue(item.lowConfidenceCount),
+    normalGameCount: numberValue(item.normalGameCount),
+    note: text(item.note, "No recent hero match context is available."),
+    roughGameCount: numberValue(item.roughGameCount),
+    stompLossCount: numberValue(item.stompLossCount)
+  };
+}
+
+function mapHeroMasteryNote(value: unknown): HeroMasteryNote {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    baselineValue: nullableNumber(item.baselineValue),
+    category: heroMasteryNoteCategory(item.category),
+    currentValue: nullableNumber(item.currentValue),
+    message: text(item.message, "No deterministic note available."),
+    metricName: nullableText(item.metricName),
+    severity: heroMasteryNoteSeverity(item.severity)
+  };
+}
+
+function mapHeroMasteryRecentMatch(value: unknown): HeroMasteryRecentMatch {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    assists: numberValue(item.assists),
+    contextClassification: contextWeightClassification(item.contextClassification),
+    contextMessage: text(item.contextMessage, "No context weighting details"),
+    contextReasons: (arrayPayload(item.contextReasons) ?? [])
+      .map(contextWeightReason)
+      .filter((reason): reason is ContextWeightReason => reason !== null),
+    contextWeight: nullableNumber(item.contextWeight) ?? 1,
+    deaths: numberValue(item.deaths),
+    denies: nullableNumber(item.denies),
+    direScore: nullableNumber(item.direScore),
+    dotaMatchId: nullableText(item.dotaMatchId),
+    durationSeconds: nullableNumber(item.durationSeconds),
+    goldPerMin: nullableNumber(item.goldPerMin),
+    heroDamage: nullableNumber(item.heroDamage),
+    heroHealing: nullableNumber(item.heroHealing),
+    heroId: nullableText(item.heroId),
+    heroName: nullableText(item.heroName),
+    kda: numberValue(item.kda),
+    kills: numberValue(item.kills),
+    lastHits: nullableNumber(item.lastHits),
+    level: nullableNumber(item.level),
+    matchGameId: nullableText(item.matchGameId),
+    matchId: nullableText(item.matchId),
+    netWorth: nullableNumber(item.netWorth),
+    playedAt: nullableText(item.playedAt),
+    radiantScore: nullableNumber(item.radiantScore),
+    teamSide: nullableText(item.teamSide),
+    towerDamage: nullableNumber(item.towerDamage),
+    winnerSide: nullableText(item.winnerSide),
+    won: nullableBoolean(item.won),
+    xpPerMin: nullableNumber(item.xpPerMin)
+  };
+}
+
+function mapHeroMasteryResponse(value: unknown): HeroMasteryResponse {
+  const item = isRecord(value) ? value : {};
+
+  return {
+    avgAssists: numberValue(item.avgAssists),
+    avgDeaths: numberValue(item.avgDeaths),
+    avgDenies: numberValue(item.avgDenies),
+    avgGoldPerMin: numberValue(item.avgGoldPerMin),
+    avgHeroDamage: numberValue(item.avgHeroDamage),
+    avgHeroHealing: numberValue(item.avgHeroHealing),
+    avgKills: numberValue(item.avgKills),
+    avgLastHits: numberValue(item.avgLastHits),
+    avgLevel: numberValue(item.avgLevel),
+    avgNetWorth: numberValue(item.avgNetWorth),
+    avgTowerDamage: numberValue(item.avgTowerDamage),
+    avgXpPerMin: numberValue(item.avgXpPerMin),
+    comparisonToPlayerOverallBaseline: (arrayPayload(item.comparisonToPlayerOverallBaseline) ?? [])
+      .map(mapHeroMasteryMetricComparison),
+    contextSummary: mapHeroMasteryContextSummary(item.contextSummary),
+    deterministicNotes: (arrayPayload(item.deterministicNotes) ?? []).map(mapHeroMasteryNote),
+    games: numberValue(item.games),
+    heroId: text(item.heroId, "unknown-hero"),
+    heroName: nullableText(item.heroName),
+    kda: numberValue(item.kda),
+    losses: numberValue(item.losses),
+    masteryVerdict: heroMasteryVerdict(item.masteryVerdict),
+    profileId: text(item.profileId, "unknown-player"),
+    recentMatches: (arrayPayload(item.recentMatches) ?? []).map(mapHeroMasteryRecentMatch),
+    recentTrend: mapHeroMasteryRecentTrend(item.recentTrend),
+    winRate: numberValue(item.winRate),
+    wins: numberValue(item.wins)
   };
 }
 
@@ -1360,6 +1651,19 @@ export async function getMyPlayerHeroPerformance(filters?: AnalyticsFilters) {
     await getApiAuthenticated<unknown>(`/me/analytics/heroes${queryString(filters)}`),
     "player hero performance"
   ).map(mapPlayerHeroPerformance);
+}
+
+export async function getMyHeroMastery(heroId: string, filters?: AnalyticsFilters) {
+  const cleanHeroId = heroId.trim();
+  if (!cleanHeroId) {
+    throw new Error("Hero id is required for hero mastery analytics.");
+  }
+
+  return mapHeroMasteryResponse(
+    await getApiAuthenticated<unknown>(
+      `/me/analytics/heroes/${encodeURIComponent(cleanHeroId)}/mastery${queryString(filters)}`
+    )
+  );
 }
 
 export async function getMyPlayerInsights(filters?: AnalyticsFilters) {

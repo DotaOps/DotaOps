@@ -15,6 +15,7 @@ import org.springframework.stereotype.Repository;
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsMatchHistory;
 import si.um.feri.dotaops.backend.analytics.domain.HeroMetrics;
+import si.um.feri.dotaops.backend.analytics.domain.HeroMasteryMetrics;
 import si.um.feri.dotaops.backend.analytics.domain.PickedHeroMetrics;
 import si.um.feri.dotaops.backend.analytics.domain.PlayerComparisonHeadlineMetrics;
 import si.um.feri.dotaops.backend.analytics.domain.PlayerComparisonMatch;
@@ -526,6 +527,58 @@ public class AnalyticsRepository {
                 """,
                 this::mapPlayerHeroPerformance,
                 parameters.toArray());
+    }
+
+    public Optional<HeroMasteryMetrics> findPlayerHeroMasteryMetrics(
+            UUID profileId,
+            UUID heroId,
+            AnalyticsFilters filters,
+            boolean publicOnly
+    ) {
+        AnalyticsFilters scopedFilters = filters.withProfileId(profileId).withHeroId(heroId);
+        QueryParts queryParts = filteredWhere(scopedFilters, "mp", "m");
+        List<Object> parameters = new ArrayList<>(queryParts.parameters());
+
+        return jdbcTemplate.query(
+                        """
+                        select
+                          mp.profile_id,
+                          h.id as hero_id,
+                          coalesce(h.localized_name, h.name, 'Unknown hero') as hero_name,
+                          count(*)::integer as games,
+                          count(*) filter (where mp.is_winner is true)::integer as wins,
+                          count(*) filter (where mp.is_winner is false)::integer as losses,
+                          round(((count(*) filter (where mp.is_winner is true))::numeric / greatest(count(*), 1)) * 100, 2)
+                            as win_rate,
+                          round(avg(coalesce(mp.kills, 0)), 2) as avg_kills,
+                          round(avg(coalesce(mp.deaths, 0)), 2) as avg_deaths,
+                          round(avg(coalesce(mp.assists, 0)), 2) as avg_assists,
+                          round((coalesce(sum(mp.kills), 0) + coalesce(sum(mp.assists), 0))::numeric
+                            / greatest(coalesce(sum(mp.deaths), 0), 1), 2) as kda,
+                          round(avg(mp.gold_per_min), 2) as avg_gold_per_min,
+                          round(avg(mp.xp_per_min), 2) as avg_xp_per_min,
+                          round(avg(mp.last_hits), 2) as avg_last_hits,
+                          round(avg(mp.denies), 2) as avg_denies,
+                          round(avg(mp.net_worth), 2) as avg_net_worth,
+                          round(avg(mp.hero_damage), 2) as avg_hero_damage,
+                          round(avg(mp.tower_damage), 2) as avg_tower_damage,
+                          round(avg(mp.hero_healing), 2) as avg_hero_healing,
+                          round(avg(mp.level), 2) as avg_level
+                        from public.match_players mp
+                        left join public.match_games mg on mg.id = mp.match_game_id
+                        join public.matches m on m.id = coalesce(mg.match_id, mp.match_id)
+                        join public.tournaments t on t.id = m.tournament_id
+                        join public.heroes h on h.id = mp.hero_id
+                        where """ + tournamentVisibilityCondition(publicOnly) + """
+                          and mp.profile_id is not null
+                          and mp.hero_id is not null
+                        """ + queryParts.sql() + """
+                        group by mp.profile_id, h.id, h.localized_name, h.name
+                        """,
+                        this::mapHeroMasteryMetrics,
+                        parameters.toArray())
+                .stream()
+                .findFirst();
     }
 
     public List<TournamentMetrics> findTournamentMetrics(AnalyticsFilters filters) {
@@ -1464,6 +1517,30 @@ public class AnalyticsRepository {
                 resultSet.getString("best_dota_match_id"),
                 resultSet.getObject("best_played_at", OffsetDateTime.class),
                 decimal(resultSet, "best_kda"));
+    }
+
+    private HeroMasteryMetrics mapHeroMasteryMetrics(ResultSet resultSet, int rowNumber) throws SQLException {
+        return new HeroMasteryMetrics(
+                resultSet.getObject("profile_id", UUID.class),
+                resultSet.getObject("hero_id", UUID.class),
+                resultSet.getString("hero_name"),
+                resultSet.getInt("games"),
+                resultSet.getInt("wins"),
+                resultSet.getInt("losses"),
+                decimal(resultSet, "win_rate"),
+                decimal(resultSet, "avg_kills"),
+                decimal(resultSet, "avg_deaths"),
+                decimal(resultSet, "avg_assists"),
+                decimal(resultSet, "kda"),
+                decimal(resultSet, "avg_gold_per_min"),
+                decimal(resultSet, "avg_xp_per_min"),
+                decimal(resultSet, "avg_last_hits"),
+                decimal(resultSet, "avg_denies"),
+                decimal(resultSet, "avg_net_worth"),
+                decimal(resultSet, "avg_hero_damage"),
+                decimal(resultSet, "avg_tower_damage"),
+                decimal(resultSet, "avg_hero_healing"),
+                decimal(resultSet, "avg_level"));
     }
 
     private BigDecimal decimal(ResultSet resultSet, String column) throws SQLException {

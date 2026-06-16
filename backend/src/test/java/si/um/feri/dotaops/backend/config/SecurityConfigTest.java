@@ -159,6 +159,13 @@ class SecurityConfigTest {
     }
 
     @Test
+    void playerHeroMasteryAnalyticsRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/me/analytics/heroes/11111111-1111-4111-8111-111111111111/mastery"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
     void playerInsightsAnalyticsRequiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/me/analytics/insights"))
                 .andExpect(status().isUnauthorized())
@@ -245,6 +252,14 @@ class SecurityConfigTest {
     @Test
     void organizerCannotUsePlayerHeroAnalyticsEndpoint() throws Exception {
         mockMvc.perform(get("/api/me/analytics/heroes")
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void organizerCannotUsePlayerHeroMasteryAnalyticsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/me/analytics/heroes/11111111-1111-4111-8111-111111111111/mastery")
                         .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));

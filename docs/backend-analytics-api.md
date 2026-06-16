@@ -61,6 +61,64 @@ igralca. Trend insighti lahko uporabijo context-aware utezi za zelo slabe ali st
 igre, vendar samo pri interpretaciji dolgorocnih povprecij. Surovi progress in match
 history podatki se ne spremenijo.
 
+`GET /api/me/analytics/heroes/{heroId}/mastery` vraca podrobno hero mastery porocilo
+za trenutnega prijavljenega igralca in izbranega heroja.
+
+Dostop: samo `ROLE_PLAYER`.
+
+Path `heroId` je avtoritativen. Ce query `heroId` ali `hero_id` nasprotuje path
+vrednosti, backend vrne `400 BAD_REQUEST`. Ostali skupni filtri (`tournamentId`,
+`teamId`, `from`, `to`, `limit`) ostanejo podprti. `profileId` je lahko prazen ali
+enak trenutnemu profilu.
+
+Response overview:
+
+- `profileId`, `heroId`, `heroName`
+- raw hero metrike: `games`, `wins`, `losses`, `winRate`, `avgKills`, `avgDeaths`,
+  `avgAssists`, `kda`, `avgGoldPerMin`, `avgXpPerMin`, `avgLastHits`, `avgDenies`,
+  `avgNetWorth`, `avgHeroDamage`, `avgTowerDamage`, `avgHeroHealing`, `avgLevel`
+- `recentMatches`: zadnje hero tekme z raw match-level vrednostmi in dodatnim
+  context opisom
+- `recentTrend`: deterministicna primerjava zadnjega hero okna proti prejsnjemu
+  hero oknu
+- `comparisonToPlayerOverallBaseline`: strukturirana primerjava hero metrik proti
+  igralcevemu overall baseline-u
+- `contextSummary`: povzetek context-weighting interpretacije
+- `masteryVerdict`: `STRONG`, `STABLE`, `NEEDS_WORK` ali `INSUFFICIENT_DATA`
+- `deterministicNotes`: kratke rule-based opombe brez AI/LLM generiranja
+
+Raw metrike v hero mastery response-u ostanejo neposredno iz normaliziranih
+`match_players`/`match_games`/`matches` podatkov. Context-aware weighting se uporablja
+samo za interpretacijo verdicta, context summary in opombe. Ne zamenja raw kill/death,
+economy, damage ali objective vrednosti.
+
+`comparisonToPlayerOverallBaseline` vsebuje po metrikah:
+
+- `metric`
+- `heroValue`
+- `overallValue`
+- `delta`
+- `direction`: `BETTER`, `WORSE` ali `SIMILAR`
+- `interpretation`
+
+Trenutne primerjane metrike so `winRate`, `KDA`, `GPM`, `XPM`, `deaths`,
+`heroDamage`, `towerDamage`, `healing`, `lastHits` in `denies`.
+
+`masteryVerdict` je determinicen:
+
+- `INSUFFICIENT_DATA`: manj kot minimalni sample (`3` hero tekme) ali ni overall
+  baseline-a.
+- `STRONG`: dovolj tekem, win rate in KDA nista pod baseline-om, vec pomembnih
+  metrik je nad baseline-om, malo metrik pa je pod baseline-om.
+- `NEEDS_WORK`: vec pomembnih metrik je pod baseline-om ali so smrti slabse skupaj
+  s slabso KDA/damage/objective metriko.
+- `STABLE`: dovolj tekem in rezultat je vecinoma blizu igralcevega overall baseline-a.
+
+`contextSummary` vrne `averageContextWeight`, `roughGameCount`, `stompLossCount`,
+`lowConfidenceCount`, `normalGameCount` in razlagalni `note`. Context weight ima enak
+pomen kot pri `/api/me/analytics/insights`: nizja utez pomeni, da se rough/stomp igra
+manj uposteva pri interpretaciji, surovi podatki pa ostanejo vidni in nespremenjeni.
+
 Context weight ima razpon `0.35` do `1.00`:
 
 - `1.00`: normalna igra ali premalo konteksta za varno korekcijo.
