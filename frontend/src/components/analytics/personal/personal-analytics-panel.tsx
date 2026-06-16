@@ -11,10 +11,14 @@ import type {
 
 export function PersonalAnalyticsPanel({
   appliedFilters,
-  personal
+  personal,
+  selectedHeroId,
+  onSelectedHeroIdChange
 }: Readonly<{
   appliedFilters: AnalyticsFilters;
   personal: PlayerAnalyticsResponse;
+  selectedHeroId: string | null;
+  onSelectedHeroIdChange: (heroId: string | null) => void;
 }>) {
   const primaryMetric = personal.metrics[0] ?? null;
 
@@ -32,6 +36,8 @@ export function PersonalAnalyticsPanel({
           appliedFilters={appliedFilters}
           heroDetails={personal.heroDetails}
           heroPerformance={personal.heroPerformance}
+          selectedHeroId={selectedHeroId}
+          onSelectedHeroIdChange={onSelectedHeroIdChange}
         />
         <div className="analytics-terminal-panel analytics-data-panel ops-panel">
           <SectionHeader

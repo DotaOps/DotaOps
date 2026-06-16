@@ -12,6 +12,11 @@ import {
   Trophy,
   UsersRound
 } from "lucide-react";
+import {
+  usePathname,
+  useRouter,
+  useSearchParams
+} from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AnalyticsEmptyBlock } from "@/components/analytics/analytics-empty-block";
@@ -278,6 +283,9 @@ async function loadRoleAnalytics(profile: CurrentUserProfile | null, filters?: A
 }
 
 export function AnalyticsDashboard() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [appliedPublicFilters, setAppliedPublicFilters] = useState<AnalyticsFilters>(
     filtersFromForm(DEFAULT_PUBLIC_FILTERS)
   );
@@ -414,7 +422,34 @@ export function AnalyticsDashboard() {
 
   const primaryMetricValue = roleMetricValue(roleAnalytics, publicSummary.analyzedMatches);
   const tabs = tabsForRole(roleAnalytics);
-  const activeTab = tabs.some((tab) => tab.key === selectedTab) ? selectedTab : "overview";
+  const selectedHeroId = searchParams.get("heroId")?.trim() || null;
+  const activeTab = selectedHeroId && tabs.some((tab) => tab.key === "personal")
+    ? "personal"
+    : tabs.some((tab) => tab.key === selectedTab)
+      ? selectedTab
+      : "overview";
+
+  const updateSelectedHeroId = useCallback((heroId: string | null) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    const cleanHeroId = heroId?.trim();
+
+    if (cleanHeroId) {
+      nextParams.set("heroId", cleanHeroId);
+    } else {
+      nextParams.delete("heroId");
+    }
+
+    const nextQuery = nextParams.toString();
+    router.replace(`${pathname}${nextQuery ? `?${nextQuery}` : ""}`, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  function changeAnalyticsTab(tab: string) {
+    setSelectedTab(tab);
+
+    if (tab !== "personal" && selectedHeroId) {
+      updateSelectedHeroId(null);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -481,7 +516,7 @@ export function AnalyticsDashboard() {
       </section>
 
       {roleAnalytics ? (
-        <AnalyticsSectionTabs activeTab={activeTab} tabs={tabs} onChange={setSelectedTab} />
+        <AnalyticsSectionTabs activeTab={activeTab} tabs={tabs} onChange={changeAnalyticsTab} />
       ) : null}
 
       {error ? (
@@ -508,8 +543,10 @@ export function AnalyticsDashboard() {
           publicSummary={publicSummary}
           refreshResult={refreshResult}
           roleAnalytics={roleAnalytics}
+          selectedHeroId={selectedHeroId}
           snapshot={snapshot}
           tournamentDrilldown={tournamentDrilldown}
+          onSelectedHeroIdChange={updateSelectedHeroId}
         />
       ) : null}
     </div>
@@ -558,8 +595,10 @@ function AnalyticsTabContent({
   publicSummary,
   refreshResult,
   roleAnalytics,
+  selectedHeroId,
   snapshot,
-  tournamentDrilldown
+  tournamentDrilldown,
+  onSelectedHeroIdChange
 }: Readonly<{
   activeTab: string;
   appliedFilters: AnalyticsFilters;
@@ -583,8 +622,10 @@ function AnalyticsTabContent({
   };
   refreshResult: AnalyticsRefreshResult | null;
   roleAnalytics: RoleAnalyticsState;
+  selectedHeroId: string | null;
   snapshot: AnalyticsSnapshot;
   tournamentDrilldown: OrganizerTournamentAnalyticsResponse | null;
+  onSelectedHeroIdChange: (heroId: string | null) => void;
 }>) {
   if (activeTab === "public") {
     return (
@@ -618,7 +659,9 @@ function AnalyticsTabContent({
         currentProfile={currentProfile}
         currentProfileId={currentProfile?.profileId ?? ""}
         personal={roleAnalytics.personal}
+        selectedHeroId={selectedHeroId}
         team={roleAnalytics.team}
+        onSelectedHeroIdChange={onSelectedHeroIdChange}
       />
     );
   }
@@ -671,14 +714,18 @@ function PlayerRoleAnalyticsPanel({
   currentProfile,
   currentProfileId,
   personal,
-  team
+  selectedHeroId,
+  team,
+  onSelectedHeroIdChange
 }: Readonly<{
   activeTab: string;
   appliedFilters: AnalyticsFilters;
   currentProfile: CurrentUserProfile | null;
   currentProfileId: string;
   personal: PlayerAnalyticsResponse;
+  selectedHeroId: string | null;
   team: CurrentTeamAnalyticsResponse;
+  onSelectedHeroIdChange: (heroId: string | null) => void;
 }>) {
   const primaryMetric = personal.metrics[0] ?? null;
   const teamMetric = team.teamSummary[0] ?? null;
@@ -734,7 +781,14 @@ function PlayerRoleAnalyticsPanel({
   }
 
   if (activeTab === "personal") {
-    return <PersonalAnalyticsPanel appliedFilters={appliedFilters} personal={personal} />;
+    return (
+      <PersonalAnalyticsPanel
+        appliedFilters={appliedFilters}
+        personal={personal}
+        selectedHeroId={selectedHeroId}
+        onSelectedHeroIdChange={onSelectedHeroIdChange}
+      />
+    );
   }
 
   if (activeTab === "team") {

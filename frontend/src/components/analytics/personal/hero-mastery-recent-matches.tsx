@@ -7,6 +7,7 @@ import {
   safeMetricNumber
 } from "@/components/analytics/analytics-formatters";
 import type { HeroMasteryRecentMatch } from "@/lib/analytics-data";
+import { classNames } from "@/lib/utils";
 
 export function HeroMasteryRecentMatches({
   matches
@@ -39,45 +40,44 @@ export function HeroMasteryRecentMatches({
               <th>Result</th>
               <th>K/D/A</th>
               <th>Economy</th>
-              <th>Resources</th>
               <th>Impact</th>
-              <th>Map context</th>
-              <th>Context weight</th>
+              <th>Context</th>
             </tr>
           </thead>
           <tbody>
             {matches.map((match, index) => (
               <tr key={`${match.matchId ?? "match"}-${match.matchGameId ?? index}`}>
                 <td>
-                  <strong>{match.dotaMatchId ? `Dota ${match.dotaMatchId}` : match.matchId ?? "Match unavailable"}</strong>
-                  <span>{formatAnalyticsDateTime(match.playedAt)}</span>
+                  <strong>{formatAnalyticsDateTime(match.playedAt)}</strong>
+                  <span>{match.dotaMatchId ? `Dota ${match.dotaMatchId}` : match.matchId ?? "Match unavailable"}</span>
                   <span>{match.matchGameId ?? "Game ID unavailable"}</span>
                 </td>
                 <td>
-                  <strong>{resultLabel(match.won)}</strong>
-                  <span>KDA {safeMetricNumber(match.kda, 2)}</span>
-                </td>
-                <td>{match.kills}-{match.deaths}-{match.assists}</td>
-                <td>
-                  <strong>{countMetricValue(match.goldPerMin)} / {countMetricValue(match.xpPerMin)}</strong>
-                  <span>GPM / XPM</span>
-                </td>
-                <td>
-                  <strong>LH/DN {countMetricValue(match.lastHits)} / {countMetricValue(match.denies)}</strong>
-                  <span>NW {countMetricValue(match.netWorth)} / Lvl {countMetricValue(match.level)}</span>
+                  <strong className={classNames("analytics-match-result-text", resultClass(match.won))}>
+                    {resultLabel(match.won)}
+                  </strong>
+                  <span>{sideLabel(match.teamSide, match.winnerSide)}</span>
+                  <span>{scoreLabel(match.radiantScore, match.direScore)}</span>
                   <span>Duration {formatAnalyticsDuration(match.durationSeconds)}</span>
                 </td>
                 <td>
-                  <strong>{countMetricValue(match.heroDamage)} hero / {countMetricValue(match.towerDamage)} tower</strong>
-                  <span>Healing {countMetricValue(match.heroHealing)}</span>
+                  <strong>{match.kills}-{match.deaths}-{match.assists}</strong>
+                  <span>KDA {safeMetricNumber(match.kda, 2)}</span>
                 </td>
                 <td>
-                  <strong>{sideLabel(match.teamSide, match.winnerSide)}</strong>
-                  <span>{scoreLabel(match.radiantScore, match.direScore)}</span>
+                  <strong>{countMetricValue(match.goldPerMin)} / {countMetricValue(match.xpPerMin)}</strong>
+                  <span>GPM / XPM</span>
+                  <span>LH/DN {countMetricValue(match.lastHits)} / {countMetricValue(match.denies)}</span>
+                  <span>NW {countMetricValue(match.netWorth)} / Lvl {countMetricValue(match.level)}</span>
+                </td>
+                <td>
+                  <strong>{countMetricValue(match.heroDamage)} hero</strong>
+                  <span>{countMetricValue(match.towerDamage)} tower damage</span>
+                  <span>{countMetricValue(match.heroHealing)} healing</span>
                 </td>
                 <td>
                   <div className="analytics-mastery-match-context">
-                    <strong>{safeMetricNumber(match.contextWeight, 2)}</strong>
+                    <strong>Weight {safeMetricNumber(match.contextWeight, 2)}</strong>
                     <span>{formatAnalyticsEnum(match.contextClassification)}</span>
                     {match.contextMessage ? <em>{match.contextMessage}</em> : null}
                     {match.contextReasons.length > 0 ? (
@@ -108,6 +108,18 @@ function resultLabel(won: boolean | null) {
   }
 
   return "Result unavailable";
+}
+
+function resultClass(won: boolean | null) {
+  if (won === true) {
+    return "is-win";
+  }
+
+  if (won === false) {
+    return "is-loss";
+  }
+
+  return "is-unknown";
 }
 
 function sideLabel(teamSide: string | null, winnerSide: string | null) {

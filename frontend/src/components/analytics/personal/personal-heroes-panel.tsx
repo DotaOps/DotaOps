@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import {
   HeroMatrix,
@@ -17,14 +17,16 @@ import type {
 export function PersonalHeroesPanel({
   appliedFilters,
   heroDetails,
-  heroPerformance
+  heroPerformance,
+  selectedHeroId,
+  onSelectedHeroIdChange
 }: Readonly<{
   appliedFilters: AnalyticsFilters;
   heroDetails: PlayerHeroPerformance[];
   heroPerformance: HeroAnalyticsMetric[];
+  selectedHeroId: string | null;
+  onSelectedHeroIdChange: (heroId: string | null) => void;
 }>) {
-  const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
-  const [selectedHeroName, setSelectedHeroName] = useState<string | null>(null);
   const availableHeroes = useMemo(
     () => [
       ...heroDetails
@@ -46,17 +48,15 @@ export function PersonalHeroesPanel({
       : null,
     [availableHeroes, selectedHeroId]
   );
-  const activeSelectedHeroId = activeSelectedHero?.heroId ?? null;
-  const activeSelectedHeroName = selectedHeroName ?? activeSelectedHero?.heroName ?? null;
+  const activeSelectedHeroId = selectedHeroId;
+  const activeSelectedHeroName = activeSelectedHero?.heroName ?? null;
 
-  function selectHero(heroId: string, heroName: string | null) {
-    setSelectedHeroId(heroId);
-    setSelectedHeroName(heroName);
+  function selectHero(heroId: string) {
+    onSelectedHeroIdChange(heroId);
   }
 
   function clearSelectedHero() {
-    setSelectedHeroId(null);
-    setSelectedHeroName(null);
+    onSelectedHeroIdChange(null);
   }
 
   return (

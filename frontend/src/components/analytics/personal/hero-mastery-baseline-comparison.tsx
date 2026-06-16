@@ -23,6 +23,7 @@ export function HeroMasteryBaselineComparison({
         <div>
           <span className="ops-label">Player baseline</span>
           <strong>Hero vs Overall Baseline</strong>
+          <p>Direction is taken from the backend comparison rules, including metrics where lower can be better.</p>
         </div>
       </div>
       <div className="analytics-real-table-wrap">
@@ -30,8 +31,8 @@ export function HeroMasteryBaselineComparison({
           <thead>
             <tr>
               <th>Metric</th>
-              <th>Hero</th>
-              <th>Overall</th>
+              <th>Hero value</th>
+              <th>Your average</th>
               <th>Delta</th>
               <th>Direction</th>
               <th>Interpretation</th>
@@ -48,14 +49,7 @@ export function HeroMasteryBaselineComparison({
                 <td>{metricValue(comparison.metric, comparison.overallValue)}</td>
                 <td>{deltaValue(comparison.metric, comparison.delta)}</td>
                 <td>
-                  <span
-                    className={classNames(
-                      "analytics-direction-badge",
-                      `is-${comparison.direction.toLowerCase()}`
-                    )}
-                  >
-                    {directionLabel(comparison.direction)}
-                  </span>
+                  <DirectionIndicator direction={comparison.direction} />
                 </td>
                 <td>{comparison.interpretation}</td>
               </tr>
@@ -64,6 +58,21 @@ export function HeroMasteryBaselineComparison({
         </table>
       </div>
     </section>
+  );
+}
+
+function DirectionIndicator({
+  direction
+}: Readonly<{
+  direction: HeroMasteryBaselineComparison["direction"];
+}>) {
+  return (
+    <span className={classNames("analytics-baseline-direction", `is-${direction.toLowerCase()}`)}>
+      <i aria-hidden="true" />
+      <span className={classNames("analytics-direction-badge", `is-${direction.toLowerCase()}`)}>
+        {directionLabel(direction)}
+      </span>
+    </span>
   );
 }
 

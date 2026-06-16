@@ -108,6 +108,7 @@ export function PlayerHeroPerformanceTable({
                   isSelected && "is-selected"
                 )}
                 key={`${hero.heroId ?? hero.heroName ?? "hero"}-${hero.recentMatchId ?? "recent"}`}
+                onClick={onSelectHero && hero.heroId ? () => onSelectHero(hero.heroId as string, hero.heroName) : undefined}
               >
                 <td>
                   <HeroSelectButton
@@ -183,6 +184,7 @@ export function HeroMatrix({
                   isSelected && "is-selected"
                 )}
                 key={`${hero.heroId}-${hero.tournamentId ?? "global"}`}
+                onClick={onSelectHero ? () => onSelectHero(hero.heroId, hero.localizedName) : undefined}
               >
                 <td>
                   <HeroSelectButton
@@ -235,7 +237,10 @@ function HeroSelectButton({
     <button
       aria-pressed={isSelected}
       className="analytics-hero-select-button"
-      onClick={() => onSelectHero(heroId, heroName)}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelectHero(heroId, heroName);
+      }}
       type="button"
     >
       <strong>{title}</strong>
