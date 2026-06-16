@@ -243,6 +243,8 @@ export interface HeroMasteryMetricComparison {
   overallValue: number;
 }
 
+export type HeroMasteryBaselineComparison = HeroMasteryMetricComparison;
+
 export interface HeroMasteryTrendMetric {
   delta: number;
   direction: HeroMasteryComparisonDirection;
@@ -803,7 +805,14 @@ function setLimitParam(params: URLSearchParams, value?: number | null) {
   }
 }
 
-function queryString(filters?: AnalyticsFilters, options?: { omitTournamentId?: boolean }) {
+function queryString(
+  filters?: AnalyticsFilters,
+  options?: {
+    omitHeroId?: boolean;
+    omitProfileId?: boolean;
+    omitTournamentId?: boolean;
+  }
+) {
   const params = new URLSearchParams();
 
   if (!options?.omitTournamentId) {
@@ -811,8 +820,15 @@ function queryString(filters?: AnalyticsFilters, options?: { omitTournamentId?: 
   }
 
   setStringParam(params, "teamId", filters?.teamId);
-  setStringParam(params, "profileId", filters?.profileId);
-  setStringParam(params, "heroId", filters?.heroId);
+
+  if (!options?.omitProfileId) {
+    setStringParam(params, "profileId", filters?.profileId);
+  }
+
+  if (!options?.omitHeroId) {
+    setStringParam(params, "heroId", filters?.heroId);
+  }
+
   setStringParam(params, "from", filters?.from);
   setStringParam(params, "to", filters?.to);
   setLimitParam(params, filters?.limit);
@@ -1661,7 +1677,10 @@ export async function getMyHeroMastery(heroId: string, filters?: AnalyticsFilter
 
   return mapHeroMasteryResponse(
     await getApiAuthenticated<unknown>(
-      `/me/analytics/heroes/${encodeURIComponent(cleanHeroId)}/mastery${queryString(filters)}`
+      `/me/analytics/heroes/${encodeURIComponent(cleanHeroId)}/mastery${queryString(filters, {
+        omitHeroId: true,
+        omitProfileId: true
+      })}`
     )
   );
 }

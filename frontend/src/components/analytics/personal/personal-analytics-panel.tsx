@@ -4,9 +4,18 @@ import { PersonalInsightsPanel } from "@/components/analytics/personal/personal-
 import { PersonalProgressPanel } from "@/components/analytics/personal/personal-progress-panel";
 import { PersonalSummaryPanel } from "@/components/analytics/personal/personal-summary-panel";
 import { SectionHeader } from "@/components/section-header";
-import type { PlayerAnalyticsResponse } from "@/lib/analytics-data";
+import type {
+  AnalyticsFilters,
+  PlayerAnalyticsResponse
+} from "@/lib/analytics-data";
 
-export function PersonalAnalyticsPanel({ personal }: Readonly<{ personal: PlayerAnalyticsResponse }>) {
+export function PersonalAnalyticsPanel({
+  appliedFilters,
+  personal
+}: Readonly<{
+  appliedFilters: AnalyticsFilters;
+  personal: PlayerAnalyticsResponse;
+}>) {
   const primaryMetric = personal.metrics[0] ?? null;
 
   return (
@@ -20,6 +29,7 @@ export function PersonalAnalyticsPanel({ personal }: Readonly<{ personal: Player
         <PersonalSummaryPanel metric={primaryMetric} />
         <PersonalInsightsPanel insights={personal.insights} />
         <PersonalHeroesPanel
+          appliedFilters={appliedFilters}
           heroDetails={personal.heroDetails}
           heroPerformance={personal.heroPerformance}
         />

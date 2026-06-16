@@ -11,7 +11,9 @@ import {
   type HeroAnalyticsMetric,
   type PlayerHeroPerformance
 } from "@/lib/analytics-data";
-import { formatPercent } from "@/lib/utils";
+import { classNames, formatPercent } from "@/lib/utils";
+
+type HeroSelectHandler = (heroId: string, heroName: string | null) => void;
 
 export function MatchHistoryList({
   emptyText,
@@ -62,7 +64,15 @@ export function MatchHistoryList({
   );
 }
 
-export function PlayerHeroPerformanceTable({ heroes }: Readonly<{ heroes: PlayerHeroPerformance[] }>) {
+export function PlayerHeroPerformanceTable({
+  heroes,
+  onSelectHero,
+  selectedHeroId
+}: Readonly<{
+  heroes: PlayerHeroPerformance[];
+  onSelectHero?: HeroSelectHandler;
+  selectedHeroId?: string | null;
+}>) {
   if (heroes.length === 0) {
     return (
       <AnalyticsEmptyBlock
@@ -88,40 +98,63 @@ export function PlayerHeroPerformanceTable({ heroes }: Readonly<{ heroes: Player
           </tr>
         </thead>
         <tbody>
-          {heroes.slice(0, 12).map((hero) => (
-            <tr key={`${hero.heroId ?? hero.heroName ?? "hero"}-${hero.recentMatchId ?? "recent"}`}>
-              <td>
-                <strong>{hero.heroName ?? "Hero unavailable"}</strong>
-                <span>{hero.heroId ?? "Hero ID unavailable"}</span>
-              </td>
-              <td>{hero.matches}</td>
-              <td>{hero.wins}-{hero.losses}</td>
-              <td>{formatPercent(hero.winRate)}</td>
-              <td>
-                <strong>{safeMetricNumber(hero.avgKda, 2)}</strong>
-                <span>{safeMetricNumber(hero.avgKills)} / {safeMetricNumber(hero.avgDeaths)} / {safeMetricNumber(hero.avgAssists)}</span>
-              </td>
-              <td>
-                <strong>{safeMetricNumber(hero.avgGpm)} / {safeMetricNumber(hero.avgXpm)}</strong>
-                <span>LH/DN {safeMetricNumber(hero.avgLastHits)} / {safeMetricNumber(hero.avgDenies)}</span>
-              </td>
-              <td>
-                <strong>{Math.round(hero.avgHeroDamage).toLocaleString("en-US")} hero / {Math.round(hero.avgTowerDamage).toLocaleString("en-US")} tower</strong>
-                <span>Healing {Math.round(hero.avgHeroHealing).toLocaleString("en-US")}</span>
-              </td>
-              <td>
-                <strong>{formatAnalyticsDateTime(hero.recentPlayedAt)}</strong>
-                <span>Best KDA {safeMetricNumber(hero.bestKda, 2)} / {hero.bestDotaMatchId ?? playerHeroReferenceLabel(hero)}</span>
-              </td>
-            </tr>
-          ))}
+          {heroes.slice(0, 12).map((hero) => {
+            const isSelected = Boolean(hero.heroId && hero.heroId === selectedHeroId);
+
+            return (
+              <tr
+                className={classNames(
+                  onSelectHero && hero.heroId && "analytics-hero-selectable-row",
+                  isSelected && "is-selected"
+                )}
+                key={`${hero.heroId ?? hero.heroName ?? "hero"}-${hero.recentMatchId ?? "recent"}`}
+              >
+                <td>
+                  <HeroSelectButton
+                    heroId={hero.heroId}
+                    heroName={hero.heroName}
+                    isSelected={isSelected}
+                    onSelectHero={onSelectHero}
+                    secondaryLabel={hero.heroId ?? "Hero ID unavailable"}
+                  />
+                </td>
+                <td>{hero.matches}</td>
+                <td>{hero.wins}-{hero.losses}</td>
+                <td>{formatPercent(hero.winRate)}</td>
+                <td>
+                  <strong>{safeMetricNumber(hero.avgKda, 2)}</strong>
+                  <span>{safeMetricNumber(hero.avgKills)} / {safeMetricNumber(hero.avgDeaths)} / {safeMetricNumber(hero.avgAssists)}</span>
+                </td>
+                <td>
+                  <strong>{safeMetricNumber(hero.avgGpm)} / {safeMetricNumber(hero.avgXpm)}</strong>
+                  <span>LH/DN {safeMetricNumber(hero.avgLastHits)} / {safeMetricNumber(hero.avgDenies)}</span>
+                </td>
+                <td>
+                  <strong>{Math.round(hero.avgHeroDamage).toLocaleString("en-US")} hero / {Math.round(hero.avgTowerDamage).toLocaleString("en-US")} tower</strong>
+                  <span>Healing {Math.round(hero.avgHeroHealing).toLocaleString("en-US")}</span>
+                </td>
+                <td>
+                  <strong>{formatAnalyticsDateTime(hero.recentPlayedAt)}</strong>
+                  <span>Best KDA {safeMetricNumber(hero.bestKda, 2)} / {hero.bestDotaMatchId ?? playerHeroReferenceLabel(hero)}</span>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-export function HeroMatrix({ heroes }: Readonly<{ heroes: HeroAnalyticsMetric[] }>) {
+export function HeroMatrix({
+  heroes,
+  onSelectHero,
+  selectedHeroId
+}: Readonly<{
+  heroes: HeroAnalyticsMetric[];
+  onSelectHero?: HeroSelectHandler;
+  selectedHeroId?: string | null;
+}>) {
   if (heroes.length === 0) {
     return <AnalyticsEmptyBlock title="No hero metrics available." detail="Hero performance rows will appear after imported matches include hero data." />;
   }
@@ -140,21 +173,73 @@ export function HeroMatrix({ heroes }: Readonly<{ heroes: HeroAnalyticsMetric[] 
           </tr>
         </thead>
         <tbody>
-          {heroes.slice(0, 12).map((hero) => (
-            <tr key={`${hero.heroId}-${hero.tournamentId ?? "global"}`}>
-              <td>
-                <strong>{hero.localizedName}</strong>
-                <span>{hero.tournamentName ?? "Tournament aggregate"}</span>
-              </td>
-              <td>{hero.gamesPlayed}</td>
-              <td>{hero.wins}-{hero.losses}</td>
-              <td>{formatPercent(hero.winRate)}</td>
-              <td>{hero.kda.toFixed(2)}</td>
-              <td>{Math.round(hero.avgHeroDamage).toLocaleString("en-US")}</td>
-            </tr>
-          ))}
+          {heroes.slice(0, 12).map((hero) => {
+            const isSelected = hero.heroId === selectedHeroId;
+
+            return (
+              <tr
+                className={classNames(
+                  onSelectHero && "analytics-hero-selectable-row",
+                  isSelected && "is-selected"
+                )}
+                key={`${hero.heroId}-${hero.tournamentId ?? "global"}`}
+              >
+                <td>
+                  <HeroSelectButton
+                    heroId={hero.heroId}
+                    heroName={hero.localizedName}
+                    isSelected={isSelected}
+                    onSelectHero={onSelectHero}
+                    secondaryLabel={hero.tournamentName ?? "Tournament aggregate"}
+                  />
+                </td>
+                <td>{hero.gamesPlayed}</td>
+                <td>{hero.wins}-{hero.losses}</td>
+                <td>{formatPercent(hero.winRate)}</td>
+                <td>{hero.kda.toFixed(2)}</td>
+                <td>{Math.round(hero.avgHeroDamage).toLocaleString("en-US")}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
+  );
+}
+
+function HeroSelectButton({
+  heroId,
+  heroName,
+  isSelected,
+  onSelectHero,
+  secondaryLabel
+}: Readonly<{
+  heroId: string | null;
+  heroName: string | null;
+  isSelected: boolean;
+  onSelectHero?: HeroSelectHandler;
+  secondaryLabel: string;
+}>) {
+  const title = heroName ?? "Hero unavailable";
+
+  if (!heroId || !onSelectHero) {
+    return (
+      <>
+        <strong>{title}</strong>
+        <span>{secondaryLabel}</span>
+      </>
+    );
+  }
+
+  return (
+    <button
+      aria-pressed={isSelected}
+      className="analytics-hero-select-button"
+      onClick={() => onSelectHero(heroId, heroName)}
+      type="button"
+    >
+      <strong>{title}</strong>
+      <span>{isSelected ? "Mastery selected" : secondaryLabel}</span>
+    </button>
   );
 }

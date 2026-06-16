@@ -33,6 +33,30 @@ export function formatAnalyticsDateTime(value: string | null) {
     : parsed.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 }
 
+export function formatAnalyticsDuration(value: number | null) {
+  if (!value || value <= 0) {
+    return "No data";
+  }
+
+  const minutes = Math.floor(value / 60);
+  const seconds = Math.round(value % 60);
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+export function formatAnalyticsEnum(value: string | null | undefined) {
+  if (!value) {
+    return "No data";
+  }
+
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function matchTeamName(name: string | null, fallback: string) {
   return name?.trim() || fallback;
 }

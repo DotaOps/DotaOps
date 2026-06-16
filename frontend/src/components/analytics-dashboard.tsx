@@ -734,7 +734,7 @@ function PlayerRoleAnalyticsPanel({
   }
 
   if (activeTab === "personal") {
-    return <PersonalAnalyticsPanel personal={personal} />;
+    return <PersonalAnalyticsPanel appliedFilters={appliedFilters} personal={personal} />;
   }
 
   if (activeTab === "team") {

@@ -4584,6 +4584,37 @@ textarea:focus {
   font-size: 0.72rem;
 }
 
+.analytics-hero-selectable-row {
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.analytics-hero-selectable-row.is-selected {
+  background:
+    linear-gradient(90deg, rgba(123, 209, 248, 0.09), transparent 70%),
+    rgba(255, 255, 255, 0.035);
+}
+
+.analytics-hero-select-button {
+  display: grid;
+  justify-items: start;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.analytics-hero-select-button:focus-visible {
+  outline: 2px solid var(--ops-cyan);
+  outline-offset: 3px;
+}
+
+.analytics-hero-select-button:hover strong,
+.analytics-hero-select-button[aria-pressed="true"] strong {
+  color: var(--ops-cyan);
+}
+
 .analytics-real-stack {
   display: grid;
   gap: var(--ops-space-3);
@@ -4696,6 +4727,226 @@ textarea:focus {
   font-size: 0.7rem;
   font-style: normal;
   text-transform: uppercase;
+}
+
+.analytics-mastery-panel {
+  grid-column: 1 / -1;
+}
+
+.analytics-mastery-stack,
+.analytics-mastery-summary {
+  display: grid;
+  gap: var(--ops-space-4);
+}
+
+.analytics-mastery-stat-grid,
+.analytics-mastery-trend-grid,
+.analytics-mastery-note-grid,
+.analytics-mastery-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ops-space-3);
+}
+
+.analytics-mastery-stat-card,
+.analytics-mastery-trend-item,
+.analytics-mastery-note-card,
+.analytics-mastery-card {
+  border: 1px solid var(--ops-line-soft);
+  border-radius: var(--ops-radius);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    rgba(10, 10, 10, 0.34);
+}
+
+.analytics-mastery-stat-card,
+.analytics-mastery-trend-item,
+.analytics-mastery-note-card {
+  display: grid;
+  gap: var(--ops-space-2);
+  padding: var(--ops-space-3);
+}
+
+.analytics-mastery-stat-card strong,
+.analytics-mastery-verdict strong,
+.analytics-mastery-card-header strong,
+.analytics-mastery-trend-item strong,
+.analytics-mastery-note-card strong,
+.analytics-mastery-context-grid strong,
+.analytics-mastery-match-context strong {
+  color: var(--ops-text);
+}
+
+.analytics-mastery-stat-card p,
+.analytics-mastery-verdict p,
+.analytics-mastery-trend-item p,
+.analytics-mastery-note-card p {
+  margin: 0;
+  color: var(--ops-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.analytics-mastery-verdict {
+  display: grid;
+  gap: var(--ops-space-2);
+  padding: var(--ops-space-4);
+  border: 1px solid rgba(123, 209, 248, 0.22);
+  border-left: 3px solid var(--ops-cyan);
+  border-radius: var(--ops-radius);
+  background:
+    linear-gradient(90deg, rgba(123, 209, 248, 0.08), transparent 66%),
+    rgba(255, 255, 255, 0.035);
+}
+
+.analytics-mastery-verdict.is-strong {
+  border-left-color: var(--ops-green);
+}
+
+.analytics-mastery-verdict.is-stable {
+  border-left-color: var(--ops-cyan);
+}
+
+.analytics-mastery-verdict.is-needs-work {
+  border-left-color: var(--ops-secondary);
+}
+
+.analytics-mastery-verdict.is-insufficient-data {
+  border-left-color: var(--ops-muted);
+}
+
+.analytics-mastery-card {
+  display: grid;
+  gap: var(--ops-space-3);
+  padding: var(--ops-space-4);
+}
+
+.analytics-mastery-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ops-space-3);
+}
+
+.analytics-mastery-baseline-table,
+.analytics-mastery-matches-table {
+  min-width: 1040px;
+}
+
+.analytics-direction-badge,
+.analytics-note-severity {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  border: 1px solid var(--ops-line-soft);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--ops-muted-strong);
+  font-family: var(--ops-font-mono);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.analytics-direction-badge.is-better,
+.analytics-note-severity.is-low {
+  border-color: rgba(75, 221, 119, 0.42);
+  color: var(--ops-green);
+}
+
+.analytics-direction-badge.is-worse,
+.analytics-note-severity.is-high {
+  border-color: rgba(255, 92, 92, 0.42);
+  color: var(--ops-primary);
+}
+
+.analytics-direction-badge.is-similar,
+.analytics-note-severity.is-info,
+.analytics-note-severity.is-medium {
+  border-color: rgba(255, 212, 92, 0.42);
+  color: var(--ops-secondary);
+}
+
+.analytics-mastery-trend-item.is-better {
+  border-left: 3px solid var(--ops-green);
+}
+
+.analytics-mastery-trend-item.is-worse {
+  border-left: 3px solid var(--ops-primary);
+}
+
+.analytics-mastery-trend-item.is-similar {
+  border-left: 3px solid var(--ops-secondary);
+}
+
+.analytics-mastery-context-card {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.analytics-mastery-context-grid article {
+  display: grid;
+  gap: 3px;
+  padding: var(--ops-space-3);
+  border: 1px solid rgba(123, 209, 248, 0.18);
+  border-radius: var(--ops-radius-sm);
+  background: rgba(123, 209, 248, 0.04);
+}
+
+.analytics-mastery-note-card > div:first-child,
+.analytics-mastery-match-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ops-space-2);
+}
+
+.analytics-mastery-note-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px var(--ops-space-2);
+  margin: 0;
+  color: var(--ops-muted-strong);
+  font-family: var(--ops-font-mono);
+  font-size: 0.72rem;
+}
+
+.analytics-mastery-note-card dt {
+  color: var(--ops-muted);
+}
+
+.analytics-mastery-note-card dd {
+  margin: 0;
+  color: var(--ops-cyan);
+}
+
+.analytics-mastery-note-card.is-high {
+  border-left: 3px solid var(--ops-primary);
+}
+
+.analytics-mastery-note-card.is-medium {
+  border-left: 3px solid var(--ops-secondary);
+}
+
+.analytics-mastery-note-card.is-low,
+.analytics-mastery-note-card.is-info {
+  border-left: 3px solid var(--ops-cyan);
+}
+
+.analytics-mastery-two-column {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: var(--ops-space-4);
+}
+
+.analytics-mastery-match-context {
+  display: grid;
+  gap: var(--ops-space-2);
+}
+
+.analytics-mastery-match-context em {
+  color: var(--ops-muted);
+  font-size: 0.7rem;
+  font-style: normal;
 }
 
 .tournament-real-analytics-panel {
@@ -5148,6 +5399,18 @@ textarea:focus {
 
   .analytics-context-card {
     grid-template-columns: 1fr;
+  }
+
+  .analytics-mastery-two-column,
+  .analytics-mastery-stat-grid,
+  .analytics-mastery-trend-grid,
+  .analytics-mastery-note-grid,
+  .analytics-mastery-context-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-mastery-card-header {
+    display: grid;
   }
 
   .analytics-empty-state,
