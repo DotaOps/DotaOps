@@ -4747,6 +4747,45 @@ textarea:focus {
   grid-column: 1 / -1;
 }
 
+.analytics-mastery-filter-context,
+.analytics-mastery-info-block {
+  display: grid;
+  gap: var(--ops-space-2);
+  min-width: 0;
+  padding: var(--ops-space-3);
+  border: 1px solid rgba(123, 209, 248, 0.18);
+  border-radius: var(--ops-radius);
+  background: rgba(123, 209, 248, 0.035);
+}
+
+.analytics-mastery-filter-context p,
+.analytics-mastery-info-block p,
+.analytics-mastery-trend-note p,
+.analytics-mastery-recent-form-grid p,
+.analytics-mastery-mini-trend-card p {
+  margin: 0;
+  color: var(--ops-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.analytics-mastery-filter-context > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ops-space-2);
+}
+
+.analytics-mastery-info-block {
+  border-color: rgba(255, 212, 92, 0.22);
+  background:
+    linear-gradient(90deg, rgba(255, 212, 92, 0.055), transparent 68%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.analytics-mastery-info-block strong {
+  color: var(--ops-text);
+}
+
 .analytics-mastery-stack,
 .analytics-mastery-summary {
   display: grid;
@@ -4873,6 +4912,132 @@ textarea:focus {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--ops-space-3);
+}
+
+.analytics-mastery-trends-card {
+  overflow: hidden;
+}
+
+.analytics-mastery-recent-form-grid,
+.analytics-mastery-mini-trend-grid {
+  display: grid;
+  gap: var(--ops-space-3);
+  min-width: 0;
+}
+
+.analytics-mastery-recent-form-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.analytics-mastery-recent-form-grid article,
+.analytics-mastery-mini-trend-card,
+.analytics-mastery-trend-note {
+  display: grid;
+  gap: var(--ops-space-2);
+  min-width: 0;
+  padding: var(--ops-space-3);
+  border: 1px solid var(--ops-line-soft);
+  border-radius: var(--ops-radius-sm);
+  background: rgba(255, 255, 255, 0.026);
+}
+
+.analytics-mastery-recent-form-grid strong,
+.analytics-mastery-mini-trend-card strong {
+  color: var(--ops-text);
+  font-family: var(--ops-font-mono);
+}
+
+.analytics-mastery-mini-trend-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.analytics-mastery-mini-trend-card {
+  align-content: start;
+}
+
+.analytics-mastery-sparkline {
+  display: grid;
+  gap: var(--ops-space-1);
+  min-width: 0;
+}
+
+.analytics-mastery-sparkline svg {
+  width: 100%;
+  height: 52px;
+  overflow: visible;
+}
+
+.analytics-mastery-sparkline polyline {
+  fill: none;
+  stroke: var(--ops-cyan);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.4;
+}
+
+.analytics-mastery-sparkline circle {
+  fill: var(--ops-muted-strong);
+  stroke: rgba(10, 10, 10, 0.86);
+  stroke-width: 1.4;
+}
+
+.analytics-mastery-sparkline circle.is-win {
+  fill: var(--ops-green);
+}
+
+.analytics-mastery-sparkline circle.is-loss {
+  fill: var(--ops-primary);
+}
+
+.analytics-mastery-sparkline div {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ops-muted);
+  font-family: var(--ops-font-mono);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+}
+
+.analytics-mastery-mini-trend-empty {
+  padding: var(--ops-space-3);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: var(--ops-radius-sm);
+}
+
+.analytics-mastery-outcome-strip {
+  grid-column: 1 / -1;
+}
+
+.analytics-mastery-result-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ops-space-2);
+}
+
+.analytics-mastery-result-strip span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--ops-line-soft);
+  border-radius: 999px;
+  color: var(--ops-muted-strong);
+  font-family: var(--ops-font-mono);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.analytics-mastery-result-strip span.is-win {
+  border-color: rgba(75, 221, 119, 0.38);
+  color: var(--ops-green);
+  background: rgba(75, 221, 119, 0.06);
+}
+
+.analytics-mastery-result-strip span.is-loss {
+  border-color: rgba(255, 92, 92, 0.38);
+  color: var(--ops-primary);
+  background: rgba(255, 92, 92, 0.06);
 }
 
 .analytics-mastery-baseline-table,
@@ -5529,7 +5694,9 @@ textarea:focus {
   .analytics-mastery-stat-grid,
   .analytics-mastery-trend-grid,
   .analytics-mastery-note-grid,
-  .analytics-mastery-context-grid {
+  .analytics-mastery-context-grid,
+  .analytics-mastery-recent-form-grid,
+  .analytics-mastery-mini-trend-grid {
     grid-template-columns: 1fr;
   }
 
