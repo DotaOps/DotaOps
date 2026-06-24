@@ -17,7 +17,7 @@ import {
   useRouter,
   useSearchParams
 } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AnalyticsEmptyBlock } from "@/components/analytics/analytics-empty-block";
 import { analyticsErrorMessage } from "@/components/analytics/analytics-errors";
@@ -108,10 +108,35 @@ const DEFAULT_PUBLIC_FILTERS: AnalyticsFilterForm = {
 };
 
 const ANALYTICS_LIMIT_OPTIONS = [10, 25, 50, 100];
+const ANALYTICS_TAB_QUERY_PARAM = "tab";
+const LEGACY_ANALYTICS_TAB_QUERY_PARAM = "analyticsTab";
+const ANALYTICS_FILTER_QUERY_PARAMS = [
+  "from",
+  "limit",
+  "profileId",
+  "teamId",
+  "to",
+  "tournamentId"
+] as const;
+const UUID_QUERY_PARAM_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const LOCAL_DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 type AnalyticsTab = {
   key: string;
   label: string;
+};
+
+type SearchParamReader = {
+  get: (name: string) => string | null;
+};
+
+type AnalyticsUrlState = {
+  filterDraft: AnalyticsFilterForm;
+  filters: AnalyticsFilters;
+  selectedHeroId: string | null;
+  tab: string | null;
 };
 
 function tabsForRole(state: RoleAnalyticsState | null): AnalyticsTab[] {
@@ -218,6 +243,155 @@ function hasPublicFilters(form: AnalyticsFilterForm) {
   );
 }
 
+function hasHeroMasteryScopedFilters(form: AnalyticsFilterForm) {
+  return Boolean(
+    form.profileId.trim() ||
+    form.teamId.trim() ||
+    form.tournamentId.trim() ||
+    form.from.trim() ||
+    form.to.trim() ||
+    form.limit !== DEFAULT_PUBLIC_FILTERS.limit
+  );
+}
+
+function normalizeUuidQueryParam(value: string | null | undefined) {
+  const cleanValue = value?.trim() ?? "";
+  return UUID_QUERY_PARAM_PATTERN.test(cleanValue) ? cleanValue : "";
+}
+
+function normalizeTabQueryParam(value: string | null | undefined) {
+  const cleanValue = value?.trim().toLowerCase() ?? "";
+  return /^[a-z][a-z-]*$/.test(cleanValue) ? cleanValue : null;
+}
+
+function normalizeLimitQueryParam(value: string | null | undefined) {
+  const cleanValue = value?.trim() ?? "";
+  const parsed = Number(cleanValue);
+
+  return ANALYTICS_LIMIT_OPTIONS.includes(parsed) ? parsed : DEFAULT_PUBLIC_FILTERS.limit;
+}
+
+function toLocalDateTimeInputValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+
+  return [
+    date.getFullYear(),
+    "-",
+    pad(date.getMonth() + 1),
+    "-",
+    pad(date.getDate()),
+    "T",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes())
+  ].join("");
+}
+
+function normalizeDateTimeQueryParam(value: string | null | undefined) {
+  const cleanValue = value?.trim() ?? "";
+
+  if (!cleanValue) {
+    return "";
+  }
+
+  if (LOCAL_DATE_PATTERN.test(cleanValue)) {
+    return `${cleanValue}T00:00`;
+  }
+
+  if (LOCAL_DATE_TIME_PATTERN.test(cleanValue) && !Number.isNaN(new Date(cleanValue).getTime())) {
+    return cleanValue;
+  }
+
+  const parsed = new Date(cleanValue);
+  return Number.isNaN(parsed.getTime()) ? "" : toLocalDateTimeInputValue(parsed);
+}
+
+function analyticsUrlStateFromSearchParams(searchParams: SearchParamReader): AnalyticsUrlState {
+  const filterDraft: AnalyticsFilterForm = {
+    ...DEFAULT_PUBLIC_FILTERS,
+    from: normalizeDateTimeQueryParam(searchParams.get("from")),
+    limit: normalizeLimitQueryParam(searchParams.get("limit")),
+    profileId: normalizeUuidQueryParam(searchParams.get("profileId")),
+    teamId: normalizeUuidQueryParam(searchParams.get("teamId")),
+    to: normalizeDateTimeQueryParam(searchParams.get("to")),
+    tournamentId: normalizeUuidQueryParam(searchParams.get("tournamentId"))
+  };
+
+  return {
+    filterDraft,
+    filters: filtersFromForm(filterDraft),
+    selectedHeroId: normalizeUuidQueryParam(searchParams.get("heroId")) || null,
+    tab: normalizeTabQueryParam(searchParams.get(ANALYTICS_TAB_QUERY_PARAM)) ??
+      normalizeTabQueryParam(searchParams.get(LEGACY_ANALYTICS_TAB_QUERY_PARAM))
+  };
+}
+
+function sameFilterForm(first: AnalyticsFilterForm, second: AnalyticsFilterForm) {
+  return (
+    first.from === second.from &&
+    first.heroId === second.heroId &&
+    first.limit === second.limit &&
+    first.profileId === second.profileId &&
+    first.teamId === second.teamId &&
+    first.to === second.to &&
+    first.tournamentId === second.tournamentId
+  );
+}
+
+function sameAnalyticsFilters(first: AnalyticsFilters, second: AnalyticsFilters) {
+  return (
+    (first.from ?? "") === (second.from ?? "") &&
+    (first.heroId ?? "") === (second.heroId ?? "") &&
+    (first.limit ?? DEFAULT_PUBLIC_FILTERS.limit) === (second.limit ?? DEFAULT_PUBLIC_FILTERS.limit) &&
+    (first.profileId ?? "") === (second.profileId ?? "") &&
+    (first.teamId ?? "") === (second.teamId ?? "") &&
+    (first.to ?? "") === (second.to ?? "") &&
+    (first.tournamentId ?? "") === (second.tournamentId ?? "")
+  );
+}
+
+function setUuidFilterQueryParam(params: URLSearchParams, key: "profileId" | "teamId" | "tournamentId", value: string) {
+  const cleanValue = normalizeUuidQueryParam(value);
+
+  if (cleanValue) {
+    params.set(key, cleanValue);
+  }
+}
+
+function setDateFilterQueryParam(params: URLSearchParams, key: "from" | "to", value: string) {
+  const cleanValue = normalizeDateTimeQueryParam(value);
+
+  if (cleanValue) {
+    params.set(key, cleanValue);
+  }
+}
+
+function setAnalyticsFilterQueryParams(params: URLSearchParams, form: AnalyticsFilterForm) {
+  for (const key of ANALYTICS_FILTER_QUERY_PARAMS) {
+    params.delete(key);
+  }
+
+  setUuidFilterQueryParam(params, "profileId", form.profileId);
+  setUuidFilterQueryParam(params, "teamId", form.teamId);
+  setUuidFilterQueryParam(params, "tournamentId", form.tournamentId);
+  setDateFilterQueryParam(params, "from", form.from);
+  setDateFilterQueryParam(params, "to", form.to);
+
+  if (ANALYTICS_LIMIT_OPTIONS.includes(form.limit) && form.limit !== DEFAULT_PUBLIC_FILTERS.limit) {
+    params.set("limit", String(form.limit));
+  }
+}
+
+function setAnalyticsTabQueryParam(params: URLSearchParams, tab: string) {
+  const cleanTab = normalizeTabQueryParam(tab);
+
+  if (cleanTab) {
+    params.set(ANALYTICS_TAB_QUERY_PARAM, cleanTab);
+  } else {
+    params.delete(ANALYTICS_TAB_QUERY_PARAM);
+  }
+}
+
 function roleModeLabel(state: RoleAnalyticsState | null) {
   if (state?.kind === "player") {
     return "Player analytics";
@@ -286,12 +460,15 @@ export function AnalyticsDashboard() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const initialUrlState = analyticsUrlStateFromSearchParams(searchParams);
+  const searchParamsKey = searchParams.toString();
+  const lastInternalSearchParamsRef = useRef<string | null>(null);
   const [appliedPublicFilters, setAppliedPublicFilters] = useState<AnalyticsFilters>(
-    filtersFromForm(DEFAULT_PUBLIC_FILTERS)
+    initialUrlState.filters
   );
   const [canRefreshAnalytics, setCanRefreshAnalytics] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filterDraft, setFilterDraft] = useState<AnalyticsFilterForm>(DEFAULT_PUBLIC_FILTERS);
+  const [filterDraft, setFilterDraft] = useState<AnalyticsFilterForm>(initialUrlState.filterDraft);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSlowLoading, setIsSlowLoading] = useState(false);
@@ -299,10 +476,26 @@ export function AnalyticsDashboard() {
   const [publicAggregateError, setPublicAggregateError] = useState<string | null>(null);
   const [refreshResult, setRefreshResult] = useState<AnalyticsRefreshResult | null>(null);
   const [roleAnalytics, setRoleAnalytics] = useState<RoleAnalyticsState | null>(null);
-  const [selectedTab, setSelectedTab] = useState("overview");
+  const [selectedTab, setSelectedTab] = useState(
+    initialUrlState.tab ?? (initialUrlState.selectedHeroId ? "personal" : "overview")
+  );
   const [snapshot, setSnapshot] = useState<AnalyticsSnapshot>(emptySnapshot);
   const [tournamentDrilldown, setTournamentDrilldown] =
     useState<OrganizerTournamentAnalyticsResponse | null>(null);
+  const currentUrlState = useMemo(
+    () => analyticsUrlStateFromSearchParams(new URLSearchParams(searchParamsKey)),
+    [searchParamsKey]
+  );
+  const replaceAnalyticsUrl = useCallback((nextParams: URLSearchParams) => {
+    const nextQuery = nextParams.toString();
+
+    if (nextQuery === searchParamsKey) {
+      return;
+    }
+
+    lastInternalSearchParamsRef.current = nextQuery;
+    router.replace(`${pathname}${nextQuery ? `?${nextQuery}` : ""}`, { scroll: false });
+  }, [pathname, router, searchParamsKey]);
 
   const loadAnalytics = useCallback(async () => {
     const currentProfile = await getCurrentUserProfile();
@@ -361,6 +554,26 @@ export function AnalyticsDashboard() {
     };
   }, [loadAnalytics]);
 
+  useEffect(() => {
+    if (lastInternalSearchParamsRef.current === searchParamsKey) {
+      lastInternalSearchParamsRef.current = null;
+      return;
+    }
+
+    const nextUrlState = analyticsUrlStateFromSearchParams(new URLSearchParams(searchParamsKey));
+
+    setFilterDraft((current) => (
+      sameFilterForm(current, nextUrlState.filterDraft) ? current : nextUrlState.filterDraft
+    ));
+    setAppliedPublicFilters((current) => (
+      sameAnalyticsFilters(current, nextUrlState.filters) ? current : nextUrlState.filters
+    ));
+    setSelectedTab((current) => {
+      const nextTab = nextUrlState.tab ?? (nextUrlState.selectedHeroId ? "personal" : "overview");
+      return current === nextTab ? current : nextTab;
+    });
+  }, [searchParamsKey]);
+
   const liveSync = useTournamentLiveRefresh({
     enabled: !isLoading,
     hiddenIntervalMs: 60_000,
@@ -387,11 +600,17 @@ export function AnalyticsDashboard() {
 
   function applyPublicFilters(nextFilters: AnalyticsFilterForm) {
     setAppliedPublicFilters(filtersFromForm(nextFilters));
+    const nextParams = new URLSearchParams(searchParamsKey);
+    setAnalyticsFilterQueryParams(nextParams, nextFilters);
+    replaceAnalyticsUrl(nextParams);
   }
 
   function resetPublicFilters() {
     setFilterDraft(DEFAULT_PUBLIC_FILTERS);
     setAppliedPublicFilters(filtersFromForm(DEFAULT_PUBLIC_FILTERS));
+    const nextParams = new URLSearchParams(searchParamsKey);
+    setAnalyticsFilterQueryParams(nextParams, DEFAULT_PUBLIC_FILTERS);
+    replaceAnalyticsUrl(nextParams);
   }
 
   const publicSummary = useMemo(() => {
@@ -422,33 +641,38 @@ export function AnalyticsDashboard() {
 
   const primaryMetricValue = roleMetricValue(roleAnalytics, publicSummary.analyzedMatches);
   const tabs = tabsForRole(roleAnalytics);
-  const selectedHeroId = searchParams.get("heroId")?.trim() || null;
-  const activeTab = selectedHeroId && tabs.some((tab) => tab.key === "personal")
+  const selectedHeroId = currentUrlState.selectedHeroId;
+  const urlTab = tabs.some((tab) => tab.key === currentUrlState.tab) ? currentUrlState.tab : null;
+  const activeTab = urlTab
+    ?? (selectedHeroId && tabs.some((tab) => tab.key === "personal")
     ? "personal"
     : tabs.some((tab) => tab.key === selectedTab)
       ? selectedTab
-      : "overview";
+      : "overview");
 
   const updateSelectedHeroId = useCallback((heroId: string | null) => {
-    const nextParams = new URLSearchParams(searchParams.toString());
-    const cleanHeroId = heroId?.trim();
+    const nextParams = new URLSearchParams(searchParamsKey);
 
-    if (cleanHeroId) {
-      nextParams.set("heroId", cleanHeroId);
-    } else {
+    if (heroId === null) {
       nextParams.delete("heroId");
+    } else {
+      const cleanHeroId = normalizeUuidQueryParam(heroId);
+
+      if (!cleanHeroId) {
+        return;
+      }
+
+      nextParams.set("heroId", cleanHeroId);
     }
 
-    const nextQuery = nextParams.toString();
-    router.replace(`${pathname}${nextQuery ? `?${nextQuery}` : ""}`, { scroll: false });
-  }, [pathname, router, searchParams]);
+    replaceAnalyticsUrl(nextParams);
+  }, [replaceAnalyticsUrl, searchParamsKey]);
 
   function changeAnalyticsTab(tab: string) {
     setSelectedTab(tab);
-
-    if (tab !== "personal" && selectedHeroId) {
-      updateSelectedHeroId(null);
-    }
+    const nextParams = new URLSearchParams(searchParamsKey);
+    setAnalyticsTabQueryParam(nextParams, tab);
+    replaceAnalyticsUrl(nextParams);
   }
 
   if (isLoading) {
@@ -646,6 +870,7 @@ function AnalyticsTabContent({
         onChange={onChangeFilters}
         onReset={onResetFilters}
         roleAnalytics={roleAnalytics}
+        selectedHeroId={selectedHeroId}
         tournamentDrilldown={tournamentDrilldown}
       />
     );
@@ -1043,6 +1268,7 @@ function AdvancedAnalyticsFilters({
   onChange,
   onReset,
   roleAnalytics,
+  selectedHeroId,
   tournamentDrilldown
 }: Readonly<{
   draft: AnalyticsFilterForm;
@@ -1051,6 +1277,7 @@ function AdvancedAnalyticsFilters({
   onChange: (filters: AnalyticsFilterForm) => void;
   onReset: () => void;
   roleAnalytics: RoleAnalyticsState;
+  selectedHeroId: string | null;
   tournamentDrilldown: OrganizerTournamentAnalyticsResponse | null;
 }>) {
   const [heroLookups, setHeroLookups] = useState<HeroLookup[]>([]);
@@ -1152,6 +1379,7 @@ function AdvancedAnalyticsFilters({
 
   const showOrganizerTournamentLookup = roleAnalytics.kind === "organizer" || roleAnalytics.kind === "admin";
   const showPlayerTeamLookup = roleAnalytics.kind === "player";
+  const hasSelectedHeroMasteryScope = Boolean(selectedHeroId && hasHeroMasteryScopedFilters(draft));
 
   return (
     <section className="analytics-terminal-panel analytics-data-panel analytics-filter-panel ops-panel">
@@ -1160,6 +1388,15 @@ function AdvancedAnalyticsFilters({
         title="Analytics Filters"
         description="Filter public metrics and role-based analytics by tournament, team, player, hero, and time range."
       />
+      {hasSelectedHeroMasteryScope ? (
+        <div className="analytics-filter-scope-note">
+          <span className="ops-label">Hero mastery scope</span>
+          <p>
+            The selected hero stays open. Applying these filters narrows the hero mastery request; raw hero stats remain
+            unchanged and context weighting only affects interpretation.
+          </p>
+        </div>
+      ) : null}
       {lookupError ? <AnalyticsEmptyBlock title="Lookup data unavailable." detail={lookupError} /> : null}
       {isLoadingLookups ? <p className="analytics-slow-query">Loading filter options...</p> : null}
       <form

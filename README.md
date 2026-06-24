@@ -177,7 +177,7 @@ V `frontend/.env.local` nastavi:
 
 ```properties
 NEXT_PUBLIC_API_URL=http://localhost:8080/api
-NEXT_PUBLIC_SUPABASE_URL=https://hjszjebirxhdtrbhefbv.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=https://<projectRef>.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
 ```
 
@@ -191,7 +191,7 @@ Za backend uporabljamo Supabase Session Pooler, ker deluje prek IPv4:
 host: aws-0-eu-west-1.pooler.supabase.com
 port: 5432
 database: postgres
-user: postgres.hjszjebirxhdtrbhefbv
+user: postgres.<projectRef>
 ```
 
 JDBC oblika za Spring Boot:
@@ -201,6 +201,8 @@ SUPABASE_DB_URL=jdbc:postgresql://aws-0-eu-west-1.pooler.supabase.com:5432/postg
 ```
 
 Ne uporabljaj direct cloud connection stringa `db.<projectRef>.supabase.co`, razen ce je okolje namenoma na IPv6 ali ima Supabase IPv4 add-on.
+
+Za varno lokalno diagnostiko remote Supabase okolja glej `docs/local-supabase-development.md`.
 
 ## OpenDota Konfiguracija
 

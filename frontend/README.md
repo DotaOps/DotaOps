@@ -30,6 +30,7 @@ Ustvari `.env.local` po zgledu `.env.example`:
 NEXT_PUBLIC_API_URL=http://localhost:8080/api
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
 ```
 
 Dokler zaledje ni pripravljeno, strani uporabljajo začetne podatke iz `src/lib/mock-data.ts`.
@@ -43,5 +44,7 @@ Dokler zaledje ni pripravljeno, strani uporabljajo začetne podatke iz `src/lib/
 - `src/lib/mock-data.ts` vsebuje začetne podatke za razvoj UI-ja.
 
 ### Opomba o Supabase
+
+Za Supabase Auth zadostuje `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` ali legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY`. `NEXT_PUBLIC_SUPABASE_URL` mora kazati na aktiven projekt, ki ga lokalni DNS lahko razresi.
 
 Frontend pričakuje dostopne `NEXT_PUBLIC_` env spremenljivke. Če uporabljate Supabase v oblaku, izpolnite `NEXT_PUBLIC_SUPABASE_URL` in ključe v `.env` ali v `docker` `.env`.

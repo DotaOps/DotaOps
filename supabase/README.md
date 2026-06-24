@@ -71,9 +71,9 @@ Do not commit real keys. Keep them in `.env` or deployment secrets.
 Backend/Spring Boot uses:
 
 ```bash
-SUPABASE_PROJECT_REF=hjszjebirxhdtrbhefbv
+SUPABASE_PROJECT_REF=<project-ref>
 SUPABASE_DB_URL=jdbc:postgresql://aws-0-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require
-SUPABASE_DB_USER=postgres.hjszjebirxhdtrbhefbv
+SUPABASE_DB_USER=postgres.<project-ref>
 SUPABASE_DB_PASSWORD=
 SPRING_FLYWAY_ENABLED=true
 OPENDOTA_API_BASE_URL=https://api.opendota.com/api

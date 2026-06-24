@@ -4246,6 +4246,22 @@ textarea:focus {
   font-size: 0.78rem;
 }
 
+.analytics-filter-scope-note {
+  display: grid;
+  gap: var(--ops-space-2);
+  padding: var(--ops-space-3);
+  border: 1px solid rgba(123, 209, 248, 0.18);
+  border-radius: var(--ops-radius-sm);
+  background: rgba(123, 209, 248, 0.035);
+}
+
+.analytics-filter-scope-note p {
+  margin: 0;
+  color: var(--ops-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .analytics-drilldown-form {
   grid-template-columns: minmax(280px, 1fr) auto minmax(220px, 0.8fr);
 }
