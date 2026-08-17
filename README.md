@@ -69,6 +69,8 @@ Podrobnosti o demo seedu so v `docs/backend-demo-seed.md`.
 
 Krovni seznam API dokumentacije je v `docs/api/README.md`.
 
+Canonical model vlog, privacy pravil in trust boundaryja je v [`docs/security-and-role-model.md`](docs/security-and-role-model.md).
+
 ## E2E Smoke Testi
 
 Frontend ima minimalne Cypress smoke teste za public strani, protected route gate in demo player/organizer prijavo.
