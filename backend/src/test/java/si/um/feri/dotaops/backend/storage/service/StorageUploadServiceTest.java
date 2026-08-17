@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.security.access.AccessDeniedException;
 
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedProfile;
@@ -17,6 +18,7 @@ import si.um.feri.dotaops.backend.profile.repository.ProfileRepository;
 import si.um.feri.dotaops.backend.storage.web.ConfirmStorageUploadRequest;
 import si.um.feri.dotaops.backend.storage.web.CreateStorageUploadUrlRequest;
 import si.um.feri.dotaops.backend.team.domain.Team;
+import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,11 +40,13 @@ class StorageUploadServiceTest {
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
     private final ProfileRepository profileRepository = mock(ProfileRepository.class);
     private final TeamRepository teamRepository = mock(TeamRepository.class);
+    private final TeamMemberRepository teamMemberRepository = mock(TeamMemberRepository.class);
     private final SupabaseImageStorageService imageStorageService = mock(SupabaseImageStorageService.class);
     private final StorageUploadService storageUploadService = new StorageUploadService(
             currentUserProvider,
             profileRepository,
             teamRepository,
+            teamMemberRepository,
             imageStorageService,
             new SupabaseStorageProperties(
                     "https://project.supabase.co",
@@ -50,6 +54,11 @@ class StorageUploadServiceTest {
                     "dotaops-images",
                     "avatars",
                     "team-assets"));
+
+    @BeforeEach
+    void setUpActiveCaptainMembership() {
+        when(teamMemberRepository.existsActive(TEAM_ID, PROFILE_ID)).thenReturn(true);
+    }
 
     @Test
     void createCurrentAvatarUploadUrlGeneratesProfileScopedPath() {
@@ -117,6 +126,21 @@ class StorageUploadServiceTest {
         assertThat(response.bucket()).isEqualTo("team-assets");
         assertThat(response.path()).isEqualTo(expectedPath);
         assertThat(response.maxFileSizeBytes()).isEqualTo(5L * 1024L * 1024L);
+    }
+
+    @Test
+    void createTeamBannerUploadUrlRejectsInactiveCaptain() {
+        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team(PROFILE_ID)));
+        when(teamMemberRepository.existsActive(TEAM_ID, PROFILE_ID)).thenReturn(false);
+
+        assertThatThrownBy(() -> storageUploadService.createTeamBannerUploadUrl(
+                TEAM_ID,
+                new CreateStorageUploadUrlRequest("banner.webp", "image/webp", 1024L)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the team captain can manage team storage assets.");
+
+        verify(imageStorageService, never()).createSignedUploadUrl(any(), any());
     }
 
     @Test

@@ -22,6 +22,7 @@ import si.um.feri.dotaops.backend.storage.web.ConfirmStorageUploadRequest;
 import si.um.feri.dotaops.backend.storage.web.CreateStorageUploadUrlRequest;
 import si.um.feri.dotaops.backend.storage.web.StorageUploadUrlResponse;
 import si.um.feri.dotaops.backend.team.domain.Team;
+import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
 import si.um.feri.dotaops.backend.team.web.TeamResponse;
 
@@ -40,6 +41,7 @@ public class StorageUploadService {
     private final CurrentUserProvider currentUserProvider;
     private final ProfileRepository profileRepository;
     private final TeamRepository teamRepository;
+    private final TeamMemberRepository teamMemberRepository;
     private final SupabaseImageStorageService imageStorageService;
     private final SupabaseStorageProperties storageProperties;
 
@@ -47,12 +49,14 @@ public class StorageUploadService {
             CurrentUserProvider currentUserProvider,
             ProfileRepository profileRepository,
             TeamRepository teamRepository,
+            TeamMemberRepository teamMemberRepository,
             SupabaseImageStorageService imageStorageService,
             SupabaseStorageProperties storageProperties
     ) {
         this.currentUserProvider = currentUserProvider;
         this.profileRepository = profileRepository;
         this.teamRepository = teamRepository;
+        this.teamMemberRepository = teamMemberRepository;
         this.imageStorageService = imageStorageService;
         this.storageProperties = storageProperties;
     }
@@ -145,7 +149,9 @@ public class StorageUploadService {
     }
 
     private void requireTeamCaptain(AuthenticatedProfile profile, Team team) {
-        if (profile.role() != ProfileRole.PLAYER || !profile.profileId().equals(team.captainProfileId())) {
+        if (profile.role() != ProfileRole.PLAYER
+                || !profile.profileId().equals(team.captainProfileId())
+                || !teamMemberRepository.existsActive(team.id(), profile.profileId())) {
             throw new AccessDeniedException("Only the team captain can manage team storage assets.");
         }
     }

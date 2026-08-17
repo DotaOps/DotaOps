@@ -151,8 +151,8 @@ class MatchImportControllerTest {
         return new AuthenticatedProfile(
                 PROFILE_ID,
                 AUTH_USER_ID,
-                "Organizer",
-                ProfileRole.ORGANIZER);
+                "Admin",
+                ProfileRole.ADMIN);
     }
 
     private static MatchImportResponse response(MatchImportStatus status) {

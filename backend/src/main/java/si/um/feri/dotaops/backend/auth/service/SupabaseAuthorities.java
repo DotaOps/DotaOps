@@ -25,10 +25,6 @@ public final class SupabaseAuthorities {
         ProfileRole role = profile.map(AuthenticatedProfile::role).orElse(ProfileRole.VISITOR);
         addRole(authorities, role);
 
-        if (role == ProfileRole.ADMIN) {
-            addRole(authorities, ProfileRole.ORGANIZER);
-        }
-
         return List.copyOf(authorities);
     }
 

@@ -94,9 +94,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/organizer/analytics",
                                 "/api/organizer/tournaments/*/analytics").hasAnyRole("ORGANIZER", "ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/match-imports").hasAnyRole("ORGANIZER", "ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/match-imports/*/retry")
-                                .hasAnyRole("ORGANIZER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/match-imports").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/match-imports/*/retry").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/match-imports/**").authenticated()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/profiles/**",
@@ -107,7 +106,7 @@ public class SecurityConfig {
                                 "/api/roadmap").permitAll()
                         .requestMatchers(
                                 "/api/organizer/tournaments",
-                                "/api/organizer/tournaments/**").authenticated()
+                                "/api/organizer/tournaments/**").hasAnyRole("ORGANIZER", "ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/organizer/**").hasAnyRole("ORGANIZER", "ADMIN")
                         .requestMatchers("/api/me/**").authenticated()

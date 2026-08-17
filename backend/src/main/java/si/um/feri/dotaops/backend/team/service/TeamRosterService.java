@@ -126,8 +126,7 @@ public class TeamRosterService {
         Team team = ensureTeamExists(teamId);
         AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
         ensurePlayerTeamFlow(currentProfile);
-        if (!currentProfile.profileId().equals(team.captainProfileId())
-                && !teamMemberRepository.existsActive(teamId, currentProfile.profileId())) {
+        if (!teamMemberRepository.existsActive(teamId, currentProfile.profileId())) {
             throw new AccessDeniedException("Only active team members can view private roster profiles.");
         }
 
@@ -157,7 +156,7 @@ public class TeamRosterService {
                 .orElseThrow(() -> new ResourceNotFoundException("Active team membership", "profileId",
                         currentProfile.profileId()));
         Team lockedTeam = ensureTeamExistsForUpdate(currentTeam.id());
-        if (currentProfile.profileId().equals(lockedTeam.captainProfileId())) {
+        if (isActiveCaptain(currentProfile, lockedTeam)) {
             throw new BadRequestException("Team owner must transfer ownership or disband the team before leaving.");
         }
 
@@ -177,9 +176,7 @@ public class TeamRosterService {
         AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
         ensurePlayerTeamFlow(currentProfile);
         Team team = ensureTeamExistsForUpdate(teamId);
-        if (!currentProfile.profileId().equals(team.captainProfileId())) {
-            throw new AccessDeniedException("Only the current team owner can disband this team.");
-        }
+        ensureActiveCaptain(currentProfile, team, "Only the current active team owner can disband this team.");
 
         applyDatabaseActor(currentProfile);
         teamMemberRepository.deactivateAllActiveByTeamId(teamId);
@@ -211,7 +208,10 @@ public class TeamRosterService {
     public TeamMemberResponse addMember(UUID teamId, AddTeamMemberRequest request) {
         Team team = ensureTeamExistsForUpdate(teamId);
         AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
-        ensureCanManageTeam(currentProfile, team);
+        if (currentProfile.role() != ProfileRole.ADMIN) {
+            throw new AccessDeniedException(
+                    "Direct team membership creation is not allowed; use an invitation or join request.");
+        }
 
         UUID targetProfileId = request.profileId();
         profileRepository.findById(targetProfileId)
@@ -461,14 +461,8 @@ public class TeamRosterService {
     @Transactional
     public CurrentTeamResponse transferOwnership(UUID teamId, TransferTeamOwnershipRequest request) {
         AuthenticatedProfile currentProfile = currentUserProvider.requireProfile();
-        if (currentProfile.role() != ProfileRole.PLAYER) {
-            throw new AccessDeniedException("Only players can transfer team ownership.");
-        }
-
         Team team = ensureTeamExistsForUpdate(teamId);
-        if (!currentProfile.profileId().equals(team.captainProfileId())) {
-            throw new AccessDeniedException("Only the current team owner can transfer ownership.");
-        }
+        ensureActiveCaptain(currentProfile, team, "Only the current active team owner can transfer ownership.");
 
         UUID newOwnerProfileId = request.newOwnerProfileId();
         if (newOwnerProfileId.equals(team.captainProfileId())) {
@@ -521,7 +515,9 @@ public class TeamRosterService {
                 .toList();
         List<TeamManualPlayerResponse> manualPlayers = manualPlayersForTeam(team.id());
         var rosterCapacity = teamRosterCapacityService.resolve(team);
-        boolean captain = profile.profileId().equals(team.captainProfileId());
+        boolean captain = profile.role() == ProfileRole.PLAYER
+                && profile.profileId().equals(team.captainProfileId())
+                && members.stream().anyMatch(member -> member.profileId().equals(profile.profileId()));
         boolean canManageTeam = canManageTeam(profile, team);
         boolean player = profile.role() == ProfileRole.PLAYER;
         boolean canTransferOwnership = captain
@@ -558,7 +554,19 @@ public class TeamRosterService {
 
     private boolean canManageTeam(AuthenticatedProfile profile, Team team) {
         return profile.role() == ProfileRole.ADMIN
-                || profile.profileId().equals(team.captainProfileId());
+                || isActiveCaptain(profile, team);
+    }
+
+    private boolean isActiveCaptain(AuthenticatedProfile profile, Team team) {
+        return profile.role() == ProfileRole.PLAYER
+                && profile.profileId().equals(team.captainProfileId())
+                && teamMemberRepository.existsActive(team.id(), profile.profileId());
+    }
+
+    private void ensureActiveCaptain(AuthenticatedProfile profile, Team team, String message) {
+        if (!isActiveCaptain(profile, team)) {
+            throw new AccessDeniedException(message);
+        }
     }
 
     private void ensurePlayerInvitationFlow(AuthenticatedProfile profile) {

@@ -37,7 +37,7 @@ function workspaceCopyForRole(role?: string | null) {
     return "Admin channel secured";
   }
 
-  if (role === "player" || role === "captain") {
+  if (role === "player") {
     return "Player hub synchronized";
   }
 

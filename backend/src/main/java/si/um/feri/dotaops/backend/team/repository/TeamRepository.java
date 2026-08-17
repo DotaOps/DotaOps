@@ -99,15 +99,15 @@ public class TeamRepository {
         return jdbcTemplate.query(
                         selectTeamSql() + """
                         where t.disbanded_at is null
-                          and (
-                            t.captain_profile_id = ?
-                            or exists (
-                              select 1
-                              from public.team_members tm
-                              where tm.team_id = t.id
-                                and tm.profile_id = ?
-                                and tm.is_active = true
-                            )
+                          and exists (
+                            select 1
+                            from public.team_members tm
+                            join public.profiles p on p.id = tm.profile_id
+                            where tm.team_id = t.id
+                              and tm.profile_id = ?
+                              and tm.is_active = true
+                              and tm.left_at is null
+                              and p.role = 'player'::public.dotaops_user_role
                           )
                         order by
                           case when t.captain_profile_id = ? then 0 else 1 end,
@@ -117,7 +117,6 @@ public class TeamRepository {
                         limit 1
                         """,
                         this::mapTeam,
-                        profileId,
                         profileId,
                         profileId)
                 .stream()
@@ -132,22 +131,21 @@ public class TeamRepository {
                   from public.teams t
                   where t.disbanded_at is null
                     and (cast(? as uuid) is null or t.id <> ?)
-                    and (
-                      t.captain_profile_id = ?
-                      or exists (
-                        select 1
-                        from public.team_members tm
-                        where tm.team_id = t.id
-                          and tm.profile_id = ?
-                          and tm.is_active = true
-                      )
+                    and exists (
+                      select 1
+                      from public.team_members tm
+                      join public.profiles p on p.id = tm.profile_id
+                      where tm.team_id = t.id
+                        and tm.profile_id = ?
+                        and tm.is_active = true
+                        and tm.left_at is null
+                        and p.role = 'player'::public.dotaops_user_role
                     )
                 )
                 """,
                 Boolean.class,
                 excludedTeamId,
                 excludedTeamId,
-                profileId,
                 profileId);
 
         return Boolean.TRUE.equals(exists);

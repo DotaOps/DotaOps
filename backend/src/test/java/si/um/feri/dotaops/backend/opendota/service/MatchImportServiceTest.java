@@ -35,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -76,7 +77,7 @@ class MatchImportServiceTest {
         MatchImport queued = matchImport(MatchImportStatus.QUEUED, null);
         MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
         MatchImport ready = matchImport(MatchImportStatus.READY, null);
-        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ADMIN));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
         when(matchImportRepository.createQueued(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(queued);
         when(matchImportRepository.markProcessing(
@@ -120,7 +121,7 @@ class MatchImportServiceTest {
     @Test
     void importMatchReturnsExistingReadyImportWithoutFetchingAgain() {
         MatchImport ready = matchImport(MatchImportStatus.READY, null);
-        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ADMIN));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.of(ready));
         when(matchImportRepository.findEvents(IMPORT_ID)).thenReturn(events(MatchImportStatus.READY));
 
@@ -136,7 +137,7 @@ class MatchImportServiceTest {
     @Test
     void importMatchReturnsExistingProcessingImportWithoutStartingSecondImport() {
         MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
-        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ADMIN));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.of(processing));
         when(matchImportRepository.findEvents(IMPORT_ID)).thenReturn(events(
                 MatchImportStatus.QUEUED,
@@ -159,7 +160,7 @@ class MatchImportServiceTest {
                 MatchImportStatus.ERROR,
                 OpenDotaErrorCode.RATE_LIMITED,
                 "OpenDota rate limit exceeded.");
-        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ADMIN));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
         when(matchImportRepository.createQueued(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(queued);
         when(matchImportRepository.markProcessing(
@@ -196,7 +197,7 @@ class MatchImportServiceTest {
                 MatchImportStatus.ERROR,
                 OpenDotaErrorCode.MATCH_NOT_FOUND,
                 "OpenDota match was not found.");
-        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ADMIN));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
         when(matchImportRepository.createQueued(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(queued);
         when(matchImportRepository.markProcessing(
@@ -229,7 +230,7 @@ class MatchImportServiceTest {
         MatchImport queued = matchImport(MatchImportStatus.QUEUED, null);
         MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
         MatchImport error = matchImport(MatchImportStatus.ERROR, null, "Match import failed unexpectedly.");
-        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ADMIN));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
         when(matchImportRepository.createQueued(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(queued);
         when(matchImportRepository.markProcessing(
@@ -258,7 +259,7 @@ class MatchImportServiceTest {
         MatchImport existingError = matchImport(MatchImportStatus.ERROR, OpenDotaErrorCode.RATE_LIMITED, "Rate limited.");
         MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
         MatchImport ready = matchImport(MatchImportStatus.READY, null);
-        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ADMIN));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.of(existingError));
         when(matchImportRepository.markProcessing(
                 IMPORT_ID,
@@ -293,7 +294,7 @@ class MatchImportServiceTest {
         MatchImport queued = matchImport(MatchImportStatus.QUEUED, null);
         MatchImport processing = matchImport(MatchImportStatus.PROCESSING, null);
         MatchImport ready = matchImport(MatchImportStatus.READY, null);
-        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ADMIN));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
         when(matchImportRepository.createQueued(DOTA_MATCH_ID, REQUESTED_BY)).thenReturn(queued);
         when(matchImportRepository.markProcessing(
@@ -320,6 +321,8 @@ class MatchImportServiceTest {
 
     @Test
     void importMatchRejectsTooLargeMatchId() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ADMIN));
+
         assertThatThrownBy(() -> service.importMatch(
                 new CreateMatchImportRequest("99999999999999999999"),
                 "203.0.113.10"))
@@ -328,12 +331,12 @@ class MatchImportServiceTest {
     }
 
     @Test
-    void importMatchRejectsNonOrganizer() {
-        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+    void importMatchRejectsOrganizerBeforeReadingImportState() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
 
         assertThatThrownBy(() -> service.importMatch(new CreateMatchImportRequest(DOTA_MATCH_ID), "203.0.113.10"))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessage("Only organizers or admins can import matches.");
+                .hasMessage("Only admins can import matches.");
 
         verify(requestRateLimiter, never()).checkMatchImport(eq(REQUESTED_BY), anyString());
         verify(matchImportRepository, never()).findByDotaMatchId(DOTA_MATCH_ID);
@@ -341,8 +344,20 @@ class MatchImportServiceTest {
     }
 
     @Test
-    void importMatchRateLimitsBeforeCreatingProcessingRecordOrFetchingOpenDota() {
+    void retryImportRejectsOrganizerBeforeLoadingImport() {
         when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ORGANIZER));
+
+        assertThatThrownBy(() -> service.retryImport(IMPORT_ID, "203.0.113.10"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only admins can import matches.");
+
+        verify(matchImportRepository, never()).findById(IMPORT_ID);
+        verify(openDotaClient, never()).fetchMatch(anyLong());
+    }
+
+    @Test
+    void importMatchRateLimitsBeforeCreatingProcessingRecordOrFetchingOpenDota() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.ADMIN));
         when(matchImportRepository.findByDotaMatchId(DOTA_MATCH_ID)).thenReturn(Optional.empty());
         doThrow(new RateLimitExceededException("Too many match import requests for this user. Try again later."))
                 .when(requestRateLimiter)

@@ -222,7 +222,7 @@ class TournamentControllerTest {
                 PROFILE_ID,
                 AUTH_USER_ID,
                 "Organizer",
-                ProfileRole.PLAYER);
+                ProfileRole.ORGANIZER);
     }
 
     private static TournamentSettingsDto settings() {

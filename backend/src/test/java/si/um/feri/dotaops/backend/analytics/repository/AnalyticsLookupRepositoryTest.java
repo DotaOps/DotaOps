@@ -18,6 +18,7 @@ class AnalyticsLookupRepositoryTest {
     private static final UUID TOURNAMENT_ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
     private static final UUID TEAM_ID = UUID.fromString("33333333-3333-4333-8333-333333333333");
     private static final UUID HERO_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
+    private static final UUID OTHER_PROFILE_ID = UUID.fromString("55555555-5555-4555-8555-555555555555");
     private static final OffsetDateTime FROM = OffsetDateTime.parse("2026-05-01T00:00:00Z");
     private static final OffsetDateTime TO = OffsetDateTime.parse("2026-06-01T00:00:00Z");
 
@@ -82,6 +83,7 @@ class AnalyticsLookupRepositoryTest {
 
         assertThat(jdbcTemplate.sql).contains("from public.team_members tm");
         assertThat(jdbcTemplate.sql).contains("where tm.team_id = ?");
+        assertThat(jdbcTemplate.sql).contains("tm.left_at is null");
         assertThat(jdbcTemplate.sql).contains("p.role = 'player'::public.dotaops_user_role");
         assertThat(jdbcTemplate.sql).contains("lower(coalesce(p.display_name, '')) = ?");
         assertThat(jdbcTemplate.sql).contains("lower(coalesce(p.nickname, '')) = ?");
@@ -109,6 +111,54 @@ class AnalyticsLookupRepositoryTest {
                         5);
     }
 
+    @Test
+    void currentTeamLookupRequiresCanonicalActivePlayerMembership() {
+        repository.findCurrentTeams(PROFILE_ID, 10);
+
+        assertThat(jdbcTemplate.sql)
+                .contains("tm.is_active = true")
+                .contains("tm.left_at is null")
+                .contains("current_profile.role = 'player'::public.dotaops_user_role")
+                .doesNotContain("and (\n                    t.captain_profile_id = ?");
+        assertThat(jdbcTemplate.parameters).containsExactly(PROFILE_ID, PROFILE_ID, 10);
+    }
+
+    @Test
+    void activeTeamPlayerLookupExcludesHistoricalAndNonPlayerMemberships() {
+        repository.findActiveTeamPlayers(TEAM_ID, 10);
+
+        assertThat(jdbcTemplate.sql)
+                .contains("tm.is_active = true")
+                .contains("tm.left_at is null")
+                .contains("p.role = 'player'::public.dotaops_user_role");
+    }
+
+    @Test
+    void activeTeamMembershipDoesNotUseCaptainIdAsMembershipFallback() {
+        repository.isActiveTeamMember(TEAM_ID, PROFILE_ID);
+
+        assertThat(jdbcTemplate.sql)
+                .contains("tm.is_active = true")
+                .contains("tm.left_at is null")
+                .contains("member_profile.role = 'player'::public.dotaops_user_role")
+                .doesNotContain("t.captain_profile_id");
+        assertThat(jdbcTemplate.parameters).containsExactly(TEAM_ID, PROFILE_ID);
+    }
+
+    @Test
+    void sharedMembershipRequiresThreeCanonicalActivePlayerRelations() {
+        repository.teamsShareActiveMembership(PROFILE_ID, PROFILE_ID, OTHER_PROFILE_ID);
+
+        assertThat(occurrences(jdbcTemplate.sql, "left_at is null")).isEqualTo(3);
+        assertThat(occurrences(jdbcTemplate.sql, "'player'::public.dotaops_user_role")).isEqualTo(3);
+        assertThat(jdbcTemplate.sql).doesNotContain("t.captain_profile_id");
+        assertThat(jdbcTemplate.parameters).containsExactly(PROFILE_ID, PROFILE_ID, OTHER_PROFILE_ID);
+    }
+
+    private static int occurrences(String value, String fragment) {
+        return value.split(java.util.regex.Pattern.quote(fragment), -1).length - 1;
+    }
+
     private static class CapturingJdbcTemplate extends JdbcTemplate {
 
         private String sql;
@@ -119,6 +169,13 @@ class AnalyticsLookupRepositoryTest {
             this.sql = sql;
             this.parameters = args;
             return List.of();
+        }
+
+        @Override
+        public <T> T queryForObject(String sql, Class<T> requiredType, Object... args) {
+            this.sql = sql;
+            this.parameters = args;
+            return requiredType.cast(Boolean.FALSE);
         }
     }
 }

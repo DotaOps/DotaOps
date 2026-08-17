@@ -9,7 +9,7 @@ import {
   postFormApiAuthenticated
 } from "@/lib/api";
 
-export type RequestedAuthRole = "player" | "captain" | "organizer";
+export type RequestedAuthRole = "player" | "organizer";
 export type ProfileRole = RequestedAuthRole | "visitor" | "admin";
 
 export interface LoginInput {
@@ -177,7 +177,7 @@ function requireSupabaseClient() {
 }
 
 export function dashboardPathForRole(role?: string | null) {
-  if (role === "captain" || role === "organizer" || role === "player") {
+  if (role === "organizer" || role === "player") {
     return `/dashboard?role=${role}`;
   }
 
@@ -324,7 +324,6 @@ export async function getCurrentUserProfile(): Promise<CurrentUserProfile | null
   }
 
   const metadata = user.user_metadata ?? {};
-  const requestedRole = metadata.desired_role ?? metadata.requested_role;
 
   return {
     avatarUrl: null,
@@ -340,10 +339,7 @@ export async function getCurrentUserProfile(): Promise<CurrentUserProfile | null
     opendotaAccountId: null,
     opendotaProfileSyncedAt: null,
     profileId: null,
-    role:
-      requestedRole === "captain" || requestedRole === "organizer" || requestedRole === "player"
-        ? requestedRole
-        : "player",
+    role: "player",
     steamId: null,
     steamProfileSyncedAt: null,
     updatedAt: null
@@ -650,9 +646,7 @@ export async function registerWithEmailPassword(input: RegisterInput): Promise<A
     message:
       input.requestedRole === "player"
         ? "Account created. Log in to enter your dashboard."
-        : input.requestedRole === "captain"
-          ? "Account created. Team captain access is assigned through team ownership after login."
-          : "Account created. Log in to enter your organizer dashboard."
+        : "Account created. Log in to enter your organizer dashboard."
   };
 }
 

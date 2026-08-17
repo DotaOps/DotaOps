@@ -90,23 +90,15 @@ class TeamRosterApiIntegrationTest extends PostgresIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.slotsFilled").value(1))
                 .andExpect(jsonPath("$.data.slotsRemaining").value(4));
 
-        UUID memberId = extractDataId(mockMvc.perform(post("/api/teams/" + teamId + "/members")
-                        .header("Authorization", bearerToken(captainAuthUserId))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "profileId": "%s",
-                                  "role": "mid"
-                                }
-                                """.formatted(inviteeProfileId)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.role").value("mid"))
-                .andReturn());
+        UUID initialInvitationId = createInvitation(teamId, "mid");
+        acceptInvitation(initialInvitationId);
+        UUID memberId = activeMembershipId(teamId, inviteeProfileId);
 
         mockMvc.perform(get("/api/teams/" + teamId + "/members"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[*].profileId").value(hasItem(captainProfileId.toString())))
                 .andExpect(jsonPath("$.data[*].profileId").value(hasItem(inviteeProfileId.toString())))
+                .andExpect(jsonPath("$.data[*].role").value(hasItem("mid")))
                 .andExpect(jsonPath("$.data[*].active").value(hasItem(true)));
 
         mockMvc.perform(delete("/api/teams/" + teamId + "/members/" + memberId)
@@ -173,17 +165,9 @@ class TeamRosterApiIntegrationTest extends PostgresIntegrationTestSupport {
                                 """.formatted(suffix, suffix)))
                 .andExpect(status().isCreated())
                 .andReturn());
-        UUID memberId = extractDataId(mockMvc.perform(post("/api/teams/" + teamId + "/members")
-                        .header("Authorization", bearerToken(captainAuthUserId))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "profileId": "%s",
-                                  "role": "mid"
-                                }
-                                """.formatted(inviteeProfileId)))
-                .andExpect(status().isCreated())
-                .andReturn());
+        UUID invitationId = createInvitation(teamId, "mid");
+        acceptInvitation(invitationId);
+        UUID memberId = activeMembershipId(teamId, inviteeProfileId);
 
         mockMvc.perform(get("/api/teams/" + teamId + "/members/" + inviteeProfileId + "/profile")
                         .header("Authorization", bearerToken(inviteeAuthUserId)))
@@ -317,16 +301,8 @@ class TeamRosterApiIntegrationTest extends PostgresIntegrationTestSupport {
                 .andExpect(status().isCreated())
                 .andReturn());
 
-        mockMvc.perform(post("/api/teams/" + teamId + "/members")
-                        .header("Authorization", bearerToken(captainAuthUserId))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "profileId": "%s",
-                                  "role": "mid"
-                                }
-                                """.formatted(inviteeProfileId)))
-                .andExpect(status().isCreated());
+        UUID invitationId = createInvitation(teamId, "mid");
+        acceptInvitation(invitationId);
 
         mockMvc.perform(post("/api/teams/" + teamId + "/transfer-ownership")
                         .header("Authorization", bearerToken(captainAuthUserId))
@@ -381,6 +357,43 @@ class TeamRosterApiIntegrationTest extends PostgresIntegrationTestSupport {
         JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
 
         return UUID.fromString(response.path("data").path("id").asText());
+    }
+
+    private UUID createInvitation(UUID teamId, String proposedRole) throws Exception {
+        return extractDataId(mockMvc.perform(post("/api/teams/" + teamId + "/invitations")
+                        .header("Authorization", bearerToken(captainAuthUserId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "inviteeProfileId": "%s",
+                                  "proposedRole": "%s"
+                                }
+                                """.formatted(inviteeProfileId, proposedRole)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status").value("pending"))
+                .andReturn());
+    }
+
+    private void acceptInvitation(UUID invitationId) throws Exception {
+        mockMvc.perform(post("/api/team-invitations/" + invitationId + "/accept")
+                        .header("Authorization", bearerToken(inviteeAuthUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("accepted"));
+    }
+
+    private UUID activeMembershipId(UUID teamId, UUID profileId) {
+        return jdbcTemplate.queryForObject(
+                """
+                select id
+                from public.team_members
+                where team_id = ?
+                  and profile_id = ?
+                  and is_active = true
+                  and left_at is null
+                """,
+                UUID.class,
+                teamId,
+                profileId);
     }
 
     private static String bearerToken(UUID authUserId) throws Exception {

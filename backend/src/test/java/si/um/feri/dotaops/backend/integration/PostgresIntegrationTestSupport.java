@@ -31,6 +31,27 @@ abstract class PostgresIntegrationTestSupport {
         return new TransactionTemplate(transactionManager).execute(status -> operation.get());
     }
 
+    protected <T> T asAuthenticatedWithTemporaryGrant(
+            UUID authUserId,
+            String grantSql,
+            Supplier<T> operation
+    ) {
+        return new TransactionTemplate(transactionManager).execute(status -> {
+            jdbcTemplate.execute(grantSql);
+
+            try {
+                jdbcTemplate.execute("set local role authenticated");
+                jdbcTemplate.queryForObject(
+                        "select set_config('request.jwt.claim.sub', ?, true)",
+                        String.class,
+                        authUserId.toString());
+                return operation.get();
+            } finally {
+                status.setRollbackOnly();
+            }
+        });
+    }
+
     protected <T> T asRole(String role, UUID authUserId, Supplier<T> operation) {
         if (!SUPABASE_ROLES.contains(role)) {
             throw new IllegalArgumentException("Unsupported test role: " + role);

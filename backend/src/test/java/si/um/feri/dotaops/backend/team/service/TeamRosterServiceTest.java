@@ -97,12 +97,14 @@ class TeamRosterServiceTest {
     void currentTeamUsesCurrentProfileAndReturnsRosterPermissions() {
         when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
         when(teamRepository.findCurrentTeamForProfile(CAPTAIN_PROFILE_ID)).thenReturn(Optional.of(team()));
-        when(teamMemberRepository.findActiveByTeamId(TEAM_ID)).thenReturn(List.of(member(true, TeamMemberRole.MID)));
+        when(teamMemberRepository.findActiveByTeamId(TEAM_ID)).thenReturn(List.of(
+                member(OWNER_MEMBER_ID, CAPTAIN_PROFILE_ID, true, TeamMemberRole.SUPPORT),
+                member(true, TeamMemberRole.MID)));
 
         var response = teamRosterService.getCurrentTeam();
 
         assertThat(response.team().id()).isEqualTo(TEAM_ID);
-        assertThat(response.members()).hasSize(1);
+        assertThat(response.members()).hasSize(2);
         assertThat(response.captain()).isTrue();
         assertThat(response.isTeamOwner()).isTrue();
         assertThat(response.currentUserTeamRole()).isEqualTo("owner");
@@ -113,6 +115,26 @@ class TeamRosterServiceTest {
         assertThat(response.canLeaveTeam()).isFalse();
         assertThat(response.canDisbandTeam()).isTrue();
         assertThat(response.canViewAnalytics()).isTrue();
+    }
+
+    @Test
+    void inactiveCaptainDoesNotReceiveCaptainCapabilities() {
+        when(currentUserProvider.requireProfile())
+                .thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRepository.findCurrentTeamForProfile(CAPTAIN_PROFILE_ID)).thenReturn(Optional.of(team()));
+        when(teamMemberRepository.findActiveByTeamId(TEAM_ID)).thenReturn(List.of());
+        when(teamMemberRepository.existsActive(TEAM_ID, CAPTAIN_PROFILE_ID)).thenReturn(false);
+
+        var response = teamRosterService.getCurrentTeam();
+
+        assertThat(response.captain()).isFalse();
+        assertThat(response.isTeamOwner()).isFalse();
+        assertThat(response.currentUserTeamRole()).isEqualTo("member");
+        assertThat(response.canManageTeam()).isFalse();
+        assertThat(response.canManageRoster()).isFalse();
+        assertThat(response.canInvitePlayers()).isFalse();
+        assertThat(response.canTransferOwnership()).isFalse();
+        assertThat(response.canDisbandTeam()).isFalse();
     }
 
     @Test
@@ -197,7 +219,7 @@ class TeamRosterServiceTest {
 
         assertThatThrownBy(() -> teamRosterService.disbandTeam(TEAM_ID))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessage("Only the current team owner can disband this team.");
+                .hasMessage("Only the current active team owner can disband this team.");
 
         verify(teamRepository, never()).disband(TEAM_ID);
     }
@@ -234,9 +256,23 @@ class TeamRosterServiceTest {
     }
 
     @Test
-    void captainCanAddMemberToOwnTeam() {
-        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));
-        when(currentUserProvider.requireProfile()).thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+    void captainCannotCreateMembershipOutsideInvitationOrJoinRequestFlow() {
+        when(currentUserProvider.requireProfile())
+                .thenReturn(authenticatedProfile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> teamRosterService.addMember(
+                TEAM_ID,
+                new AddTeamMemberRequest(INVITEE_PROFILE_ID, TeamMemberRole.MID)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Direct team membership creation is not allowed; use an invitation or join request.");
+
+        verify(teamMemberRepository, never()).create(any());
+    }
+
+    @Test
+    void adminCanExplicitlyAddMemberAfterRosterValidation() {
+        when(currentUserProvider.requireProfile())
+                .thenReturn(authenticatedProfile(OTHER_PROFILE_ID, ProfileRole.ADMIN));
         when(profileRepository.findById(INVITEE_PROFILE_ID)).thenReturn(Optional.of(profile(INVITEE_PROFILE_ID)));
         when(teamMemberRepository.create(any())).thenReturn(member(true, TeamMemberRole.MID));
 
@@ -244,7 +280,6 @@ class TeamRosterServiceTest {
 
         ArgumentCaptor<CreateTeamMemberCommand> captor = ArgumentCaptor.forClass(CreateTeamMemberCommand.class);
         verify(teamMemberRepository).create(captor.capture());
-
         assertThat(captor.getValue().teamId()).isEqualTo(TEAM_ID);
         assertThat(captor.getValue().profileId()).isEqualTo(INVITEE_PROFILE_ID);
         assertThat(captor.getValue().role()).isEqualTo(TeamMemberRole.MID);
@@ -258,7 +293,8 @@ class TeamRosterServiceTest {
         assertThatThrownBy(() -> teamRosterService.addMember(
                 TEAM_ID,
                 new AddTeamMemberRequest(INVITEE_PROFILE_ID, TeamMemberRole.SUPPORT)))
-                .isInstanceOf(AccessDeniedException.class);
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Direct team membership creation is not allowed; use an invitation or join request.");
 
         verify(teamMemberRepository, never()).create(any());
     }
@@ -272,7 +308,7 @@ class TeamRosterServiceTest {
                 TEAM_ID,
                 new AddTeamMemberRequest(INVITEE_PROFILE_ID, TeamMemberRole.SUPPORT)))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessage("Only the team captain or an admin can manage this team.");
+                .hasMessage("Direct team membership creation is not allowed; use an invitation or join request.");
 
         verify(teamMemberRepository, never()).create(any());
     }
@@ -648,7 +684,7 @@ class TeamRosterServiceTest {
                 TEAM_ID,
                 new TransferTeamOwnershipRequest(INVITEE_PROFILE_ID)))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessage("Only the current team owner can transfer ownership.");
+                .hasMessage("Only the current active team owner can transfer ownership.");
     }
 
     @Test
@@ -659,7 +695,7 @@ class TeamRosterServiceTest {
                 TEAM_ID,
                 new TransferTeamOwnershipRequest(INVITEE_PROFILE_ID)))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessage("Only players can transfer team ownership.");
+                .hasMessage("Only the current active team owner can transfer ownership.");
     }
 
     @Test
@@ -670,7 +706,7 @@ class TeamRosterServiceTest {
                 TEAM_ID,
                 new TransferTeamOwnershipRequest(INVITEE_PROFILE_ID)))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessage("Only players can transfer team ownership.");
+                .hasMessage("Only the current active team owner can transfer ownership.");
     }
 
     @Test

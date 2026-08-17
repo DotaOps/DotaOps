@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
+import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.common.error.ApiException;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
@@ -204,7 +205,10 @@ public class TournamentRegistrationService {
     }
 
     private void ensureCanRegisterTeam(AuthenticatedActor actor, Team team) {
-        if (actor.requireProfileId().equals(team.captainProfileId())) {
+        UUID profileId = actor.requireProfileId();
+        if (actor.role() == ProfileRole.PLAYER
+                && profileId.equals(team.captainProfileId())
+                && teamMemberRepository.existsActive(team.id(), profileId)) {
             return;
         }
 
@@ -214,8 +218,8 @@ public class TournamentRegistrationService {
     private void ensureCanViewTeamRegistrations(AuthenticatedActor actor, Team team) {
         UUID profileId = actor.requireProfileId();
         if (actor.isAdmin()
-                || profileId.equals(team.captainProfileId())
-                || teamMemberRepository.existsActive(team.id(), profileId)) {
+                || (actor.role() == ProfileRole.PLAYER
+                && teamMemberRepository.existsActive(team.id(), profileId))) {
             return;
         }
 
@@ -230,7 +234,12 @@ public class TournamentRegistrationService {
 
     private void ensureCanManage(AuthenticatedActor actor, UUID tournamentId) {
         UUID profileId = actor.requireProfileId();
-        if (tournamentRepository.canManage(tournamentId, profileId, actor.isAdmin())) {
+        if (actor.isAdmin()) {
+            return;
+        }
+
+        if (actor.role() == ProfileRole.ORGANIZER
+                && tournamentRepository.canManage(tournamentId, profileId, false)) {
             return;
         }
 
@@ -239,13 +248,24 @@ public class TournamentRegistrationService {
 
     private void ensureCanCheckIn(AuthenticatedActor actor, TournamentRegistration registration, UUID tournamentId) {
         UUID profileId = actor.requireProfileId();
-        if (actor.isAdmin()
-                || profileId.equals(registration.captainProfileId())
-                || tournamentRepository.canManage(tournamentId, profileId, actor.isAdmin())) {
+        if (actor.isAdmin()) {
             return;
         }
 
-        throw new AccessDeniedException("Only the registered captain or tournament organizer can check in this team.");
+        if (actor.role() == ProfileRole.ORGANIZER
+                && tournamentRepository.canManage(tournamentId, profileId, false)) {
+            return;
+        }
+
+        Team team = teamRepository.findById(registration.teamId())
+                .orElseThrow(() -> new ResourceNotFoundException("Team", "id", registration.teamId()));
+        if (actor.role() == ProfileRole.PLAYER
+                && profileId.equals(team.captainProfileId())
+                && teamMemberRepository.existsActive(team.id(), profileId)) {
+            return;
+        }
+
+        throw new AccessDeniedException("Only the current active team captain or tournament organizer can check in this team.");
     }
 
     private void ensureRegistrationWindowOpen(Tournament tournament) {

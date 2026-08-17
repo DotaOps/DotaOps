@@ -104,6 +104,7 @@ public class TournamentRegistrationRepository {
                     from public.team_members
                     where team_id = ?
                       and is_active = true
+                      and left_at is null
                   )
                   +
                   (
@@ -260,6 +261,7 @@ public class TournamentRegistrationRepository {
                 from public.team_members tm
                 where tm.team_id = ?
                   and tm.is_active = true
+                  and tm.left_at is null
                 order by
                   case when tm.profile_id = ? then 0 else 1 end,
                   tm.joined_at asc,
@@ -278,6 +280,7 @@ public class TournamentRegistrationRepository {
                 from public.team_members tm
                 where tm.team_id = ?
                   and tm.is_active = true
+                  and tm.left_at is null
                 """,
                 Integer.class,
                 teamId);

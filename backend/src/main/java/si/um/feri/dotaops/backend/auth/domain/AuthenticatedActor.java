@@ -59,10 +59,10 @@ public record AuthenticatedActor(
     }
 
     public boolean isOrganizer() {
-        return role == ProfileRole.ORGANIZER || isAdmin();
+        return role == ProfileRole.ORGANIZER;
     }
 
     public boolean isPlayer() {
-        return role == ProfileRole.PLAYER || isOrganizer();
+        return role == ProfileRole.PLAYER;
     }
 }

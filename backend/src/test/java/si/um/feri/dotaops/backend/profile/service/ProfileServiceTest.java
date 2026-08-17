@@ -415,7 +415,7 @@ class ProfileServiceTest {
     }
 
     @Test
-    void missingSupabaseProfileCanDefaultToOrganizerFromSignupMetadata() {
+    void missingSupabaseProfileDefaultsToPlayerDespiteSignupMetadata() {
         SupabaseJwtClaims claims = new SupabaseJwtClaims(
                 AUTH_USER_ID,
                 "organizer@example.test",
@@ -434,14 +434,14 @@ class ProfileServiceTest {
         when(profileRepository.findByAuthUserId(AUTH_USER_ID)).thenReturn(Optional.empty());
         when(profileRepository.findByNickname("organizer")).thenReturn(Optional.empty());
         when(profileRepository.create(org.mockito.ArgumentMatchers.any()))
-                .thenReturn(profile("organizer", null, ProfileRole.ORGANIZER));
+                .thenReturn(profile("organizer", null, ProfileRole.PLAYER));
 
         profileService.getCurrentProfile();
 
         ArgumentCaptor<CreateProfileCommand> captor = ArgumentCaptor.forClass(CreateProfileCommand.class);
         verify(profileRepository).create(captor.capture());
 
-        assertThat(captor.getValue().role()).isEqualTo(ProfileRole.ORGANIZER);
+        assertThat(captor.getValue().role()).isEqualTo(ProfileRole.PLAYER);
     }
 
     @Test

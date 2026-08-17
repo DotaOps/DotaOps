@@ -176,7 +176,7 @@ public class TeamJoinRequestService {
 
     private void ensureCanViewTeamJoinRequests(AuthenticatedProfile profile, Team team) {
         if (profile.role() == ProfileRole.ADMIN
-                || profile.profileId().equals(team.captainProfileId())) {
+                || isActiveCaptain(profile, team)) {
             return;
         }
 
@@ -201,11 +201,17 @@ public class TeamJoinRequestService {
     }
 
     private void ensureCaptain(AuthenticatedProfile profile, Team team) {
-        if (profile.profileId().equals(team.captainProfileId())) {
+        if (isActiveCaptain(profile, team)) {
             return;
         }
 
         throw new AccessDeniedException("Only the team captain can resolve join requests.");
+    }
+
+    private boolean isActiveCaptain(AuthenticatedProfile profile, Team team) {
+        return profile.role() == ProfileRole.PLAYER
+                && profile.profileId().equals(team.captainProfileId())
+                && teamMemberRepository.existsActive(team.id(), profile.profileId());
     }
 
     private void ensurePending(TeamJoinRequest joinRequest) {

@@ -12,6 +12,8 @@ import jakarta.servlet.http.Cookie;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -68,6 +70,7 @@ class SecurityConfigTest {
 
     private static final UUID PLAYER_AUTH_USER_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
     private static final UUID ORGANIZER_AUTH_USER_ID = UUID.fromString("55555555-5555-4555-8555-555555555555");
+    private static final UUID ADMIN_AUTH_USER_ID = UUID.fromString("77777777-7777-4777-8777-777777777777");
     private static final UUID STEAM_PROFILE_ID = UUID.fromString("66666666-6666-4666-8666-666666666666");
     private static final String STEAM_ID = "76561198000000001";
 
@@ -93,6 +96,9 @@ class SecurityConfigTest {
         when(profileRepository.findByAuthUserId(ORGANIZER_AUTH_USER_ID)).thenReturn(Optional.of(profile(
                 ORGANIZER_AUTH_USER_ID,
                 ProfileRole.ORGANIZER)));
+        when(profileRepository.findByAuthUserId(ADMIN_AUTH_USER_ID)).thenReturn(Optional.of(profile(
+                ADMIN_AUTH_USER_ID,
+                ProfileRole.ADMIN)));
         when(profileRepository.findByProfileId(STEAM_PROFILE_ID)).thenReturn(Optional.of(new AuthenticatedProfile(
                 STEAM_PROFILE_ID,
                 null,
@@ -234,6 +240,45 @@ class SecurityConfigTest {
     }
 
     @Test
+    void adminCanAccessOrganizerTournamentRouteThroughExplicitAllowance() throws Exception {
+        mockMvc.perform(get("/api/organizer/tournaments/security-test")
+                        .header("Authorization", bearerToken(ADMIN_AUTH_USER_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result").value("organizer tournament"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "user_metadata, organizer",
+            "user_metadata, admin",
+            "user_metadata, captain",
+            "app_metadata, organizer",
+            "app_metadata, admin",
+            "app_metadata, captain"
+    })
+    void playerDatabaseRoleCannotBeEscalatedByJwtMetadata(String metadataClaim, String desiredRole) throws Exception {
+        String token = bearerTokenWithMetadata(PLAYER_AUTH_USER_ID, metadataClaim, desiredRole);
+
+        mockMvc.perform(get("/api/me/security-test").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("PLAYER"));
+        mockMvc.perform(get("/api/organizer/security-test").header("Authorization", token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+        mockMvc.perform(get("/api/admin/security-test").header("Authorization", token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void organizerTournamentRoutesRequireOrganizerOrAdminRole() throws Exception {
+        mockMvc.perform(get("/api/organizer/tournaments/security-test")
+                        .header("Authorization", bearerToken(PLAYER_AUTH_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
     void organizerCannotUsePlayerAnalyticsEndpoint() throws Exception {
         mockMvc.perform(get("/api/me/analytics")
                         .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
@@ -282,11 +327,11 @@ class SecurityConfigTest {
     }
 
     @Test
-    void matchImportRequiresOrganizerRole() throws Exception {
+    void matchImportCreateRequiresAdminRole() throws Exception {
         mockMvc.perform(post("/api/match-imports")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"dotaMatchId\":\"7894561230\"}")
-                        .header("Authorization", bearerToken(PLAYER_AUTH_USER_ID)))
+                        .header("Authorization", bearerToken(ORGANIZER_AUTH_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
@@ -368,6 +413,18 @@ class SecurityConfigTest {
         return "Bearer " + SupabaseJwtTestSupport.token(authUserId, Instant.now());
     }
 
+    private static String bearerTokenWithMetadata(
+            UUID authUserId,
+            String metadataClaim,
+            String desiredRole
+    ) throws Exception {
+        return "Bearer " + SupabaseJwtTestSupport.tokenWithMetadata(
+                authUserId,
+                Instant.now(),
+                metadataClaim,
+                desiredRole);
+    }
+
     private Cookie steamSessionCookie() {
         return new Cookie("dotaops_steam_session", steamSessionTokenService.createToken(new SteamAuthResult(
                 STEAM_ID,
@@ -410,6 +467,16 @@ class SecurityConfigTest {
         @GetMapping("/api/organizer/security-test")
         Map<String, String> organizer() {
             return Map.of("result", "organizer");
+        }
+
+        @GetMapping("/api/organizer/tournaments/security-test")
+        Map<String, String> organizerTournament() {
+            return Map.of("result", "organizer tournament");
+        }
+
+        @GetMapping("/api/admin/security-test")
+        Map<String, String> admin() {
+            return Map.of("result", "admin");
         }
 
         @GetMapping("/api/public/tournaments/security-test")

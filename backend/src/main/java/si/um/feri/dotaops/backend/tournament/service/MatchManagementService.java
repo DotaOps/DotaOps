@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
+import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
 import si.um.feri.dotaops.backend.common.error.BadRequestException;
 import si.um.feri.dotaops.backend.common.error.ConflictException;
@@ -175,7 +176,12 @@ public class MatchManagementService {
 
     private void ensureCanManage(AuthenticatedActor actor, UUID tournamentId) {
         UUID profileId = actor.requireProfileId();
-        if (tournamentRepository.canManage(tournamentId, profileId, actor.isAdmin())) {
+        if (actor.isAdmin()) {
+            return;
+        }
+
+        if (actor.role() == ProfileRole.ORGANIZER
+                && tournamentRepository.canManage(tournamentId, profileId, false)) {
             return;
         }
 

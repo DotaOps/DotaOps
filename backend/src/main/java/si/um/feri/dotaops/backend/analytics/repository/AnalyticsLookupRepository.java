@@ -59,15 +59,15 @@ public class AnalyticsLookupRepository {
                   t.tag
                 from public.teams t
                 where t.disbanded_at is null
-                  and (
-                    t.captain_profile_id = ?
-                    or exists (
-                      select 1
-                      from public.team_members tm
-                      where tm.team_id = t.id
-                        and tm.profile_id = ?
-                        and tm.is_active = true
-                    )
+                  and exists (
+                    select 1
+                    from public.team_members tm
+                    join public.profiles current_profile on current_profile.id = tm.profile_id
+                    where tm.team_id = t.id
+                      and tm.profile_id = ?
+                      and tm.is_active = true
+                      and tm.left_at is null
+                      and current_profile.role = 'player'::public.dotaops_user_role
                   )
                 order by
                   case when t.captain_profile_id = ? then 0 else 1 end,
@@ -77,7 +77,6 @@ public class AnalyticsLookupRepository {
                 limit ?
                 """,
                 this::mapTeamLookup,
-                profileId,
                 profileId,
                 profileId,
                 limit);
@@ -97,7 +96,9 @@ public class AnalyticsLookupRepository {
                 join public.teams t on t.id = tm.team_id
                 where tm.team_id = ?
                   and tm.is_active = true
+                  and tm.left_at is null
                   and t.disbanded_at is null
+                  and p.role = 'player'::public.dotaops_user_role
                 order by tm.joined_at asc, p.display_name asc nulls last, p.nickname asc nulls last
                 limit ?
                 """,
@@ -220,6 +221,7 @@ public class AnalyticsLookupRepository {
                 join public.teams t on t.id = tm.team_id
                 where tm.team_id = ?
                   and tm.is_active = true
+                  and tm.left_at is null
                   and t.disbanded_at is null
                   and p.role = 'player'::public.dotaops_user_role
                   and (? = false or p.id <> ?)
@@ -276,21 +278,20 @@ public class AnalyticsLookupRepository {
                   from public.teams t
                   where t.id = ?
                     and t.disbanded_at is null
-                    and (
-                      t.captain_profile_id = ?
-                      or exists (
-                        select 1
-                        from public.team_members tm
-                        where tm.team_id = t.id
-                          and tm.profile_id = ?
-                          and tm.is_active = true
-                      )
+                    and exists (
+                      select 1
+                      from public.team_members tm
+                      join public.profiles member_profile on member_profile.id = tm.profile_id
+                      where tm.team_id = t.id
+                        and tm.profile_id = ?
+                        and tm.is_active = true
+                        and tm.left_at is null
+                        and member_profile.role = 'player'::public.dotaops_user_role
                     )
                 )
                 """,
                 Boolean.class,
                 teamId,
-                profileId,
                 profileId);
 
         return Boolean.TRUE.equals(exists);
@@ -303,44 +304,41 @@ public class AnalyticsLookupRepository {
                   select 1
                   from public.teams t
                   where t.disbanded_at is null
-                    and (
-                      t.captain_profile_id = ?
-                      or exists (
-                        select 1
-                        from public.team_members current_member
-                        where current_member.team_id = t.id
-                          and current_member.profile_id = ?
-                          and current_member.is_active = true
-                      )
+                    and exists (
+                      select 1
+                      from public.team_members current_member
+                      join public.profiles current_profile on current_profile.id = current_member.profile_id
+                      where current_member.team_id = t.id
+                        and current_member.profile_id = ?
+                        and current_member.is_active = true
+                        and current_member.left_at is null
+                        and current_profile.role = 'player'::public.dotaops_user_role
                     )
-                    and (
-                      t.captain_profile_id = ?
-                      or exists (
-                        select 1
-                        from public.team_members first_member
-                        where first_member.team_id = t.id
-                          and first_member.profile_id = ?
-                          and first_member.is_active = true
-                      )
+                    and exists (
+                      select 1
+                      from public.team_members first_member
+                      join public.profiles first_profile on first_profile.id = first_member.profile_id
+                      where first_member.team_id = t.id
+                        and first_member.profile_id = ?
+                        and first_member.is_active = true
+                        and first_member.left_at is null
+                        and first_profile.role = 'player'::public.dotaops_user_role
                     )
-                    and (
-                      t.captain_profile_id = ?
-                      or exists (
-                        select 1
-                        from public.team_members second_member
-                        where second_member.team_id = t.id
-                          and second_member.profile_id = ?
-                          and second_member.is_active = true
-                      )
+                    and exists (
+                      select 1
+                      from public.team_members second_member
+                      join public.profiles second_profile on second_profile.id = second_member.profile_id
+                      where second_member.team_id = t.id
+                        and second_member.profile_id = ?
+                        and second_member.is_active = true
+                        and second_member.left_at is null
+                        and second_profile.role = 'player'::public.dotaops_user_role
                     )
                 )
                 """,
                 Boolean.class,
                 currentProfileId,
-                currentProfileId,
                 firstProfileId,
-                firstProfileId,
-                secondProfileId,
                 secondProfileId);
 
         return Boolean.TRUE.equals(exists);

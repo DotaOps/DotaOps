@@ -40,7 +40,7 @@ DotaOps 1.0 ima natanko tri persistirane globalne profilne vloge:
 
 Vloge niso implicitna hierarhija. **ORGANIZER** ne podeduje Player ali Captain pravic. **ADMIN** uporablja eksplicitne admin override-e; dejanja se ne smejo zanašati na naključno dedovanje Spring authorities ali na client-side role gate.
 
-PLAYER in ORGANIZER se lahko v DotaOps 1.0 izbereta ob registraciji. ADMIN se ne sme samodejno dodeliti iz browser inputa, JWT user metadata ali signup payload-a; dodeli se samo prek zaupanja vrednega, auditiranega administrativnega toka. Po provisioningu je avtoritativen vir vloge application profil v PostgreSQL, ne Supabase user metadata in ne frontend stanje.
+PLAYER in ORGANIZER sta dovoljeni uporabniški izbiri, vendar se ORGANIZER sme persistirati šele prek izrecnega, validiranega Spring Boot profile-provisioning requesta v avtenticirani seji. Signup metadata lahko prenese samo onboarding željo; samodejni DB/backend provisioning in frontend fallback ustvarita oziroma prikažeta PLAYER ter iz metadata ne dodelita globalne vloge. Trenutni email-confirmation signup brez takojšnje seje zato varno ostane PLAYER, dokler ločen post-confirm onboarding tok ponovno ne zbere izrecne izbire; ta UX follow-up ni authorization izjema. ADMIN se ne sme samodejno dodeliti iz browser inputa, JWT user metadata ali signup payload-a; dodeli se samo prek zaupanja vrednega, auditiranega administrativnega toka. Po provisioningu je avtoritativen vir vloge application profil v PostgreSQL, ne Supabase user metadata in ne frontend stanje.
 
 **REFEREE** in **ANALYST** nista vlogi niti aktivni capability DotaOps 1.0. Morebitne legacy enum vrednosti v tournament_staff ne podelijo 1.0 dovoljenj. GitHub nalogi #13 in #46 ostaneta zaprti oziroma deferred.
 
@@ -76,7 +76,7 @@ Authentication odgovarja na vprašanje: **Kdo je uporabnik?**
 4. Spring po auth user ID-ju naloži DotaOps application profil iz PostgreSQL.
 5. Globalna vloga in profile ID iz baze tvorita application actorja.
 
-Supabase user metadata je neavtoritativen onboarding input. Lahko izrazi želeno PLAYER ali ORGANIZER vlogo, ne sme pa sama podeliti ADMIN, Captain ali object capability pravic.
+Supabase user metadata je neavtoritativen onboarding input. Lahko izrazi želeno PLAYER ali ORGANIZER vlogo, ki jo mora potrditi izrecni validirani application request, ne sme pa sama podeliti ORGANIZER, ADMIN, Captain ali object capability pravic. Če application profila še ni, implicitni provisioning in UI fallback uporabita PLAYER.
 
 ### Steam pot
 
@@ -175,7 +175,7 @@ Trust-boundary pravila:
 
 Backend mora uporabljati najmanj privilegirano strežniško DB identiteto. Tudi kadar trenutna JDBC identiteta tehnično obide RLS, mora Spring pred repository klicem uveljaviti isto ali strožjo application pogodbo.
 
-Migracije RLS vključijo na aplikacijskih tabelah in več javnih analytics viewov uporablja security-invoker. V35 je browser Data API vlogam odvzel business DML; preširoke object/state politike in funkcijski ACL-i iz poglavja 15 ostajajo defense-in-depth dolg nalog 05 in 06.
+Migracije RLS vključijo na aplikacijskih tabelah in več javnih analytics viewov uporablja security-invoker. V35 je browser Data API vlogam odvzel business DML, V36 pa utrdi Organizer/Captain object in sensitive-state politike kot defense-in-depth. Public read/minimal-disclosure in sistematični funkcijski ACL-i iz poglavja 15 ostajajo ločeni dolg naloge 06.
 
 ## 8. Neposredna uporaba Supabase
 
@@ -229,6 +229,19 @@ V35 uveljavi naslednjo minimalno mejo:
 - `service_role` pravice in Auth/Storage objekti niso odvzeti. Service-role ključ ostaja samo backend Storage credential.
 
 Edini namenoma ohranjeni neposredni Supabase mehanizmi so allowlist iz poglavij 8.1 in 8.2. Storage object write politike ter `private` function ACL hardening niso izjema od business-table pravila, temveč ločena scope-a nalog 41 oziroma 06.
+
+### 8.5 Implementirana object-capability meja po nalogi 05
+
+V36 in pripadajoča Spring authorization pravila uveljavijo naslednjo mejo:
+
+- Tournament manage capability je `ADMIN` ali pa hkrati globalni `ORGANIZER` in `tournaments.organizer_profile_id` oziroma eksplicitna `tournament_staff` relacija `owner`/`organizer` za isti turnir. Sama organizer vloga ali sama staff vrstica ne zadostujeta.
+- Captain capability je hkrati globalni `PLAYER`, `teams.captain_profile_id = actor.profile_id`, aktivno članstvo brez `left_at` in nedisbandana konkretna ekipa. Enaka capability se uporablja za dovoljene team Storage poti.
+- Admin override je povsod izrecen; globalni `is_organizer_or_admin` shortcut ni del aktivnega policy modela.
+- Neposredne captain politike ne izražajo pravice do transferja lastništva, protected membership mutacij ali organizerjevega registration statusa. Ti prehodi ostanejo Spring Boot workflowi.
+- Implicitni profilni provisioning in frontend fallback ignorirata role metadata ter uporabita PLAYER. Izrecna PLAYER/ORGANIZER izbira ostane validiran onboarding request v avtenticirani seji; email-confirmation varianta brez takojšnje seje potrebuje še varen post-confirm UX korak in do takrat ostane PLAYER.
+- Dokler naloga 07 ne uvede requester/managed-match povezave, Spring dovoljuje create/retry importa samo eksplicitnemu ADMIN-u; RLS globalnega Organizer bypassa nima.
+
+V36 ne vrne nobenega browser business DML granta. Vseh 23 poslovnih tabel ostane pod RLS, V35 `PUBLIC`/`anon`/`authenticated` DML invariant pa ostane avtoritativen.
 
 ## 9. Role in capability matrika
 
@@ -448,10 +461,10 @@ Spodnje vrzeli so potrjena neskladja trenutne implementacije s canonical modelom
 |---|---|---|---|
 | G-01 | **RAZREŠENO:** V35 odvzame table- in column-level business DML vlogam PUBLIC, anon in authenticated; effective-grant test pokriva vseh 23 tabel | Browser z javnim ključem in lastnim JWT-jem nima osnovnega DB granta za business INSERT/UPDATE/DELETE | **RAZREŠENO — 04 / #143** |
 | G-02 | **RAZREŠENO za frontend:** profile GET/POST/PATCH gre skozi Spring, neposredni SELECT/UPDATE/UPSERT in homepage read so odstranjeni | Frontend nima aktivnega business Data API table klica; preostalo DB read/privacy površino pokriva G-07 | **RAZREŠENO — 04 / #143**; DB privacy ostaja **06 / #145** |
-| G-03 | Globalni organizer RLS helper se obnaša kot organizer-or-admin in lahko odpre tuje profile, external accounts, notifications, heroes, imports ter vse turnirje | Self-selected ORGANIZER dobi cross-user/cross-tournament DB scope | **05 / #144** |
-| G-04 | Nekateri organizer backend route-i zahtevajo le authentication, manage lookup pa ne zahteva tudi globalnega ORGANIZER; staff relation lahko zato sama zadostuje. ADMIN ne deduje ROLE_PLAYER, zato so canonical admin override-i na PLAYER-only matcherjih trenutno nekonsistentni | Authorization ne uveljavi enotno zamrznjene kombinacije global role + capability in eksplicitnega admin scope-a | **05 / #144** in **10 / #149** |
-| G-05 | Captain RLS helper ne zahteva hkrati globalnega PLAYER in aktivnega membershipa; write politike so team-row scoped, ne pa column/state/workflow scoped | V35 je zaprl browser DML bypass; politika/capability dolg ostaja defense-in-depth in ga naloga 05 ne sme obravnavati kot canonical business workflow | **05 / #144** |
-| G-06 | Frontend tipi/fallback še poznajo legacy globalni captain in lahko za prikaz izpeljejo role iz user metadata | Terminološki drift; client metadata bi lahko bila pomotoma obravnavana kot authority | **05 / #144** |
+| G-03 | **RAZREŠENO:** V36 odstrani globalni organizer/admin shortcut; manager helper zahteva exact ORGANIZER + owner/delegation ali eksplicitni ADMIN, user-private/hero/import/audit politike pa uporabljajo self, object ali admin scope | ORGANIZER samo zaradi globalne vloge ne dobi cross-user/cross-tournament DB scope-a | **RAZREŠENO — 05 / #144** |
+| G-04 | **RAZREŠENO za Organizer:** organizer route-i in repository/service checki zahtevajo exact ORGANIZER + managed tournament, ADMIN pa je izrecen override. Širša enotnost admin override-ov na vseh PLAYER-only produktnih tokovih ostaja ločena | Tournament authorization uporablja zamrznjeno kombinacijo global role + capability; preostala admin-role konsolidacija ni Organizer bypass | **RAZREŠENO — 05 / #144**; preostanek **10 / #149** |
+| G-05 | **RAZREŠENO:** RLS in Spring Captain capability zahtevata PLAYER, current captain ID, aktivno članstvo in nedisbandano ekipo; direct protected ownership/membership/registration state politike so fail-closed | V35 še vedno prepreči browser DML, V36 pa isto mejo izrazi tudi kot defense-in-depth | **RAZREŠENO — 05 / #144** |
+| G-06 | **RAZREŠENO:** frontend globalni role tipi ne vsebujejo Captain, metadata fallback je vedno PLAYER, backend implicitni provisioning pa iz metadata ne dodeli vloge | Client metadata ne odpre privileged UI ali application authority | **RAZREŠENO — 05 / #144** |
 | G-07 | Public RLS vrača whole-row profile/team/tournament/registration podatke; ProfileResponse vključuje gaming ID-je, role in sync čase; manual-player note je public-shaped; neaktivna članstva ostanejo vidna | Kršitev minimal disclosure in field classification | **06 / #145** |
 | G-08 | DB public tournament/read helperji in public analytics viewi uporabljajo predvsem is_public, ne canonical lifecycle; backend public analytics prav tako ne preveri vedno statusa | Draft ali drug nedovoljen lifecycle lahko uhaja prek Data API/analytics poti | **06 / #145** in **07 / #146** |
 | G-09 | V34 authenticated vrne USAGE na private schema, starejše funkcije pa nimajo sistematičnega REVOKE EXECUTE FROM PUBLIC; SECURITY DEFINER analytics refresh je posebej občutljiv | Potrjena DB-role least-privilege vrzel; private ni izpostavljena PostgREST schema, zato to ni trditev o potrjenem remote RPC exploitu | **06 / #145** |
@@ -460,7 +473,7 @@ Spodnje vrzeli so potrjena neskladja trenutne implementacije s canonical modelom
 | G-12 | Steam cookie ima production-nevarne defaulte/fallback secret, ni server-side revocation; frontend logout ne pokliče tudi Steam logouta; CSRF je izklopljen | Seja lahko ostane veljavna, cookie mutacije in production konfiguracija niso fail-closed | **08 / #147** |
 | G-13 | Proxy IP headerjem se zaupa brez trusted-proxy meje, limiter pa je in-memory/per-instance | Spoofing ali več instanc lahko obide abuse omejitve | **08 / #147** |
 | G-14 | Legacy multipart in public bucket tokovi sobivajo s signed tokom; Storage RLS dovoljuje direct path write; confirm ne preveri dejanskega objekta/MIME/magic bytes; ni celovitega cleanup-a | Lažen DB link, spoofan ali orphan objekt ter bypass backend-issued intenta | **41 / #180 — MIGRATION REQUIRED** |
-| G-15 | post_flyway_hardening.sql še vedno utrdi samo flyway_schema_history in se izvaja ročno; application DML grante zdaj verzionirano zapre V35 | RLS object-scope in function ACL vrzeli namenoma ostajajo ločeni | **05 / #144**, **06 / #145** |
+| G-15 | post_flyway_hardening.sql še vedno utrdi samo flyway_schema_history in se izvaja ročno; application DML grante verzionirano zapre V35, Organizer/Captain object scope pa V36 | Sistematični private-schema/function ACL-i namenoma ostajajo ločeni | **06 / #145** |
 
 ## 16. Follow-up roadmap tasks
 
@@ -470,7 +483,7 @@ Ta dokument ne pušča odprte vloge, privacy razreda ali trust-boundary vprašan
 |---|---|
 | **03 / #142 — Zamrzni analytics source in scope pogodbo** | Določi source/filter/lifecycle podrobnosti znotraj authorization meja poglavja 14 |
 | **04 / #143 — Zapri neposredne Supabase poslovne write poti** | Odvzame client DML, odstrani frontend write fallbacke in vzpostavi backend-only mutations |
-| **05 / #144 — Utrdi Organizer in Captain RLS pravila** | Uveljavi ORGANIZER + tournament capability ter PLAYER + team Captain capability brez cross-object pravic |
+| **05 / #144 — Utrdi Organizer in Captain RLS pravila** | **IMPLEMENTIRANO:** V36 in Spring authorization uveljavita ORGANIZER + tournament capability ter PLAYER + active-team Captain capability brez cross-object pravic |
 | **06 / #145 — Utrdi public privacy in DB funkcijske grante** | Minimalni public DTO/viewi, lifecycle filtri, skrita občutljiva polja in least-privilege private function ACL |
 | **07 / #146 — Utrdi import in analytics object scope** | Requester/manager import scope, varni retry/events in Compare brez teammate all-history |
 | **08 / #147 — Utrdi Steam session, logout, CSRF in rate limiting** | Fail-closed cookie/session lifecycle, enoten logout, CSRF/origin, trusted proxy in distributed limiter |

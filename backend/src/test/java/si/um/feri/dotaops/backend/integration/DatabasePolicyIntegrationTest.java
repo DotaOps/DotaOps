@@ -54,15 +54,18 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    void serviceRoleProfileHelperAllowsOrganizerButNotGlobalCaptainFromMetadata() {
+    void serviceRoleProfileHelperIgnoresMetadataRolesDuringAutoProvisioning() {
         UUID organizerAuthUserId = UUID.randomUUID();
         UUID captainAuthUserId = UUID.randomUUID();
+        UUID adminAuthUserId = UUID.randomUUID();
         seedAuthUser(organizerAuthUserId);
         seedAuthUser(captainAuthUserId);
+        seedAuthUser(adminAuthUserId);
 
-        jdbcTemplate.update("delete from public.profiles where auth_user_id in (?, ?)",
+        jdbcTemplate.update("delete from public.profiles where auth_user_id in (?, ?, ?)",
                 organizerAuthUserId,
-                captainAuthUserId);
+                captainAuthUserId,
+                adminAuthUserId);
 
         asServiceRole(() -> {
             jdbcTemplate.queryForObject(
@@ -91,6 +94,19 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
                     captainAuthUserId,
                     "captain@example.test",
                     "{\"desired_role\":\"captain\",\"nickname\":\"metadata_captain\"}");
+            jdbcTemplate.queryForObject(
+                    """
+                    select private.ensure_profile_for_auth_user(
+                      ?,
+                      ?,
+                      '{}'::jsonb,
+                      ?::jsonb
+                    )
+                    """,
+                    UUID.class,
+                    adminAuthUserId,
+                    "admin@example.test",
+                    "{\"desired_role\":\"admin\",\"nickname\":\"metadata_admin\"}");
 
             return null;
         });
@@ -101,9 +117,13 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
         Map<String, Object> captainProfile = jdbcTemplate.queryForMap(
                 "select role::text as role from public.profiles where auth_user_id = ?",
                 captainAuthUserId);
+        Map<String, Object> adminProfile = jdbcTemplate.queryForMap(
+                "select role::text as role from public.profiles where auth_user_id = ?",
+                adminAuthUserId);
 
-        assertThat(organizerProfile.get("role")).isEqualTo("organizer");
+        assertThat(organizerProfile.get("role")).isEqualTo("player");
         assertThat(captainProfile.get("role")).isEqualTo("player");
+        assertThat(adminProfile.get("role")).isEqualTo("player");
     }
 
     @Test
@@ -273,6 +293,10 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
         UUID captainProfileId = upsertProfile(captainAuthUserId, "player");
         UUID otherProfileId = upsertProfile(otherAuthUserId, "player");
         UUID teamId = insertTeam(captainProfileId);
+        jdbcTemplate.update(
+                "insert into public.team_members (team_id, profile_id) values (?, ?)",
+                teamId,
+                captainProfileId);
 
         Boolean ownAvatar = asAuthenticated(captainAuthUserId, () -> jdbcTemplate.queryForObject(
                 "select private.storage_profile_avatar_owner(?)",
