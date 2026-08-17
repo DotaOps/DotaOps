@@ -27,12 +27,16 @@ abstract class PostgresIntegrationTestSupport {
         return asRole("service_role", null, operation);
     }
 
+    protected <T> T asBackend(Supplier<T> operation) {
+        return new TransactionTemplate(transactionManager).execute(status -> operation.get());
+    }
+
     protected <T> T asRole(String role, UUID authUserId, Supplier<T> operation) {
         if (!SUPABASE_ROLES.contains(role)) {
             throw new IllegalArgumentException("Unsupported test role: " + role);
         }
 
-        return new TransactionTemplate(transactionManager).execute(status -> {
+        return asBackend(() -> {
             jdbcTemplate.execute("set local role " + role);
             if (authUserId == null) {
                 jdbcTemplate.queryForObject(

@@ -1,5 +1,6 @@
 package si.um.feri.dotaops.backend.integration;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -151,6 +152,83 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
                     """,
                     profileId,
                     uniqueSteamId64());
+            return null;
+        })).isInstanceOf(DataAccessException.class);
+    }
+
+    @Test
+    void browserRolesHaveNoDirectBusinessDmlPrivileges() {
+        List<String> unexpectedPrivileges = jdbcTemplate.queryForList(
+                """
+                with browser_roles(role_name) as (
+                  values ('anon'), ('authenticated')
+                ),
+                business_tables(table_name) as (
+                  values
+                    ('profiles'),
+                    ('profile_external_accounts'),
+                    ('teams'),
+                    ('team_members'),
+                    ('team_invitations'),
+                    ('team_join_requests'),
+                    ('team_manual_players'),
+                    ('tournaments'),
+                    ('tournament_registrations'),
+                    ('tournament_registration_members'),
+                    ('tournament_staff'),
+                    ('tournament_groups'),
+                    ('tournament_group_teams'),
+                    ('matches'),
+                    ('match_slots'),
+                    ('match_games'),
+                    ('match_players'),
+                    ('match_imports'),
+                    ('match_import_events'),
+                    ('match_advancement_audit_logs'),
+                    ('heroes'),
+                    ('notification_outbox'),
+                    ('audit_log')
+                ),
+                dml_privileges(privilege_name) as (
+                  values ('INSERT'), ('UPDATE'), ('DELETE')
+                )
+                select concat(role_name, ':', table_name, ':', privilege_name)
+                from browser_roles
+                cross join business_tables
+                cross join dml_privileges
+                where has_table_privilege(
+                        role_name,
+                        format('public.%I', table_name),
+                        privilege_name
+                      )
+                   or case
+                        when privilege_name in ('INSERT', 'UPDATE') then
+                          has_any_column_privilege(
+                            role_name,
+                            format('public.%I', table_name),
+                            privilege_name
+                          )
+                        else false
+                      end
+                order by role_name, table_name, privilege_name
+                """,
+                String.class);
+
+        assertThat(unexpectedPrivileges)
+                .as("anon/authenticated must not have effective business INSERT, UPDATE or DELETE privileges")
+                .isEmpty();
+    }
+
+    @Test
+    void authenticatedClientCannotUpdateOwnProfileDirectly() {
+        UUID authUserId = UUID.randomUUID();
+        UUID profileId = upsertProfile(authUserId, "player");
+
+        assertThatThrownBy(() -> asAuthenticated(authUserId, () -> {
+            jdbcTemplate.update(
+                    "update public.profiles set display_name = ? where id = ?",
+                    "Direct client update",
+                    profileId);
             return null;
         })).isInstanceOf(DataAccessException.class);
     }

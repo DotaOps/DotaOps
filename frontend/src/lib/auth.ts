@@ -9,22 +9,6 @@ import {
   postFormApiAuthenticated
 } from "@/lib/api";
 
-const PROFILE_SELECT_COLUMNS = [
-  "id",
-  "avatar_url",
-  "bio",
-  "country_code",
-  "created_at",
-  "display_name",
-  "nickname",
-  "opendota_account_id",
-  "opendota_profile_synced_at",
-  "role",
-  "steam_id",
-  "steam_profile_synced_at",
-  "updated_at"
-].join(",");
-
 export type RequestedAuthRole = "player" | "captain" | "organizer";
 export type ProfileRole = RequestedAuthRole | "visitor" | "admin";
 
@@ -166,22 +150,6 @@ interface SteamLinkStartResponse {
   redirectUrl?: string | null;
 }
 
-interface ProfileRow {
-  id?: string | null;
-  avatar_url?: string | null;
-  bio?: string | null;
-  country_code?: string | null;
-  created_at?: string | null;
-  display_name?: string | null;
-  nickname?: string | null;
-  opendota_account_id?: number | null;
-  opendota_profile_synced_at?: string | null;
-  role: ProfileRole | null;
-  steam_id?: string | null;
-  steam_profile_synced_at?: string | null;
-  updated_at?: string | null;
-}
-
 interface BackendProfileResponse {
   id?: string | null;
   avatarUrl?: string | null;
@@ -256,15 +224,6 @@ function createProfilePayload(input: RegisterInput) {
   };
 }
 
-function editableProfilePayload(input: ProfileUpdateInput) {
-  return {
-    bio: input.bio?.trim() || null,
-    country_code: normalizeCountryCode(input.countryCode),
-    display_name: input.displayName?.trim() || null,
-    nickname: input.nickname?.trim() || "player"
-  };
-}
-
 function backendProfilePayload(input: ProfileUpdateInput) {
   return {
     bio: input.bio?.trim() || null,
@@ -276,24 +235,6 @@ function backendProfilePayload(input: ProfileUpdateInput) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isPolicyError(value: unknown) {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  const code = typeof value.code === "string" ? value.code : "";
-  const status = typeof value.status === "number" ? value.status : null;
-  const message = typeof value.message === "string" ? value.message.toLowerCase() : "";
-
-  return (
-    status === 403 ||
-    code === "42501" ||
-    message.includes("row-level security") ||
-    message.includes("permission denied") ||
-    message.includes("violates row-level security")
-  );
 }
 
 function isRegistrationRateLimitError(value: unknown) {
@@ -313,44 +254,10 @@ function isRegistrationRateLimitError(value: unknown) {
   );
 }
 
-export async function getCurrentProfileRole(authUserId: string) {
-  const supabase = requireSupabaseClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("auth_user_id", authUserId)
-    .maybeSingle();
+export async function getCurrentProfileRole(accessToken: string) {
+  const profile = await getApiAuthenticated<BackendProfileResponse>("/me/profile", accessToken);
 
-  if (error) {
-    throw error;
-  }
-
-  const profile = data as ProfileRow | null;
-
-  return profile?.role ?? null;
-}
-
-function profileFromRow(row: ProfileRow | null, email: string | null): CurrentUserProfile | null {
-  if (!row?.nickname) {
-    return null;
-  }
-
-  return {
-    avatarUrl: row.avatar_url ?? null,
-    bio: row.bio ?? null,
-    countryCode: row.country_code ?? null,
-    createdAt: row.created_at ?? null,
-    displayName: row.display_name ?? null,
-    email,
-    nickname: row.nickname,
-    opendotaAccountId: row.opendota_account_id ?? null,
-    opendotaProfileSyncedAt: row.opendota_profile_synced_at ?? null,
-    profileId: row.id ?? null,
-    role: row.role ?? "player",
-    steamId: row.steam_id ?? null,
-    steamProfileSyncedAt: row.steam_profile_synced_at ?? null,
-    updatedAt: row.updated_at ?? null
-  };
+  return profile.role ?? null;
 }
 
 function profileFromBackend(
@@ -411,25 +318,9 @@ export async function getCurrentUserProfile(): Promise<CurrentUserProfile | null
       }
     } catch (error) {
       if (!(error instanceof ApiRequestError && (error.status === 401 || error.status === 403 || error.status === 404))) {
-        console.warn("Backend current profile API unavailable; falling back to Supabase profile row.", error);
+        console.warn("Backend current profile API unavailable; using limited session metadata.", error);
       }
     }
-  }
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select(PROFILE_SELECT_COLUMNS)
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  const profile = profileFromRow(data as ProfileRow | null, user.email ?? null);
-
-  if (profile) {
-    return profile;
   }
 
   const metadata = user.user_metadata ?? {};
@@ -480,72 +371,6 @@ async function updateProfileViaBackend(
   return updatedProfile;
 }
 
-async function updateProfileViaSupabase(
-  input: ProfileUpdateInput,
-  authUserId: string,
-  email: string | null
-) {
-  const supabase = requireSupabaseClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .update(editableProfilePayload(input))
-    .eq("auth_user_id", authUserId)
-    .select(PROFILE_SELECT_COLUMNS)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data) {
-    throw new Error("Profile row was not found. Backend profile creation/update endpoint is required.");
-  }
-
-  const updatedProfile = profileFromRow(data as unknown as ProfileRow | null, email);
-
-  if (!updatedProfile) {
-    throw new Error("Profile update returned no profile data.");
-  }
-
-  return updatedProfile;
-}
-
-function profileSaveErrorMessage(backendError: unknown, supabaseError: unknown) {
-  const backendMessage = backendError instanceof Error ? backendError.message : null;
-  const supabaseMessage = supabaseError instanceof Error ? supabaseError.message : null;
-
-  if (isPolicyError(supabaseError)) {
-    return [
-      "Profile update could not be saved.",
-      "Supabase RLS blocked direct profile updates.",
-      "Backend PATCH /api/me/profile must accept the current session and update nickname, displayName, countryCode and bio.",
-      backendMessage ? `Backend response: ${backendMessage}` : null
-    ]
-      .filter(Boolean)
-      .join(" ");
-  }
-
-  return [
-    "Profile update could not be saved.",
-    backendMessage ? `Backend response: ${backendMessage}` : null,
-    supabaseMessage ? `Supabase response: ${supabaseMessage}` : null
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function backendFallbackMessage(error: unknown) {
-  if (error instanceof ApiRequestError && (error.status === 401 || error.status === 403)) {
-    return "Profile saved through Supabase fallback. Backend PATCH /api/me/profile rejected the bearer token.";
-  }
-
-  if (error instanceof ApiRequestError && error.status === 404) {
-    return "Profile saved through Supabase fallback. Backend PATCH /api/me/profile is not available.";
-  }
-
-  return "Profile saved through Supabase fallback.";
-}
-
 export async function updateCurrentUserProfile(input: ProfileUpdateInput): Promise<ProfileSaveResult> {
   const supabase = requireSupabaseClient();
   const [{ data: userData, error: userError }, { data: sessionData }] = await Promise.all([
@@ -567,28 +392,13 @@ export async function updateCurrentUserProfile(input: ProfileUpdateInput): Promi
     throw new Error("Login session expired. Please log in again.");
   }
 
-  let backendError: unknown = null;
-
-  try {
-    return {
-      profile: await updateProfileViaBackend(
-        input,
-        sessionData.session.access_token,
-        user.email ?? null
-      )
-    };
-  } catch (caught) {
-    backendError = caught;
-  }
-
-  try {
-    return {
-      message: backendFallbackMessage(backendError),
-      profile: await updateProfileViaSupabase(input, user.id, user.email ?? null)
-    };
-  } catch (supabaseError) {
-    throw new Error(profileSaveErrorMessage(backendError, supabaseError));
-  }
+  return {
+    profile: await updateProfileViaBackend(
+      input,
+      sessionData.session.access_token,
+      user.email ?? null
+    )
+  };
 }
 
 export async function uploadCurrentUserAvatar(file: File): Promise<AvatarUploadResult> {
@@ -750,7 +560,13 @@ export async function loginWithEmailPassword(input: LoginInput): Promise<AuthRes
     };
   }
 
-  const role = await getCurrentProfileRole(authUserId);
+  let role: ProfileRole | null = null;
+
+  try {
+    role = await getCurrentProfileRole(data.session.access_token);
+  } catch (error) {
+    console.warn("Backend profile role lookup failed; using the player dashboard fallback.", error);
+  }
 
   setLoginPersistenceMode(input.remember ? "persistent" : "session");
 
@@ -800,14 +616,6 @@ export async function registerWithEmailPassword(input: RegisterInput): Promise<A
     };
   }
 
-  const profilePayload = {
-    auth_user_id: data.user.id,
-    bio: normalizeOptionalText(input.bio),
-    country_code: normalizeCountryCode(input.countryCode),
-    display_name: displayName,
-    nickname
-  };
-
   let profileCreated = false;
   let profileSetupError: unknown = null;
 
@@ -820,20 +628,6 @@ export async function registerWithEmailPassword(input: RegisterInput): Promise<A
     profileCreated = true;
   } catch (caught) {
     profileSetupError = caught;
-
-    try {
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .upsert(profilePayload, { onConflict: "auth_user_id" });
-
-      if (profileError) {
-        throw profileError;
-      }
-
-      profileCreated = true;
-    } catch (fallbackError) {
-      profileSetupError = fallbackError;
-    }
   }
 
   await supabase.auth.signOut();

@@ -175,7 +175,7 @@ Trust-boundary pravila:
 
 Backend mora uporabljati najmanj privilegirano strežniško DB identiteto. Tudi kadar trenutna JDBC identiteta tehnično obide RLS, mora Spring pred repository klicem uveljaviti isto ali strožjo application pogodbo.
 
-Trenutne migracije RLS vključijo na aplikacijskih tabelah in več javnih analytics viewov uporablja security-invoker. Ta defense-in-depth osnova ostane. Široki granti, preširoke politike in funkcijski ACL-i iz poglavja 15 pa pomenijo, da trenutna RLS površina še ne izpolnjuje te pogodbe.
+Migracije RLS vključijo na aplikacijskih tabelah in več javnih analytics viewov uporablja security-invoker. V35 je browser Data API vlogam odvzel business DML; preširoke object/state politike in funkcijski ACL-i iz poglavja 15 ostajajo defense-in-depth dolg nalog 05 in 06.
 
 ## 8. Neposredna uporaba Supabase
 
@@ -210,11 +210,25 @@ Browser ne sme dobiti service-role ključa. Oznaka public bucket sama po sebi ne
 - splošen Storage SDK write, četudi trenutni path RLS tak zapis dopušča;
 - zapis avatar_url, logo_url, banner_url ali njihovega patha mimo backend confirma.
 
-Trenutni neposredni frontend profile SELECT fallbacki, profile UPDATE/UPSERT fallbacki in neposreden homepage profile read so **MIGRATION REQUIRED**. Write poti rešuje naloga 04; public/private read in DTO površino naloga 06.
+Frontend profile read, create in update po nalogi 04 uporabljajo `GET`, `POST` oziroma `PATCH /api/me/profile`; aktivnega `.from(...)` business Data API klica v frontendu ni več. DB SELECT/privacy površina, public DTO-ji in read granti ostajajo predmet naloge 06.
 
 Trenutna kombinacija legacy multipart uploadov, neposrednih Storage RLS write zmožnosti in nepopolnega signed confirma je **MIGRATION REQUIRED — naloga 41**. Signed upload je canonical smer; legacy tok ni dovoljena arhitekturna izjema.
 
 Server-side Spring uporaba Supabase DB, Auth admin ali Storage service credentials ni neposredna client uporaba. Mora ostati na trusted meji, biti najmanj privilegirana in vezana na backend authorization.
+
+### 8.4 Implementirano DB privilege dno po nalogi 04
+
+V35 uveljavi naslednjo minimalno mejo:
+
+- `PUBLIC`, `anon` in `authenticated` nimajo `INSERT`, `UPDATE` ali `DELETE` nad 23 aplikacijskimi business tabelami iz migracije;
+- odstranjeni so tudi prejšnji column-level profile `INSERT`/`UPDATE` in notification read-marker `UPDATE` granti;
+- browser vlogam niso dovoljene public-schema sequence pravice, prihodnje tabele in sequence migracijskega ownerja pa so za browser write opt-in;
+- obstoječi SELECT granti namenoma niso spremenjeni; njihovo minimal disclosure in public/private pravilnost rešuje naloga 06;
+- RLS ostaja vključeno in politike niso odstranjene, čeprav browser brez osnovnega DML granta ne more doseči njihove write veje;
+- Spring JDBC uporablja strežniški `SUPABASE_DB_USER` (lokalni default `postgres`, hosted konfiguracija pooler oblike `postgres.<projectRef>`), ne Data API vloge `anon` ali `authenticated`; credential ne sme prečkati backend meje;
+- `service_role` pravice in Auth/Storage objekti niso odvzeti. Service-role ključ ostaja samo backend Storage credential.
+
+Edini namenoma ohranjeni neposredni Supabase mehanizmi so allowlist iz poglavij 8.1 in 8.2. Storage object write politike ter `private` function ACL hardening niso izjema od business-table pravila, temveč ločena scope-a nalog 41 oziroma 06.
 
 ## 9. Role in capability matrika
 
@@ -432,11 +446,11 @@ Spodnje vrzeli so potrjena neskladja trenutne implementacije s canonical modelom
 
 | ID | Trenutna vrzel | Posledica | Rešuje |
 |---|---|---|---|
-| G-01 | Repo Supabase konfiguracija izpostavlja public schema Data API-ju, authenticated pa ima široke DML grante nad poslovnimi tabelami | V okolju s to Data API konfiguracijo lahko browser obide Spring validation, state machine in transakcijske invariante | **04 / #143** |
-| G-02 | Frontend ima neposredne profiles SELECT fallbacke ter UPDATE/UPSERT fallback; homepage bere profile mimo Springa | Direct table pot ni na allowlisti, write pa obide business API | **04 / #143** za write; **06 / #145** za read/privacy |
+| G-01 | **RAZREŠENO:** V35 odvzame table- in column-level business DML vlogam PUBLIC, anon in authenticated; effective-grant test pokriva vseh 23 tabel | Browser z javnim ključem in lastnim JWT-jem nima osnovnega DB granta za business INSERT/UPDATE/DELETE | **RAZREŠENO — 04 / #143** |
+| G-02 | **RAZREŠENO za frontend:** profile GET/POST/PATCH gre skozi Spring, neposredni SELECT/UPDATE/UPSERT in homepage read so odstranjeni | Frontend nima aktivnega business Data API table klica; preostalo DB read/privacy površino pokriva G-07 | **RAZREŠENO — 04 / #143**; DB privacy ostaja **06 / #145** |
 | G-03 | Globalni organizer RLS helper se obnaša kot organizer-or-admin in lahko odpre tuje profile, external accounts, notifications, heroes, imports ter vse turnirje | Self-selected ORGANIZER dobi cross-user/cross-tournament DB scope | **05 / #144** |
 | G-04 | Nekateri organizer backend route-i zahtevajo le authentication, manage lookup pa ne zahteva tudi globalnega ORGANIZER; staff relation lahko zato sama zadostuje. ADMIN ne deduje ROLE_PLAYER, zato so canonical admin override-i na PLAYER-only matcherjih trenutno nekonsistentni | Authorization ne uveljavi enotno zamrznjene kombinacije global role + capability in eksplicitnega admin scope-a | **05 / #144** in **10 / #149** |
-| G-05 | Captain RLS helper ne zahteva hkrati globalnega PLAYER in aktivnega membershipa; write-i so team-row scoped, ne pa column/state/workflow scoped; registration insert lahko obide pending/review pravila | Captain lahko prek Data API obide zamrznjeni role + capability pogoj ter transfer, roster, capacity, disband ali registration workflow | **04 / #143** in **05 / #144** |
+| G-05 | Captain RLS helper ne zahteva hkrati globalnega PLAYER in aktivnega membershipa; write politike so team-row scoped, ne pa column/state/workflow scoped | V35 je zaprl browser DML bypass; politika/capability dolg ostaja defense-in-depth in ga naloga 05 ne sme obravnavati kot canonical business workflow | **05 / #144** |
 | G-06 | Frontend tipi/fallback še poznajo legacy globalni captain in lahko za prikaz izpeljejo role iz user metadata | Terminološki drift; client metadata bi lahko bila pomotoma obravnavana kot authority | **05 / #144** |
 | G-07 | Public RLS vrača whole-row profile/team/tournament/registration podatke; ProfileResponse vključuje gaming ID-je, role in sync čase; manual-player note je public-shaped; neaktivna članstva ostanejo vidna | Kršitev minimal disclosure in field classification | **06 / #145** |
 | G-08 | DB public tournament/read helperji in public analytics viewi uporabljajo predvsem is_public, ne canonical lifecycle; backend public analytics prav tako ne preveri vedno statusa | Draft ali drug nedovoljen lifecycle lahko uhaja prek Data API/analytics poti | **06 / #145** in **07 / #146** |
@@ -446,7 +460,7 @@ Spodnje vrzeli so potrjena neskladja trenutne implementacije s canonical modelom
 | G-12 | Steam cookie ima production-nevarne defaulte/fallback secret, ni server-side revocation; frontend logout ne pokliče tudi Steam logouta; CSRF je izklopljen | Seja lahko ostane veljavna, cookie mutacije in production konfiguracija niso fail-closed | **08 / #147** |
 | G-13 | Proxy IP headerjem se zaupa brez trusted-proxy meje, limiter pa je in-memory/per-instance | Spoofing ali več instanc lahko obide abuse omejitve | **08 / #147** |
 | G-14 | Legacy multipart in public bucket tokovi sobivajo s signed tokom; Storage RLS dovoljuje direct path write; confirm ne preveri dejanskega objekta/MIME/magic bytes; ni celovitega cleanup-a | Lažen DB link, spoofan ali orphan objekt ter bypass backend-issued intenta | **41 / #180 — MIGRATION REQUIRED** |
-| G-15 | post_flyway_hardening.sql utrdi samo flyway_schema_history in se izvaja ročno | Ne zapre aplikacijskih grantov, RLS ali function ACL vrzeli | **04 / #143**, **05 / #144**, **06 / #145** |
+| G-15 | post_flyway_hardening.sql še vedno utrdi samo flyway_schema_history in se izvaja ročno; application DML grante zdaj verzionirano zapre V35 | RLS object-scope in function ACL vrzeli namenoma ostajajo ločeni | **05 / #144**, **06 / #145** |
 
 ## 16. Follow-up roadmap tasks
 
