@@ -71,6 +71,8 @@ Krovni seznam API dokumentacije je v `docs/api/README.md`.
 
 Canonical model vlog, privacy pravil in trust boundaryja je v [`docs/security-and-role-model.md`](docs/security-and-role-model.md).
 
+Canonical DotaOps 1.0 release baseline, branch strategy in deployment traceability pravila so v [`docs/release-baseline.md`](docs/release-baseline.md).
+
 ## E2E Smoke Testi
 
 Frontend ima minimalne Cypress smoke teste za public strani, protected route gate in demo player/organizer prijavo.
