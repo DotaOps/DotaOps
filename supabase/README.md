@@ -7,8 +7,8 @@ This folder contains Supabase project configuration for DotaOps.
 - `config.toml`: Supabase local/project configuration.
 - `post_flyway_hardening.sql`: manual post-Flyway hardening for Flyway's own metadata table.
 - Database migrations are owned by the Spring Boot backend in `../backend/src/main/resources/db/migration`.
-- Demo seed data is available as a manual local/dev/demo fixture under `../backend/src/main/resources/db/demo`.
-  Use `../scripts/seed-demo.ps1 -ConfirmDemoSeed`; do not run it on production without explicit approval.
+- Realistic mock seed data is available as a manual local/dev/demo fixture under `../backend/src/main/resources/db/demo`.
+  Use `../scripts/seed-demo.ps1 -ConfirmDemoSeed`; for accumulated generated test rows, use `../scripts/seed-demo.ps1 -ConfirmDemoSeed -CleanGeneratedTestData`. Do not run either on production without explicit approval.
 
 The schema covers:
 
@@ -71,9 +71,9 @@ Do not commit real keys. Keep them in `.env` or deployment secrets.
 Backend/Spring Boot uses:
 
 ```bash
-SUPABASE_PROJECT_REF=hjszjebirxhdtrbhefbv
+SUPABASE_PROJECT_REF=<project-ref>
 SUPABASE_DB_URL=jdbc:postgresql://aws-0-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require
-SUPABASE_DB_USER=postgres.hjszjebirxhdtrbhefbv
+SUPABASE_DB_USER=postgres.<project-ref>
 SUPABASE_DB_PASSWORD=
 SPRING_FLYWAY_ENABLED=true
 OPENDOTA_API_BASE_URL=https://api.opendota.com/api

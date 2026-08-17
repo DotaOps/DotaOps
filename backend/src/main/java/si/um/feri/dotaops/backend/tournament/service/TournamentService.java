@@ -91,6 +91,7 @@ public class TournamentService {
     @Transactional(readOnly = true)
     public PageResponse<TournamentResponse> listOrganizerTournaments(String search, int page, int size) {
         AuthenticatedActor actor = currentUserProvider.requireActor();
+        ensureOrganizerOrAdmin(actor);
         UUID profileId = actor.requireProfileId();
         int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), 100);
@@ -286,11 +287,24 @@ public class TournamentService {
 
     private void ensureCanManage(AuthenticatedActor actor, UUID tournamentId) {
         UUID profileId = actor.requireProfileId();
-        if (tournamentRepository.canManage(tournamentId, profileId, actor.isAdmin())) {
+        if (actor.isAdmin()) {
+            return;
+        }
+
+        if (actor.role() == ProfileRole.ORGANIZER
+                && tournamentRepository.canManage(tournamentId, profileId, false)) {
             return;
         }
 
         throw new AccessDeniedException("Only the tournament owner, tournament organizers, or admins can manage this tournament.");
+    }
+
+    private void ensureOrganizerOrAdmin(AuthenticatedActor actor) {
+        if (actor.role() == ProfileRole.ORGANIZER || actor.isAdmin()) {
+            return;
+        }
+
+        throw new AccessDeniedException("Only organizers or admins can access organizer tournaments.");
     }
 
     private void ensureNotArchived(Tournament tournament) {

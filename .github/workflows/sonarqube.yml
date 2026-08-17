@@ -1,0 +1,88 @@
+name: sonarqube
+
+on:
+  pull_request:
+    branches: [ main, development ]
+    types: [ opened, synchronize, reopened ]
+  push:
+    branches: [ main, development ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  scan:
+    name: SonarQube analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+      SONAR_ROOT_CERT: ${{ secrets.SONAR_ROOT_CERT }}
+
+    steps:
+      - name: Check SonarQube configuration
+        id: sonar-config
+        shell: bash
+        run: |
+          if [[ -z "${SONAR_TOKEN}" || -z "${SONAR_HOST_URL}" ]]; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "SonarQube analysis skipped. Define the SONAR_TOKEN secret and SONAR_HOST_URL variable to enable it."
+          else
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Checkout
+        if: steps.sonar-config.outputs.configured == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        if: steps.sonar-config.outputs.configured == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Set up Node.js 20
+        if: steps.sonar-config.outputs.configured == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Cache SonarQube packages
+        if: steps.sonar-config.outputs.configured == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Make Maven Wrapper executable
+        if: steps.sonar-config.outputs.configured == 'true'
+        working-directory: backend
+        run: chmod +x mvnw
+
+      - name: Compile backend bytecode
+        if: steps.sonar-config.outputs.configured == 'true'
+        working-directory: backend
+        run: ./mvnw -B -DskipTests clean test-compile
+
+      - name: Install frontend dependencies
+        if: steps.sonar-config.outputs.configured == 'true'
+        working-directory: frontend
+        run: npm ci
+
+      - name: SonarQube scan
+        if: steps.sonar-config.outputs.configured == 'true'
+        uses: SonarSource/sonarqube-scan-action@v7
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+          SONAR_ROOT_CERT: ${{ env.SONAR_ROOT_CERT }}

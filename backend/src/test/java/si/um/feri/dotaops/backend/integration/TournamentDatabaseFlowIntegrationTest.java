@@ -37,7 +37,7 @@ class TournamentDatabaseFlowIntegrationTest extends PostgresIntegrationTestSuppo
     private DatabaseActorContext databaseActorContext;
 
     @Test
-    void captainOrganizerAndResultFlowRespectsDatabasePolicies() {
+    void backendWriterPersistsRepresentativeTournamentFlowWhileDirectClientWritesAreDenied() {
         UUID captainAuthUserId = UUID.randomUUID();
         UUID organizerAuthUserId = UUID.randomUUID();
         UUID playerAuthUserId = UUID.randomUUID();
@@ -46,31 +46,23 @@ class TournamentDatabaseFlowIntegrationTest extends PostgresIntegrationTestSuppo
         UUID playerProfileId = upsertProfile(playerAuthUserId, "player");
         String suffix = uniqueSuffix();
 
-        UUID teamId = asAuthenticated(captainAuthUserId, () -> insertTeam(
+        UUID teamId = insertTeam(
                 "Captain Team " + suffix,
                 "captain-team-" + suffix,
                 captainProfileId,
-                captainAuthUserId));
-        UUID opponentTeamId = asAuthenticated(playerAuthUserId, () -> insertTeam(
+                captainAuthUserId);
+        UUID opponentTeamId = insertTeam(
                 "Opponent Team " + suffix,
                 "opponent-team-" + suffix,
                 playerProfileId,
-                playerAuthUserId));
-        assertThatThrownBy(() -> asAuthenticated(organizerAuthUserId, () -> insertTeam(
-                "Organizer Team " + suffix,
-                "organizer-team-" + suffix,
-                organizerProfileId,
-                organizerAuthUserId))).isInstanceOf(DataAccessException.class);
-        assertThat(asAuthenticated(organizerAuthUserId, () -> jdbcTemplate.update(
-                "update public.teams set region = 'NA' where id = ?",
-                teamId))).isZero();
-        UUID tournamentId = asAuthenticated(organizerAuthUserId, () -> insertTournament(
+                playerAuthUserId);
+        UUID tournamentId = insertTournament(
                 "integration-cup-" + suffix,
                 "Integration Cup " + suffix,
                 organizerProfileId,
-                organizerAuthUserId));
+                organizerAuthUserId);
 
-        UUID registrationId = asAuthenticated(captainAuthUserId, () -> jdbcTemplate.queryForObject(
+        UUID registrationId = jdbcTemplate.queryForObject(
                 """
                 insert into public.tournament_registrations (
                     tournament_id,
@@ -85,9 +77,9 @@ class TournamentDatabaseFlowIntegrationTest extends PostgresIntegrationTestSuppo
                 tournamentId,
                 teamId,
                 captainProfileId,
-                "Ready for CI integration flow"));
+                "Ready for CI integration flow");
 
-        UUID matchId = asAuthenticated(organizerAuthUserId, () -> jdbcTemplate.queryForObject(
+        UUID matchId = jdbcTemplate.queryForObject(
                 """
                 insert into public.matches (
                     tournament_id,
@@ -108,9 +100,9 @@ class TournamentDatabaseFlowIntegrationTest extends PostgresIntegrationTestSuppo
                 tournamentId,
                 teamId,
                 opponentTeamId,
-                teamId));
+                teamId);
 
-        UUID matchGameId = asAuthenticated(organizerAuthUserId, () -> jdbcTemplate.queryForObject(
+        UUID matchGameId = jdbcTemplate.queryForObject(
                 """
                 insert into public.match_games (
                     match_id,
@@ -142,7 +134,7 @@ class TournamentDatabaseFlowIntegrationTest extends PostgresIntegrationTestSuppo
                 matchId,
                 teamId,
                 opponentTeamId,
-                teamId));
+                teamId);
 
         assertThat(teamId).isNotNull();
         assertThat(tournamentId).isNotNull();
@@ -154,11 +146,17 @@ class TournamentDatabaseFlowIntegrationTest extends PostgresIntegrationTestSuppo
                 String.class,
                 registrationId)).isEqualTo("pending");
 
-        assertThatThrownBy(() -> asAuthenticated(playerAuthUserId, () -> insertTournament(
-                "player-owned-cup-" + suffix,
-                "Player Owned Cup " + suffix,
-                null,
-                playerAuthUserId))).isInstanceOf(DataAccessException.class);
+        assertThatThrownBy(() -> asAuthenticated(captainAuthUserId, () -> {
+            jdbcTemplate.update(
+                    "update public.teams set region = 'NA' where id = ?",
+                    teamId);
+            return null;
+        })).isInstanceOf(DataAccessException.class);
+        assertThatThrownBy(() -> asAuthenticated(organizerAuthUserId, () -> insertTournament(
+                "direct-client-cup-" + suffix,
+                "Direct Client Cup " + suffix,
+                organizerProfileId,
+                organizerAuthUserId))).isInstanceOf(DataAccessException.class);
     }
 
     @Test
@@ -167,7 +165,7 @@ class TournamentDatabaseFlowIntegrationTest extends PostgresIntegrationTestSuppo
         UUID organizerProfileId = upsertProfile(organizerAuthUserId, "organizer");
         String suffix = uniqueSuffix();
 
-        UUID tournamentId = asAuthenticated(organizerAuthUserId, () -> {
+        UUID tournamentId = asBackend(() -> {
             databaseActorContext.apply(new AuthenticatedActor(
                     organizerAuthUserId,
                     organizerProfileId,

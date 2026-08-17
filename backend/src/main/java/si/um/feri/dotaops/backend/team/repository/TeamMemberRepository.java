@@ -27,6 +27,7 @@ public class TeamMemberRepository {
                 selectTeamMemberSql() + """
                 where tm.team_id = ?
                   and tm.is_active = true
+                  and tm.left_at is null
                 order by tm.joined_at asc, tm.id asc
                 """,
                 this::mapTeamMember,
@@ -51,6 +52,7 @@ public class TeamMemberRepository {
                         where tm.team_id = ?
                           and tm.profile_id = ?
                           and tm.is_active = true
+                          and tm.left_at is null
                         limit 1
                         """,
                         this::mapTeamMember,
@@ -69,6 +71,7 @@ public class TeamMemberRepository {
                   where team_id = ?
                     and profile_id = ?
                     and is_active = true
+                    and left_at is null
                 )
                 """,
                 Boolean.class,
@@ -85,6 +88,7 @@ public class TeamMemberRepository {
                 from public.team_members
                 where team_id = ?
                   and is_active = true
+                  and left_at is null
                 """,
                 Integer.class,
                 teamId);
@@ -142,6 +146,7 @@ public class TeamMemberRepository {
                         where id = ?
                           and team_id = ?
                           and is_active = true
+                          and left_at is null
                         returning
                           id,
                           team_id,

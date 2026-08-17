@@ -2,6 +2,7 @@ package si.um.feri.dotaops.backend.auth.service;
 
 import java.time.Instant;
 import java.util.Date;
+import java.util.Map;
 import java.util.UUID;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,6 +28,28 @@ public final class SupabaseJwtTestSupport {
 
     public static String token(UUID subject, Instant now) throws Exception {
         return token(subject, now, ISSUER, AUDIENCE, SECRET);
+    }
+
+    public static String tokenWithMetadata(
+            UUID subject,
+            Instant now,
+            String metadataClaim,
+            String desiredRole
+    ) throws Exception {
+        JWTClaimsSet claims = new JWTClaimsSet.Builder()
+                .issuer(ISSUER)
+                .audience(AUDIENCE)
+                .subject(subject.toString())
+                .claim("email", "player@example.com")
+                .claim("role", "authenticated")
+                .claim(metadataClaim, Map.of("desired_role", desiredRole))
+                .issueTime(Date.from(now.minusSeconds(30)))
+                .expirationTime(Date.from(now.plusSeconds(300)))
+                .build();
+
+        SignedJWT jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claims);
+        jwt.sign(new MACSigner(SECRET));
+        return jwt.serialize();
     }
 
     public static String token(

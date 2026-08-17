@@ -280,7 +280,7 @@ class MatchManagementServiceTest {
     @Test
     void nonOrganizerCannotSubmitResult() {
         when(currentUserProvider.requireActor()).thenReturn(actor(PLAYER_PROFILE_ID, ProfileRole.PLAYER));
-        when(tournamentRepository.canManage(TOURNAMENT_ID, PLAYER_PROFILE_ID, false)).thenReturn(false);
+        when(tournamentRepository.canManage(TOURNAMENT_ID, PLAYER_PROFILE_ID, false)).thenReturn(true);
         when(matchRepository.findById(MATCH_ID)).thenReturn(Optional.of(match(MatchStatus.LIVE, 1, 0, 0, null)));
 
         assertThatThrownBy(() -> service.submitResult(MATCH_ID, new SubmitMatchResultRequest(1, 0, TEAM_A_ID)))

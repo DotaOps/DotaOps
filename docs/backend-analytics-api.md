@@ -1,5 +1,7 @@
 # Backend Analytics API
 
+> Ta dokument je inventar trenutne backend implementacije in DTO-jev, ne normativni semantic source of truth. Canonical analytics source, scope, lifecycle in data-quality pogodba je v [analytics-source-and-scope.md](analytics-source-and-scope.md); ob konfliktu velja canonical pogodba.
+
 Ta dokument opisuje backend pogodbo za FE-15 analytics. Vsi endpointi vracajo samo
 realne podatke iz baze. Ce podatkov ni, backend vrne `null`, `0` ali prazne sezname.
 
@@ -51,6 +53,96 @@ Response:
 - `metrics`: agregati za trenutnega igralca
 - `heroPerformance`: hero agregati za trenutnega igralca
 - `matchHistory`: trenutno stabilen empty-state seznam
+
+`GET /api/me/analytics/progress` vraca surove match-level vrednosti za trenutnega
+igralca. Te vrednosti se ne utezujejo in ostanejo enake podatkom iz normaliziranega
+`match_players` vira.
+
+`GET /api/me/analytics/insights` vraca determinicne interpretacije za trenutnega
+igralca. Trend insighti lahko uporabijo context-aware utezi za zelo slabe ali stomp
+igre, vendar samo pri interpretaciji dolgorocnih povprecij. Surovi progress in match
+history podatki se ne spremenijo.
+
+`GET /api/me/analytics/heroes/{heroId}/mastery` vraca podrobno hero mastery porocilo
+za trenutnega prijavljenega igralca in izbranega heroja.
+
+Dostop: samo `ROLE_PLAYER`.
+
+Path `heroId` je avtoritativen. Ce query `heroId` ali `hero_id` nasprotuje path
+vrednosti, backend vrne `400 BAD_REQUEST`. Ostali skupni filtri (`tournamentId`,
+`teamId`, `from`, `to`, `limit`) ostanejo podprti. `profileId` je lahko prazen ali
+enak trenutnemu profilu.
+
+Response overview:
+
+- `profileId`, `heroId`, `heroName`
+- raw hero metrike: `games`, `wins`, `losses`, `winRate`, `avgKills`, `avgDeaths`,
+  `avgAssists`, `kda`, `avgGoldPerMin`, `avgXpPerMin`, `avgLastHits`, `avgDenies`,
+  `avgNetWorth`, `avgHeroDamage`, `avgTowerDamage`, `avgHeroHealing`, `avgLevel`
+- `recentMatches`: zadnje hero tekme z raw match-level vrednostmi in dodatnim
+  context opisom
+- `recentTrend`: deterministicna primerjava zadnjega hero okna proti prejsnjemu
+  hero oknu
+- `comparisonToPlayerOverallBaseline`: strukturirana primerjava hero metrik proti
+  igralcevemu overall baseline-u
+- `contextSummary`: povzetek context-weighting interpretacije
+- `masteryVerdict`: `STRONG`, `STABLE`, `NEEDS_WORK` ali `INSUFFICIENT_DATA`
+- `deterministicNotes`: kratke rule-based opombe brez AI/LLM generiranja
+
+Raw metrike v hero mastery response-u ostanejo neposredno iz normaliziranih
+`match_players`/`match_games`/`matches` podatkov. Context-aware weighting se uporablja
+samo za interpretacijo verdicta, context summary in opombe. Ne zamenja raw kill/death,
+economy, damage ali objective vrednosti.
+
+`comparisonToPlayerOverallBaseline` vsebuje po metrikah:
+
+- `metric`
+- `heroValue`
+- `overallValue`
+- `delta`
+- `direction`: `BETTER`, `WORSE` ali `SIMILAR`
+- `interpretation`
+
+Trenutne primerjane metrike so `winRate`, `KDA`, `GPM`, `XPM`, `deaths`,
+`heroDamage`, `towerDamage`, `healing`, `lastHits` in `denies`.
+
+`masteryVerdict` je determinicen:
+
+- `INSUFFICIENT_DATA`: manj kot minimalni sample (`3` hero tekme) ali ni overall
+  baseline-a.
+- `STRONG`: dovolj tekem, win rate in KDA nista pod baseline-om, vec pomembnih
+  metrik je nad baseline-om, malo metrik pa je pod baseline-om.
+- `NEEDS_WORK`: vec pomembnih metrik je pod baseline-om ali so smrti slabse skupaj
+  s slabso KDA/damage/objective metriko.
+- `STABLE`: dovolj tekem in rezultat je vecinoma blizu igralcevega overall baseline-a.
+
+`contextSummary` vrne `averageContextWeight`, `roughGameCount`, `stompLossCount`,
+`lowConfidenceCount`, `normalGameCount` in razlagalni `note`. Context weight ima enak
+pomen kot pri `/api/me/analytics/insights`: nizja utez pomeni, da se rough/stomp igra
+manj uposteva pri interpretaciji, surovi podatki pa ostanejo vidni in nespremenjeni.
+
+Context weight ima razpon `0.35` do `1.00`:
+
+- `1.00`: normalna igra ali premalo konteksta za varno korekcijo.
+- `0.35`: minimalna utez za ekstremno slab/stomp kontekst.
+- `classification`: `NORMAL`, `ROUGH_GAME`, `STOMP_LOSS` ali `LOW_CONFIDENCE`.
+- `reasons`: determinicni razlogi, npr. `HIGH_DEATHS`, `LOW_KDA`,
+  `LOW_OBJECTIVE_PRESSURE`, `TEAM_SCORE_DISADVANTAGE`, `SUPPORT_IMPACT_PROTECTED`,
+  `INSUFFICIENT_BASELINE`.
+
+Trenutna formula deluje on-the-fly iz obstojecih polj:
+
+- high deaths: lazja/srednja/mocna kazen pri 7/10/14+ deaths,
+- low KDA: kazen pod `1.50`, mocnejsa pod `1.00` in `0.60`,
+- low objective pressure: nizka tower damage vrednost skupaj z nizkim damage ali
+  assists kontekstom,
+- team score disadvantage: uporabi team side in radiant/dire score, kadar sta na voljo,
+- support protection: visoki assists ali healing zmanjsajo kazen, da support impact ni
+  prevec kaznovan.
+
+`PlayerInsightResponse` ima additivno polje `contextWeight`, kadar je insight nastal
+iz utezenega rough-game konteksta ali ko endpoint vrne locen `contextWeight` insight.
+Stari response fieldi ostanejo nespremenjeni.
 
 ### Current player team
 

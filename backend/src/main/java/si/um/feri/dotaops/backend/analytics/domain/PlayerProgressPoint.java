@@ -23,6 +23,13 @@ public record PlayerProgressPoint(
         Integer heroHealing,
         Integer lastHits,
         Integer denies,
-        Boolean won
+        Boolean won,
+        Integer netWorth,
+        Integer level,
+        Integer durationSeconds,
+        String teamSide,
+        Integer radiantScore,
+        Integer direScore,
+        String winnerSide
 ) {
 }

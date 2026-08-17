@@ -30,8 +30,12 @@ import si.um.feri.dotaops.backend.tournament.repository.UpdateTournamentCommand;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -114,6 +118,17 @@ class TournamentServiceTest {
     }
 
     @Test
+    void playerCannotListOrganizerTournaments() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(OTHER_PROFILE_ID, ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> tournamentService.listOrganizerTournaments(null, 0, 20))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only organizers or admins can access organizer tournaments.");
+
+        verify(tournamentRepository, never()).findManageable(any(), anyBoolean(), any(), anyInt(), anyLong());
+    }
+
+    @Test
     void ownerCanUpdateTournament() {
         AuthenticatedActor actor = actor(ORGANIZER_PROFILE_ID, ProfileRole.ORGANIZER);
         when(currentUserProvider.requireActor()).thenReturn(actor);
@@ -179,6 +194,38 @@ class TournamentServiceTest {
                 null)))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessage("Only the tournament owner, tournament organizers, or admins can manage this tournament.");
+    }
+
+    @Test
+    void playerWithTournamentCapabilityCannotUpdateTournament() {
+        AuthenticatedActor actor = actor(OTHER_PROFILE_ID, ProfileRole.PLAYER);
+        when(currentUserProvider.requireActor()).thenReturn(actor);
+        when(tournamentRepository.findById(TOURNAMENT_ID)).thenReturn(Optional.of(tournament(
+                TournamentStatus.DRAFT,
+                settings(),
+                STARTS_AT)));
+        when(tournamentRepository.canManage(TOURNAMENT_ID, OTHER_PROFILE_ID, false)).thenReturn(true);
+
+        assertThatThrownBy(() -> tournamentService.updateTournament(TOURNAMENT_ID, new UpdateTournamentRequest(
+                "Mid Wars Invitational",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the tournament owner, tournament organizers, or admins can manage this tournament.");
+
+        verify(tournamentRepository, never()).update(eq(TOURNAMENT_ID), any());
     }
 
     @Test

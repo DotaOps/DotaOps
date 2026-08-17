@@ -232,7 +232,7 @@ class TournamentBracketServiceTest {
     @Test
     void nonOrganizerCannotGenerateBracket() {
         when(currentUserProvider.requireActor()).thenReturn(actor(PLAYER_PROFILE_ID, ProfileRole.PLAYER));
-        when(tournamentRepository.canManage(TOURNAMENT_ID, PLAYER_PROFILE_ID, false)).thenReturn(false);
+        when(tournamentRepository.canManage(TOURNAMENT_ID, PLAYER_PROFILE_ID, false)).thenReturn(true);
 
         assertThatThrownBy(() -> service.generateBracket(TOURNAMENT_ID, new GenerateBracketRequest("Playoffs", false)))
                 .isInstanceOf(AccessDeniedException.class)

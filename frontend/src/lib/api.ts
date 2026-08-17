@@ -412,6 +412,8 @@ export async function fetchApi<T>(
   fallback: T,
   init?: RequestInit
 ): Promise<ApiResult<T>> {
+  // Legacy helper for development-only fallback callers. Production feature data should use
+  // the strict getApi/getPagedApi wrappers so missing backend data surfaces as an error.
   const apiUrl = resolveApiUrl();
 
   if (!apiUrl) {

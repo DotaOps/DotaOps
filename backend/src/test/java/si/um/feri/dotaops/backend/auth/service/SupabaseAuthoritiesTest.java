@@ -26,13 +26,12 @@ class SupabaseAuthoritiesTest {
     }
 
     @Test
-    void adminAlsoGetsOrganizerAuthority() {
+    void adminGetsOnlyAuthenticatedAndAdminAuthorities() {
         Set<String> authorities = authoritiesFor(ProfileRole.ADMIN);
 
         assertThat(authorities).containsExactlyInAnyOrder(
                 "ROLE_AUTHENTICATED",
-                "ROLE_ADMIN",
-                "ROLE_ORGANIZER");
+                "ROLE_ADMIN");
     }
 
     @Test

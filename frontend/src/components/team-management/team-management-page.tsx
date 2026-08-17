@@ -211,20 +211,20 @@ function DerivedTeamOwnerPreview({ team }: { team: TeamSummary }) {
         <button
           className="team-mgmt-later-action"
           disabled
-          title="Backend player profile page required"
+          title="Player profile page is not available yet"
           type="button"
         >
           Profile
-          <small>Later</small>
+          <small>Coming soon</small>
         </button>
         <button
           className="team-mgmt-later-action"
           disabled
-          title="Backend player stats page required"
+          title="Player stats page is not available yet"
           type="button"
         >
           Stats
-          <small>Later</small>
+          <small>Requires more match data</small>
         </button>
       </div>
     </article>
@@ -252,20 +252,20 @@ function DerivedTeamOwnerRosterCard({ team }: { team: TeamSummary }) {
         <button
           className="team-mgmt-later-action"
           disabled
-          title="Backend player profile page required"
+          title="Player profile page is not available yet"
           type="button"
         >
           Profile
-          <small>Later</small>
+          <small>Coming soon</small>
         </button>
         <button
           className="team-mgmt-later-action"
           disabled
-          title="Backend player stats page required"
+          title="Player stats page is not available yet"
           type="button"
         >
           Stats
-          <small>Later</small>
+          <small>Requires more match data</small>
         </button>
       </div>
     </article>
@@ -1566,7 +1566,7 @@ function RosterProfileModal({
             <section className="team-mgmt-profile-list">
               <span className="ops-label">Recent matches</span>
               {hasRecentMatches ? (
-                <p className="team-mgmt-muted">Recent match records are available from the backend payload.</p>
+                <p className="team-mgmt-muted">Recent match records are available for this player.</p>
               ) : (
                 <p className="team-mgmt-muted">No recent analyzed matches yet.</p>
               )}
@@ -1677,7 +1677,7 @@ function MetricCard({
 
 function PlannedAction({
   children,
-  label = "Backend required"
+  label = "Not available yet"
 }: {
   children: ReactNode;
   label?: string;
@@ -1834,7 +1834,7 @@ function CommandCenter({
             <UserPlus size={18} />
           </button>
         ) : null}
-        <p className="team-mgmt-command-note">Invitation and join request history actions require backend support.</p>
+        <p className="team-mgmt-command-note">Invitation and join request history actions are not available yet.</p>
       </aside>
     );
   }

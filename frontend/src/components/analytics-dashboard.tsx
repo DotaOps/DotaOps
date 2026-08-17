@@ -12,14 +12,30 @@ import {
   Trophy,
   UsersRound
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  usePathname,
+  useRouter,
+  useSearchParams
+} from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { AnalyticsEmptyBlock } from "@/components/analytics/analytics-empty-block";
+import { analyticsErrorMessage } from "@/components/analytics/analytics-errors";
+import {
+  countMetricValue,
+  safeMetricNumber
+} from "@/components/analytics/analytics-formatters";
+import {
+  HeroMatrix,
+  MatchHistoryList
+} from "@/components/analytics/analytics-tables";
+import { ComparisonCards } from "@/components/analytics/comparison/comparison-cards";
+import { PlayerComparisonPanel } from "@/components/analytics/comparison/player-comparison-panel";
+import { PersonalAnalyticsPanel } from "@/components/analytics/personal/personal-analytics-panel";
 import { SectionHeader } from "@/components/section-header";
 import { TelemetryCard } from "@/components/telemetry-card";
 import { useTournamentLiveRefresh } from "@/hooks/use-tournament-live-refresh";
-import { ApiRequestError } from "@/lib/api";
 import {
-  compareAnalyticsPlayers,
   compareAnalyticsTeams,
   getMyPlayerAnalytics,
   getMyTeamAnalytics,
@@ -32,7 +48,6 @@ import {
   getTeamPlayerLookups,
   refreshAnalyticsAdmin,
   type AnalyticsFilters,
-  type AnalyticsMatchHistory,
   type AnalyticsRefreshResult,
   type AnalyticsSnapshot,
   type CurrentTeamAnalyticsResponse,
@@ -41,11 +56,8 @@ import {
   type OrganizerAnalyticsResponse,
   type OrganizerTournamentLookup,
   type OrganizerTournamentAnalyticsResponse,
-  type PlayerComparisonResponse,
   type PlayerAnalyticsMetric,
   type PlayerAnalyticsResponse,
-  type PlayerHeroPerformance,
-  type PlayerProgressPoint,
   type RecentImportMetric,
   type TeamComparisonResponse,
   type TeamLookup,
@@ -96,10 +108,35 @@ const DEFAULT_PUBLIC_FILTERS: AnalyticsFilterForm = {
 };
 
 const ANALYTICS_LIMIT_OPTIONS = [10, 25, 50, 100];
+const ANALYTICS_TAB_QUERY_PARAM = "tab";
+const LEGACY_ANALYTICS_TAB_QUERY_PARAM = "analyticsTab";
+const ANALYTICS_FILTER_QUERY_PARAMS = [
+  "from",
+  "limit",
+  "profileId",
+  "teamId",
+  "to",
+  "tournamentId"
+] as const;
+const UUID_QUERY_PARAM_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const LOCAL_DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 type AnalyticsTab = {
   key: string;
   label: string;
+};
+
+type SearchParamReader = {
+  get: (name: string) => string | null;
+};
+
+type AnalyticsUrlState = {
+  filterDraft: AnalyticsFilterForm;
+  filters: AnalyticsFilters;
+  selectedHeroId: string | null;
+  tab: string | null;
 };
 
 function tabsForRole(state: RoleAnalyticsState | null): AnalyticsTab[] {
@@ -154,71 +191,6 @@ function integerOrNoData(value: number) {
   return value > 0 ? value.toLocaleString("en-US") : "No data";
 }
 
-function countMetricValue(value: number | null | undefined) {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value.toLocaleString("en-US")
-    : "No data";
-}
-
-function safeMetricNumber(value: number | null | undefined, digits = 1) {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value.toFixed(digits)
-    : "No data";
-}
-
-function formatAnalyticsDateTime(value: string | null) {
-  if (!value) {
-    return "Played time unavailable";
-  }
-
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? value
-    : parsed.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
-}
-
-function matchTeamName(name: string | null, fallback: string) {
-  return name?.trim() || fallback;
-}
-
-function matchTeamsLabel(match: AnalyticsMatchHistory) {
-  return `${matchTeamName(match.teamAName, "Team A unavailable")} vs ${matchTeamName(match.teamBName, "Team B unavailable")}`;
-}
-
-function matchWinnerLabel(match: AnalyticsMatchHistory) {
-  if (!match.winnerTeamId) {
-    return "Winner unavailable";
-  }
-
-  if (match.teamAId === match.winnerTeamId) {
-    return `${matchTeamName(match.teamAName, "Team A")} won`;
-  }
-
-  if (match.teamBId === match.winnerTeamId) {
-    return `${matchTeamName(match.teamBName, "Team B")} won`;
-  }
-
-  return `Winner: ${match.winnerTeamId}`;
-}
-
-function progressResultLabel(point: PlayerProgressPoint) {
-  if (point.won === true) {
-    return "Win";
-  }
-
-  if (point.won === false) {
-    return "Loss";
-  }
-
-  return "Result unavailable";
-}
-
-function playerHeroReferenceLabel(hero: PlayerHeroPerformance) {
-  return hero.recentDotaMatchId
-    ? `Dota ${hero.recentDotaMatchId}`
-    : hero.recentMatchId ?? "Recent match unavailable";
-}
-
 function average(values: number[]) {
   const usable = values.filter((value) => Number.isFinite(value) && value > 0);
 
@@ -271,20 +243,153 @@ function hasPublicFilters(form: AnalyticsFilterForm) {
   );
 }
 
-function analyticsErrorMessage(error: unknown) {
-  if (error instanceof ApiRequestError) {
-    if (error.status === 401) {
-      return "Login session expired. Please log in again to view analytics.";
-    }
+function hasHeroMasteryScopedFilters(form: AnalyticsFilterForm) {
+  return Boolean(
+    form.profileId.trim() ||
+    form.teamId.trim() ||
+    form.tournamentId.trim() ||
+    form.from.trim() ||
+    form.to.trim() ||
+    form.limit !== DEFAULT_PUBLIC_FILTERS.limit
+  );
+}
 
-    if (error.status === 403) {
-      return "You do not have permission to view this analytics workspace.";
-    }
+function normalizeUuidQueryParam(value: string | null | undefined) {
+  const cleanValue = value?.trim() ?? "";
+  return UUID_QUERY_PARAM_PATTERN.test(cleanValue) ? cleanValue : "";
+}
 
-    return error.message;
+function normalizeTabQueryParam(value: string | null | undefined) {
+  const cleanValue = value?.trim().toLowerCase() ?? "";
+  return /^[a-z][a-z-]*$/.test(cleanValue) ? cleanValue : null;
+}
+
+function normalizeLimitQueryParam(value: string | null | undefined) {
+  const cleanValue = value?.trim() ?? "";
+  const parsed = Number(cleanValue);
+
+  return ANALYTICS_LIMIT_OPTIONS.includes(parsed) ? parsed : DEFAULT_PUBLIC_FILTERS.limit;
+}
+
+function toLocalDateTimeInputValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+
+  return [
+    date.getFullYear(),
+    "-",
+    pad(date.getMonth() + 1),
+    "-",
+    pad(date.getDate()),
+    "T",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes())
+  ].join("");
+}
+
+function normalizeDateTimeQueryParam(value: string | null | undefined) {
+  const cleanValue = value?.trim() ?? "";
+
+  if (!cleanValue) {
+    return "";
   }
 
-  return error instanceof Error ? error.message : "Analytics unavailable.";
+  if (LOCAL_DATE_PATTERN.test(cleanValue)) {
+    return `${cleanValue}T00:00`;
+  }
+
+  if (LOCAL_DATE_TIME_PATTERN.test(cleanValue) && !Number.isNaN(new Date(cleanValue).getTime())) {
+    return cleanValue;
+  }
+
+  const parsed = new Date(cleanValue);
+  return Number.isNaN(parsed.getTime()) ? "" : toLocalDateTimeInputValue(parsed);
+}
+
+function analyticsUrlStateFromSearchParams(searchParams: SearchParamReader): AnalyticsUrlState {
+  const filterDraft: AnalyticsFilterForm = {
+    ...DEFAULT_PUBLIC_FILTERS,
+    from: normalizeDateTimeQueryParam(searchParams.get("from")),
+    limit: normalizeLimitQueryParam(searchParams.get("limit")),
+    profileId: normalizeUuidQueryParam(searchParams.get("profileId")),
+    teamId: normalizeUuidQueryParam(searchParams.get("teamId")),
+    to: normalizeDateTimeQueryParam(searchParams.get("to")),
+    tournamentId: normalizeUuidQueryParam(searchParams.get("tournamentId"))
+  };
+
+  return {
+    filterDraft,
+    filters: filtersFromForm(filterDraft),
+    selectedHeroId: normalizeUuidQueryParam(searchParams.get("heroId")) || null,
+    tab: normalizeTabQueryParam(searchParams.get(ANALYTICS_TAB_QUERY_PARAM)) ??
+      normalizeTabQueryParam(searchParams.get(LEGACY_ANALYTICS_TAB_QUERY_PARAM))
+  };
+}
+
+function sameFilterForm(first: AnalyticsFilterForm, second: AnalyticsFilterForm) {
+  return (
+    first.from === second.from &&
+    first.heroId === second.heroId &&
+    first.limit === second.limit &&
+    first.profileId === second.profileId &&
+    first.teamId === second.teamId &&
+    first.to === second.to &&
+    first.tournamentId === second.tournamentId
+  );
+}
+
+function sameAnalyticsFilters(first: AnalyticsFilters, second: AnalyticsFilters) {
+  return (
+    (first.from ?? "") === (second.from ?? "") &&
+    (first.heroId ?? "") === (second.heroId ?? "") &&
+    (first.limit ?? DEFAULT_PUBLIC_FILTERS.limit) === (second.limit ?? DEFAULT_PUBLIC_FILTERS.limit) &&
+    (first.profileId ?? "") === (second.profileId ?? "") &&
+    (first.teamId ?? "") === (second.teamId ?? "") &&
+    (first.to ?? "") === (second.to ?? "") &&
+    (first.tournamentId ?? "") === (second.tournamentId ?? "")
+  );
+}
+
+function setUuidFilterQueryParam(params: URLSearchParams, key: "profileId" | "teamId" | "tournamentId", value: string) {
+  const cleanValue = normalizeUuidQueryParam(value);
+
+  if (cleanValue) {
+    params.set(key, cleanValue);
+  }
+}
+
+function setDateFilterQueryParam(params: URLSearchParams, key: "from" | "to", value: string) {
+  const cleanValue = normalizeDateTimeQueryParam(value);
+
+  if (cleanValue) {
+    params.set(key, cleanValue);
+  }
+}
+
+function setAnalyticsFilterQueryParams(params: URLSearchParams, form: AnalyticsFilterForm) {
+  for (const key of ANALYTICS_FILTER_QUERY_PARAMS) {
+    params.delete(key);
+  }
+
+  setUuidFilterQueryParam(params, "profileId", form.profileId);
+  setUuidFilterQueryParam(params, "teamId", form.teamId);
+  setUuidFilterQueryParam(params, "tournamentId", form.tournamentId);
+  setDateFilterQueryParam(params, "from", form.from);
+  setDateFilterQueryParam(params, "to", form.to);
+
+  if (ANALYTICS_LIMIT_OPTIONS.includes(form.limit) && form.limit !== DEFAULT_PUBLIC_FILTERS.limit) {
+    params.set("limit", String(form.limit));
+  }
+}
+
+function setAnalyticsTabQueryParam(params: URLSearchParams, tab: string) {
+  const cleanTab = normalizeTabQueryParam(tab);
+
+  if (cleanTab) {
+    params.set(ANALYTICS_TAB_QUERY_PARAM, cleanTab);
+  } else {
+    params.delete(ANALYTICS_TAB_QUERY_PARAM);
+  }
 }
 
 function roleModeLabel(state: RoleAnalyticsState | null) {
@@ -352,12 +457,18 @@ async function loadRoleAnalytics(profile: CurrentUserProfile | null, filters?: A
 }
 
 export function AnalyticsDashboard() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialUrlState = analyticsUrlStateFromSearchParams(searchParams);
+  const searchParamsKey = searchParams.toString();
+  const lastInternalSearchParamsRef = useRef<string | null>(null);
   const [appliedPublicFilters, setAppliedPublicFilters] = useState<AnalyticsFilters>(
-    filtersFromForm(DEFAULT_PUBLIC_FILTERS)
+    initialUrlState.filters
   );
   const [canRefreshAnalytics, setCanRefreshAnalytics] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filterDraft, setFilterDraft] = useState<AnalyticsFilterForm>(DEFAULT_PUBLIC_FILTERS);
+  const [filterDraft, setFilterDraft] = useState<AnalyticsFilterForm>(initialUrlState.filterDraft);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSlowLoading, setIsSlowLoading] = useState(false);
@@ -365,10 +476,26 @@ export function AnalyticsDashboard() {
   const [publicAggregateError, setPublicAggregateError] = useState<string | null>(null);
   const [refreshResult, setRefreshResult] = useState<AnalyticsRefreshResult | null>(null);
   const [roleAnalytics, setRoleAnalytics] = useState<RoleAnalyticsState | null>(null);
-  const [selectedTab, setSelectedTab] = useState("overview");
+  const [selectedTab, setSelectedTab] = useState(
+    initialUrlState.tab ?? (initialUrlState.selectedHeroId ? "personal" : "overview")
+  );
   const [snapshot, setSnapshot] = useState<AnalyticsSnapshot>(emptySnapshot);
   const [tournamentDrilldown, setTournamentDrilldown] =
     useState<OrganizerTournamentAnalyticsResponse | null>(null);
+  const currentUrlState = useMemo(
+    () => analyticsUrlStateFromSearchParams(new URLSearchParams(searchParamsKey)),
+    [searchParamsKey]
+  );
+  const replaceAnalyticsUrl = useCallback((nextParams: URLSearchParams) => {
+    const nextQuery = nextParams.toString();
+
+    if (nextQuery === searchParamsKey) {
+      return;
+    }
+
+    lastInternalSearchParamsRef.current = nextQuery;
+    router.replace(`${pathname}${nextQuery ? `?${nextQuery}` : ""}`, { scroll: false });
+  }, [pathname, router, searchParamsKey]);
 
   const loadAnalytics = useCallback(async () => {
     const currentProfile = await getCurrentUserProfile();
@@ -379,8 +506,8 @@ export function AnalyticsDashboard() {
 
     try {
       nextSnapshot = await getPublicAnalyticsSnapshot(appliedPublicFilters);
-    } catch (caught) {
-      nextPublicAggregateError = analyticsErrorMessage(caught);
+    } catch (error) {
+      nextPublicAggregateError = analyticsErrorMessage(error);
     }
 
     setCanRefreshAnalytics(currentProfile?.role === "admin");
@@ -405,9 +532,9 @@ export function AnalyticsDashboard() {
 
       try {
         await loadAnalytics();
-      } catch (caught) {
+      } catch (error) {
         if (isMounted) {
-          setError(analyticsErrorMessage(caught));
+          setError(analyticsErrorMessage(error));
           setRoleAnalytics(null);
           setSnapshot(emptySnapshot());
         }
@@ -427,6 +554,26 @@ export function AnalyticsDashboard() {
     };
   }, [loadAnalytics]);
 
+  useEffect(() => {
+    if (lastInternalSearchParamsRef.current === searchParamsKey) {
+      lastInternalSearchParamsRef.current = null;
+      return;
+    }
+
+    const nextUrlState = analyticsUrlStateFromSearchParams(new URLSearchParams(searchParamsKey));
+
+    setFilterDraft((current) => (
+      sameFilterForm(current, nextUrlState.filterDraft) ? current : nextUrlState.filterDraft
+    ));
+    setAppliedPublicFilters((current) => (
+      sameAnalyticsFilters(current, nextUrlState.filters) ? current : nextUrlState.filters
+    ));
+    setSelectedTab((current) => {
+      const nextTab = nextUrlState.tab ?? (nextUrlState.selectedHeroId ? "personal" : "overview");
+      return current === nextTab ? current : nextTab;
+    });
+  }, [searchParamsKey]);
+
   const liveSync = useTournamentLiveRefresh({
     enabled: !isLoading,
     hiddenIntervalMs: 60_000,
@@ -444,8 +591,8 @@ export function AnalyticsDashboard() {
       const result = await refreshAnalyticsAdmin();
       setRefreshResult(result);
       await loadAnalytics();
-    } catch (caught) {
-      setError(analyticsErrorMessage(caught));
+    } catch (error) {
+      setError(analyticsErrorMessage(error));
     } finally {
       setIsRefreshing(false);
     }
@@ -453,11 +600,17 @@ export function AnalyticsDashboard() {
 
   function applyPublicFilters(nextFilters: AnalyticsFilterForm) {
     setAppliedPublicFilters(filtersFromForm(nextFilters));
+    const nextParams = new URLSearchParams(searchParamsKey);
+    setAnalyticsFilterQueryParams(nextParams, nextFilters);
+    replaceAnalyticsUrl(nextParams);
   }
 
   function resetPublicFilters() {
     setFilterDraft(DEFAULT_PUBLIC_FILTERS);
     setAppliedPublicFilters(filtersFromForm(DEFAULT_PUBLIC_FILTERS));
+    const nextParams = new URLSearchParams(searchParamsKey);
+    setAnalyticsFilterQueryParams(nextParams, DEFAULT_PUBLIC_FILTERS);
+    replaceAnalyticsUrl(nextParams);
   }
 
   const publicSummary = useMemo(() => {
@@ -488,7 +641,39 @@ export function AnalyticsDashboard() {
 
   const primaryMetricValue = roleMetricValue(roleAnalytics, publicSummary.analyzedMatches);
   const tabs = tabsForRole(roleAnalytics);
-  const activeTab = tabs.some((tab) => tab.key === selectedTab) ? selectedTab : "overview";
+  const selectedHeroId = currentUrlState.selectedHeroId;
+  const urlTab = tabs.some((tab) => tab.key === currentUrlState.tab) ? currentUrlState.tab : null;
+  const activeTab = urlTab
+    ?? (selectedHeroId && tabs.some((tab) => tab.key === "personal")
+    ? "personal"
+    : tabs.some((tab) => tab.key === selectedTab)
+      ? selectedTab
+      : "overview");
+
+  const updateSelectedHeroId = useCallback((heroId: string | null) => {
+    const nextParams = new URLSearchParams(searchParamsKey);
+
+    if (heroId === null) {
+      nextParams.delete("heroId");
+    } else {
+      const cleanHeroId = normalizeUuidQueryParam(heroId);
+
+      if (!cleanHeroId) {
+        return;
+      }
+
+      nextParams.set("heroId", cleanHeroId);
+    }
+
+    replaceAnalyticsUrl(nextParams);
+  }, [replaceAnalyticsUrl, searchParamsKey]);
+
+  function changeAnalyticsTab(tab: string) {
+    setSelectedTab(tab);
+    const nextParams = new URLSearchParams(searchParamsKey);
+    setAnalyticsTabQueryParam(nextParams, tab);
+    replaceAnalyticsUrl(nextParams);
+  }
 
   if (isLoading) {
     return (
@@ -497,7 +682,7 @@ export function AnalyticsDashboard() {
           <div className="analytics-terminal-copy">
             <p className="ops-label">DotaOps Analytics Terminal</p>
             <h1>Analytics Terminal</h1>
-            <p className="ops-mono">Loading role-based backend analytics.</p>
+            <p className="ops-mono">Loading official analytics.</p>
             {isSlowLoading ? <p className="analytics-slow-query">Still loading analytics...</p> : null}
           </div>
         </section>
@@ -512,7 +697,7 @@ export function AnalyticsDashboard() {
           <p className="ops-label">DOTAOPS ANALYTICS ENGINE</p>
           <h1>Analytics Terminal</h1>
           <p className="ops-mono">
-            Role-based analytics from backend APIs, with public aggregate metrics retained as a
+            Authenticated analytics overview with aggregated tournament metrics retained as a
             secondary read-only signal.
           </p>
         </div>
@@ -521,7 +706,7 @@ export function AnalyticsDashboard() {
           <div>
             <DatabaseZap size={18} />
             <span className="ops-label">Data source</span>
-            <strong className="ops-data">BACKEND</strong>
+            <strong className="ops-data">OFFICIAL</strong>
           </div>
           <div>
             <ShieldCheck size={18} />
@@ -555,7 +740,7 @@ export function AnalyticsDashboard() {
       </section>
 
       {roleAnalytics ? (
-        <AnalyticsSectionTabs activeTab={activeTab} tabs={tabs} onChange={setSelectedTab} />
+        <AnalyticsSectionTabs activeTab={activeTab} tabs={tabs} onChange={changeAnalyticsTab} />
       ) : null}
 
       {error ? (
@@ -570,6 +755,7 @@ export function AnalyticsDashboard() {
           activeTab={activeTab}
           appliedFilters={appliedPublicFilters}
           canRefreshAnalytics={canRefreshAnalytics}
+          currentProfile={profile}
           filterDraft={filterDraft}
           isRefreshing={isRefreshing}
           onApplyFilters={applyPublicFilters}
@@ -581,8 +767,10 @@ export function AnalyticsDashboard() {
           publicSummary={publicSummary}
           refreshResult={refreshResult}
           roleAnalytics={roleAnalytics}
+          selectedHeroId={selectedHeroId}
           snapshot={snapshot}
           tournamentDrilldown={tournamentDrilldown}
+          onSelectedHeroIdChange={updateSelectedHeroId}
         />
       ) : null}
     </div>
@@ -593,11 +781,11 @@ function AnalyticsSectionTabs({
   activeTab,
   onChange,
   tabs
-}: {
+}: Readonly<{
   activeTab: string;
   onChange: (tab: string) => void;
   tabs: AnalyticsTab[];
-}) {
+}>) {
   return (
     <nav aria-label="Analytics sections" className="analytics-section-tabs">
       {tabs.map((tab) => (
@@ -619,6 +807,7 @@ function AnalyticsTabContent({
   activeTab,
   appliedFilters,
   canRefreshAnalytics,
+  currentProfile,
   filterDraft,
   isRefreshing,
   onApplyFilters,
@@ -630,12 +819,15 @@ function AnalyticsTabContent({
   publicSummary,
   refreshResult,
   roleAnalytics,
+  selectedHeroId,
   snapshot,
-  tournamentDrilldown
-}: {
+  tournamentDrilldown,
+  onSelectedHeroIdChange
+}: Readonly<{
   activeTab: string;
   appliedFilters: AnalyticsFilters;
   canRefreshAnalytics: boolean;
+  currentProfile: CurrentUserProfile | null;
   filterDraft: AnalyticsFilterForm;
   isRefreshing: boolean;
   onApplyFilters: (filters: AnalyticsFilterForm) => void;
@@ -654,9 +846,11 @@ function AnalyticsTabContent({
   };
   refreshResult: AnalyticsRefreshResult | null;
   roleAnalytics: RoleAnalyticsState;
+  selectedHeroId: string | null;
   snapshot: AnalyticsSnapshot;
   tournamentDrilldown: OrganizerTournamentAnalyticsResponse | null;
-}) {
+  onSelectedHeroIdChange: (heroId: string | null) => void;
+}>) {
   if (activeTab === "public") {
     return (
       <PublicAggregatePanel
@@ -676,6 +870,7 @@ function AnalyticsTabContent({
         onChange={onChangeFilters}
         onReset={onResetFilters}
         roleAnalytics={roleAnalytics}
+        selectedHeroId={selectedHeroId}
         tournamentDrilldown={tournamentDrilldown}
       />
     );
@@ -686,8 +881,12 @@ function AnalyticsTabContent({
       <PlayerRoleAnalyticsPanel
         activeTab={activeTab}
         appliedFilters={appliedFilters}
+        currentProfile={currentProfile}
+        currentProfileId={currentProfile?.profileId ?? ""}
         personal={roleAnalytics.personal}
+        selectedHeroId={selectedHeroId}
         team={roleAnalytics.team}
+        onSelectedHeroIdChange={onSelectedHeroIdChange}
       />
     );
   }
@@ -737,14 +936,22 @@ function AnalyticsTabContent({
 function PlayerRoleAnalyticsPanel({
   activeTab,
   appliedFilters,
+  currentProfile,
+  currentProfileId,
   personal,
-  team
-}: {
+  selectedHeroId,
+  team,
+  onSelectedHeroIdChange
+}: Readonly<{
   activeTab: string;
   appliedFilters: AnalyticsFilters;
+  currentProfile: CurrentUserProfile | null;
+  currentProfileId: string;
   personal: PlayerAnalyticsResponse;
+  selectedHeroId: string | null;
   team: CurrentTeamAnalyticsResponse;
-}) {
+  onSelectedHeroIdChange: (heroId: string | null) => void;
+}>) {
   const primaryMetric = personal.metrics[0] ?? null;
   const teamMetric = team.teamSummary[0] ?? null;
 
@@ -800,47 +1007,12 @@ function PlayerRoleAnalyticsPanel({
 
   if (activeTab === "personal") {
     return (
-      <section className="analytics-terminal-panel analytics-data-panel ops-panel">
-        <SectionHeader
-          eyebrow="Personal analytics"
-          title="Personal Performance"
-          description="Protected analytics scoped to the current player profile."
-        />
-        <section className="analytics-terminal-grid analytics-terminal-grid-secondary">
-          <div className="analytics-terminal-panel analytics-data-panel ops-panel">
-            <SectionHeader
-              eyebrow="Personal hero pool"
-              title="Hero Performance"
-              description="Hero analytics scoped to your profile."
-            />
-            <HeroMatrix heroes={personal.heroPerformance} />
-          </div>
-          <div className="analytics-terminal-panel analytics-data-panel ops-panel">
-            <SectionHeader
-              eyebrow="Hero detail"
-              title="Top Hero Breakdown"
-              description="Per-hero averages and match references for your current player profile."
-            />
-            <PlayerHeroPerformanceTable heroes={personal.heroDetails} />
-          </div>
-          <div className="analytics-terminal-panel analytics-data-panel ops-panel">
-            <SectionHeader
-              eyebrow="Personal match history"
-              title="Analyzed Matches"
-              description="Imported OpenDota matches connected to your player profile."
-            />
-            <MatchHistoryList emptyText="No analyzed personal matches yet." matches={personal.matchHistory} />
-          </div>
-          <div className="analytics-terminal-panel analytics-data-panel ops-panel">
-            <SectionHeader
-              eyebrow="Progress trend"
-              title="Recent Progress"
-              description="Chronological match-by-match progress for your current player profile."
-            />
-            <PlayerProgressTable progress={personal.progress} />
-          </div>
-        </section>
-      </section>
+      <PersonalAnalyticsPanel
+        appliedFilters={appliedFilters}
+        personal={personal}
+        selectedHeroId={selectedHeroId}
+        onSelectedHeroIdChange={onSelectedHeroIdChange}
+      />
     );
   }
 
@@ -914,7 +1086,7 @@ function PlayerRoleAnalyticsPanel({
         ) : (
           <AnalyticsEmptyBlock
             title="Team analytics unavailable."
-            detail="The backend returned no current team for this player account."
+            detail="No current team analytics are available for this player account."
           />
         )}
       </section>
@@ -922,7 +1094,14 @@ function PlayerRoleAnalyticsPanel({
   }
 
   if (activeTab === "compare") {
-    return <PlayerRosterComparison appliedFilters={appliedFilters} fallbackPlayers={team.rosterPerformance} />;
+    return (
+      <PlayerComparisonPanel
+        appliedFilters={appliedFilters}
+        currentProfile={currentProfile}
+        currentProfileId={currentProfileId}
+        fallbackPlayers={team.rosterPerformance}
+      />
+    );
   }
 
   return (
@@ -944,7 +1123,7 @@ function OrganizerRoleAnalyticsPanel({
   onTournamentDrilldownChange,
   refreshResult,
   tournamentDrilldown
-}: {
+}: Readonly<{
   activeTab: string;
   analytics: OrganizerAnalyticsResponse;
   appliedFilters: AnalyticsFilters;
@@ -955,7 +1134,7 @@ function OrganizerRoleAnalyticsPanel({
   onTournamentDrilldownChange: (analytics: OrganizerTournamentAnalyticsResponse | null) => void;
   refreshResult: AnalyticsRefreshResult | null;
   tournamentDrilldown: OrganizerTournamentAnalyticsResponse | null;
-}) {
+}>) {
   if (activeTab === "drilldown") {
     return (
       <OrganizerTournamentDrilldown
@@ -1052,14 +1231,14 @@ function OrganizerRoleAnalyticsPanel({
       ) : null}
       <div className="analytics-overview-note">
         <strong>Tournament-level analytics are available in the Tournament Drilldown tab.</strong>
-        <p>Team comparison uses the selected tournament analytics response and stays scoped to returned backend data.</p>
+        <p>Team comparison uses the selected tournament analytics response and stays scoped to available official data.</p>
       </div>
       {canRefreshAnalytics ? (
         <section className="analytics-admin-panel ops-panel">
           <SectionHeader
             eyebrow="Admin operation"
             title="Analytics Refresh"
-            description="Refreshes backend analytics materialized views. This action is only visible to admin accounts."
+            description="Refreshes official analytics aggregates. This action is only visible to admin accounts."
             action={
               <button className="button ops-button-primary" disabled={isRefreshing} onClick={() => void onRefreshAnalytics()} type="button">
                 <RefreshCw size={16} />
@@ -1089,16 +1268,18 @@ function AdvancedAnalyticsFilters({
   onChange,
   onReset,
   roleAnalytics,
+  selectedHeroId,
   tournamentDrilldown
-}: {
+}: Readonly<{
   draft: AnalyticsFilterForm;
   hasActiveFilters: boolean;
   onApply: (filters: AnalyticsFilterForm) => void;
   onChange: (filters: AnalyticsFilterForm) => void;
   onReset: () => void;
   roleAnalytics: RoleAnalyticsState;
+  selectedHeroId: string | null;
   tournamentDrilldown: OrganizerTournamentAnalyticsResponse | null;
-}) {
+}>) {
   const [heroLookups, setHeroLookups] = useState<HeroLookup[]>([]);
   const [isLoadingLookups, setIsLoadingLookups] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -1134,9 +1315,9 @@ function AdvancedAnalyticsFilters({
           setTournamentLookups(tournaments);
           setTeamLookups(teams);
         }
-      } catch (caught) {
+      } catch (error) {
         if (!cancelled) {
-          setLookupError(analyticsErrorMessage(caught));
+          setLookupError(analyticsErrorMessage(error));
         }
       } finally {
         if (!cancelled) {
@@ -1167,10 +1348,10 @@ function AdvancedAnalyticsFilters({
         if (!cancelled) {
           setPlayerLookups(players);
         }
-      } catch (caught) {
+      } catch (error) {
         if (!cancelled) {
           setPlayerLookups([]);
-          setLookupError(analyticsErrorMessage(caught));
+          setLookupError(analyticsErrorMessage(error));
         }
       }
     }
@@ -1198,6 +1379,7 @@ function AdvancedAnalyticsFilters({
 
   const showOrganizerTournamentLookup = roleAnalytics.kind === "organizer" || roleAnalytics.kind === "admin";
   const showPlayerTeamLookup = roleAnalytics.kind === "player";
+  const hasSelectedHeroMasteryScope = Boolean(selectedHeroId && hasHeroMasteryScopedFilters(draft));
 
   return (
     <section className="analytics-terminal-panel analytics-data-panel analytics-filter-panel ops-panel">
@@ -1206,6 +1388,15 @@ function AdvancedAnalyticsFilters({
         title="Analytics Filters"
         description="Filter public metrics and role-based analytics by tournament, team, player, hero, and time range."
       />
+      {hasSelectedHeroMasteryScope ? (
+        <div className="analytics-filter-scope-note">
+          <span className="ops-label">Hero mastery scope</span>
+          <p>
+            The selected hero stays open. Applying these filters narrows the hero mastery request; raw hero stats remain
+            unchanged and context weighting only affects interpretation.
+          </p>
+        </div>
+      ) : null}
       {lookupError ? <AnalyticsEmptyBlock title="Lookup data unavailable." detail={lookupError} /> : null}
       {isLoadingLookups ? <p className="analytics-slow-query">Loading filter options...</p> : null}
       <form
@@ -1229,7 +1420,7 @@ function AdvancedAnalyticsFilters({
           ) : (
             <input
               autoComplete="off"
-              placeholder="Optional tournament UUID"
+              placeholder="Advanced tournament filter"
               type="text"
               value={draft.tournamentId}
               onChange={(event) => updateField("tournamentId", event.target.value)}
@@ -1259,7 +1450,7 @@ function AdvancedAnalyticsFilters({
           ) : (
             <input
               autoComplete="off"
-              placeholder="Optional team UUID"
+              placeholder="Advanced team filter"
               type="text"
               value={draft.teamId}
               onChange={(event) => updateField("teamId", event.target.value)}
@@ -1322,7 +1513,7 @@ function AdvancedAnalyticsFilters({
             value={draft.to}
             onChange={(event) => updateField("to", event.target.value)}
           />
-          <span>Optional backend time filter</span>
+          <span>Optional time range filter</span>
         </fieldset>
         <div className="analytics-filter-actions">
           <button className="button ops-button-primary" type="submit">
@@ -1345,11 +1536,11 @@ function OrganizerTournamentDrilldown({
   analytics,
   appliedFilters,
   onAnalyticsChange
-}: {
+}: Readonly<{
   analytics: OrganizerTournamentAnalyticsResponse | null;
   appliedFilters: AnalyticsFilters;
   onAnalyticsChange: (analytics: OrganizerTournamentAnalyticsResponse | null) => void;
-}) {
+}>) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingLookups, setIsLoadingLookups] = useState(false);
@@ -1371,9 +1562,9 @@ function OrganizerTournamentDrilldown({
           setTournamentLookups(lookups);
           setTournamentId((current) => current || lookups[0]?.tournamentId || "");
         }
-      } catch (caught) {
+      } catch (error) {
         if (!cancelled) {
-          setError(analyticsErrorMessage(caught));
+          setError(analyticsErrorMessage(error));
         }
       } finally {
         if (!cancelled) {
@@ -1406,9 +1597,9 @@ function OrganizerTournamentDrilldown({
     try {
       const response = await getOrganizerTournamentAnalytics(cleanTournamentId, appliedFilters);
       onAnalyticsChange(response);
-    } catch (caught) {
+    } catch (error) {
       onAnalyticsChange(null);
-      setError(analyticsErrorMessage(caught));
+      setError(analyticsErrorMessage(error));
     } finally {
       window.clearTimeout(slowTimer);
       setIsLoading(false);
@@ -1468,10 +1659,10 @@ function OrganizerTournamentDrilldown({
 function OrganizerTournamentAnalyticsView({
   analytics,
   appliedFilters
-}: {
+}: Readonly<{
   analytics: OrganizerTournamentAnalyticsResponse;
   appliedFilters: AnalyticsFilters;
-}) {
+}>) {
   return (
     <div className="analytics-drilldown-results">
       <section className="analytics-telemetry-grid">
@@ -1510,7 +1701,7 @@ function OrganizerTournamentAnalyticsView({
       ) : (
         <AnalyticsEmptyBlock
           title="Tournament summary unavailable."
-          detail="The backend returned no tournament summary for this drilldown."
+          detail="No tournament summary is available for this drilldown."
         />
       )}
 
@@ -1551,7 +1742,7 @@ function PublicAggregatePanel({
   publicAggregateError,
   publicSummary,
   snapshot
-}: {
+}: Readonly<{
   publicAggregateError: string | null;
   publicSummary: {
     analyzedMatches: number;
@@ -1560,14 +1751,14 @@ function PublicAggregatePanel({
     topHero: HeroAnalyticsMetric | null;
   };
   snapshot: AnalyticsSnapshot;
-}) {
+}>) {
   return (
     <>
       <section className="analytics-terminal-panel analytics-data-panel ops-panel">
         <SectionHeader
           eyebrow="Public analytics aggregate"
-          title="Read-only Public Metrics"
-          description="These panels use public aggregate backend endpoints and the same applied filters as the analytics workspace."
+          title="Aggregated Tournament Metrics"
+          description="These panels use public tournament aggregates and the same applied filters as the analytics workspace."
         />
         {publicAggregateError ? (
           <AnalyticsEmptyBlock title="Public aggregate unavailable." detail={publicAggregateError} />
@@ -1575,7 +1766,7 @@ function PublicAggregatePanel({
         {!publicAggregateError && allEmpty(snapshot) ? (
           <AnalyticsEmptyBlock
             title="No imported match analytics yet."
-            detail="Import OpenDota matches first. Public analytics will appear after backend processing."
+            detail="Import OpenDota matches first. Analytics will appear after processing."
           />
         ) : null}
       </section>
@@ -1587,7 +1778,7 @@ function PublicAggregatePanel({
               icon={DatabaseZap}
               label="Public analyzed matches"
               value={integerOrNoData(publicSummary.analyzedMatches)}
-              delta="backend aggregate"
+              delta="aggregated metric"
               tone="cyan"
             />
             <TelemetryCard
@@ -1617,7 +1808,7 @@ function PublicAggregatePanel({
             <SectionHeader
               eyebrow="Hero performance"
               title="Hero Performance Matrix"
-              description="Win rate, KDA, and damage metrics from backend hero analytics."
+              description="Win rate, KDA, and damage metrics from official hero analytics."
             />
             <HeroMatrix heroes={snapshot.heroes} />
           </section>
@@ -1646,7 +1837,7 @@ function PublicAggregatePanel({
             <SectionHeader
               eyebrow="Tournament aggregates"
               title="Tournament Analytics"
-              description="Backend-calculated tournament summaries and most picked heroes."
+              description="Official tournament summaries and most picked heroes."
             />
             <TournamentMatrix tournaments={snapshot.tournaments} />
           </section>
@@ -1656,302 +1847,13 @@ function PublicAggregatePanel({
   );
 }
 
-function PlayerRosterComparison({
-  appliedFilters,
-  fallbackPlayers
-}: {
-  appliedFilters: AnalyticsFilters;
-  fallbackPlayers: PlayerAnalyticsMetric[];
-}) {
-  const [comparison, setComparison] = useState<PlayerComparisonResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isComparing, setIsComparing] = useState(false);
-  const [isLoadingLookups, setIsLoadingLookups] = useState(false);
-  const [leftId, setLeftId] = useState("");
-  const [playerLookups, setPlayerLookups] = useState<TeamPlayerLookup[]>([]);
-  const [rightId, setRightId] = useState("");
-  const [selectedTeamId, setSelectedTeamId] = useState(appliedFilters.teamId ?? "");
-  const [teamLookups, setTeamLookups] = useState<TeamLookup[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadTeams() {
-      setIsLoadingLookups(true);
-      setError(null);
-
-      try {
-        const teams = await getMyTeamLookups(100);
-
-        if (!cancelled) {
-          setTeamLookups(teams);
-          setSelectedTeamId((current) => current || teams[0]?.teamId || "");
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(analyticsErrorMessage(caught));
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingLookups(false);
-        }
-      }
-    }
-
-    void loadTeams();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadPlayers() {
-      if (!selectedTeamId) {
-        setPlayerLookups([]);
-        return;
-      }
-
-      setIsLoadingLookups(true);
-      setError(null);
-
-      try {
-        const players = await getTeamPlayerLookups(selectedTeamId, 100);
-
-        if (!cancelled) {
-          setPlayerLookups(players);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setPlayerLookups([]);
-          setError(analyticsErrorMessage(caught));
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingLookups(false);
-        }
-      }
-    }
-
-    void loadPlayers();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedTeamId]);
-
-  const players = playerLookups.length > 0
-    ? playerLookups.map((player) => ({
-      displayName: player.displayName,
-      profileId: player.profileId
-    }))
-    : fallbackPlayers.map((player) => ({
-      displayName: player.displayName,
-      profileId: player.profileId
-    }));
-  const effectiveLeftId = leftId || players[0]?.profileId || "";
-  const effectiveRightId =
-    (rightId && rightId !== effectiveLeftId ? rightId : "") ||
-    players.find((player) => player.profileId !== effectiveLeftId)?.profileId ||
-    "";
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function runComparison() {
-      if (!effectiveLeftId || !effectiveRightId || effectiveLeftId === effectiveRightId || !selectedTeamId) {
-        setComparison(null);
-        return;
-      }
-
-      setIsComparing(true);
-      setError(null);
-
-      try {
-        const response = await compareAnalyticsPlayers({
-          filters: {
-            from: appliedFilters.from,
-            heroId: appliedFilters.heroId,
-            limit: appliedFilters.limit,
-            teamId: selectedTeamId,
-            to: appliedFilters.to,
-            tournamentId: appliedFilters.tournamentId
-          },
-          profileAId: effectiveLeftId,
-          profileBId: effectiveRightId
-        });
-
-        if (!cancelled) {
-          setComparison(response);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setComparison(null);
-          setError(analyticsErrorMessage(caught));
-        }
-      } finally {
-        if (!cancelled) {
-          setIsComparing(false);
-        }
-      }
-    }
-
-    void runComparison();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [appliedFilters.from, appliedFilters.heroId, appliedFilters.limit, appliedFilters.to, appliedFilters.tournamentId, effectiveLeftId, effectiveRightId, selectedTeamId]);
-
-  if (teamLookups.length === 0 && fallbackPlayers.length < 2 && !isLoadingLookups) {
-    return (
-      <section className="analytics-terminal-panel analytics-data-panel ops-panel">
-        <SectionHeader
-          eyebrow="Roster comparison"
-          title="Player vs Player"
-          description="Compare players from your team roster."
-        />
-        <AnalyticsEmptyBlock
-          title="Player comparison requires a team roster."
-          detail="Join or create a team with at least two players to compare player analytics."
-        />
-      </section>
-    );
-  }
-
-  const leftPlayer = comparison?.playerA ?? null;
-  const rightPlayer = comparison?.playerB ?? null;
-
-  return (
-    <section className="analytics-terminal-panel analytics-data-panel ops-panel">
-      <SectionHeader
-        eyebrow="Roster comparison"
-        title="Player vs Player"
-        description="Compare players from your team roster."
-      />
-      <div className="analytics-comparison-controls">
-        <label>
-          <span>Team</span>
-          <select value={selectedTeamId} onChange={(event) => {
-            setSelectedTeamId(event.target.value);
-            setLeftId("");
-            setRightId("");
-            setComparison(null);
-          }}>
-            <option value="">Select team</option>
-            {teamLookups.map((team) => (
-              <option key={team.teamId} value={team.teamId}>
-                {team.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Player A</span>
-          <select value={effectiveLeftId} onChange={(event) => setLeftId(event.target.value)}>
-            <option value="">Select player</option>
-            {players.map((player) => (
-              <option key={`left-${player.profileId}`} value={player.profileId}>
-                {player.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Player B</span>
-          <select value={effectiveRightId} onChange={(event) => setRightId(event.target.value)}>
-            <option value="">Select player</option>
-            {players
-              .filter((player) => player.profileId !== effectiveLeftId)
-              .map((player) => (
-                <option key={`right-${player.profileId}`} value={player.profileId}>
-                  {player.displayName}
-                </option>
-              ))}
-          </select>
-        </label>
-      </div>
-      {isLoadingLookups ? <p className="analytics-slow-query">Loading roster options...</p> : null}
-      {isComparing ? <p className="analytics-slow-query">Comparing players...</p> : null}
-      {error ? <AnalyticsEmptyBlock title="Player comparison unavailable." detail={error} /> : null}
-      {!error && players.length < 2 ? (
-        <AnalyticsEmptyBlock
-          title="Player comparison requires at least two players."
-          detail="The selected team roster lookup returned fewer than two players."
-        />
-      ) : null}
-      {!error && comparison && leftPlayer && rightPlayer ? (
-        <>
-          <span className="ops-badge">Access scope: {comparison.filters.accessScope}</span>
-          <ComparisonCards
-            left={{
-              metrics: playerComparisonMetrics(leftPlayer),
-              name: leftPlayer.displayName,
-              subtitle: leftPlayer.teamName ?? "Selected player"
-            }}
-            right={{
-              metrics: playerComparisonMetrics(rightPlayer),
-              name: rightPlayer.displayName,
-              subtitle: rightPlayer.teamName ?? "Selected player"
-            }}
-          />
-          {comparison.profileAHeroPerformance.length > 0 || comparison.profileBHeroPerformance.length > 0 ? (
-            <section className="analytics-terminal-grid analytics-terminal-grid-secondary">
-              {comparison.profileAHeroPerformance.length > 0 ? (
-                <div className="analytics-terminal-panel analytics-data-panel ops-panel">
-                  <SectionHeader
-                    eyebrow="Hero performance"
-                    title={`${leftPlayer.displayName} Heroes`}
-                    description="Hero performance returned for the first compared player."
-                  />
-                  <HeroMatrix heroes={comparison.profileAHeroPerformance} />
-                </div>
-              ) : null}
-              {comparison.profileBHeroPerformance.length > 0 ? (
-                <div className="analytics-terminal-panel analytics-data-panel ops-panel">
-                  <SectionHeader
-                    eyebrow="Hero performance"
-                    title={`${rightPlayer.displayName} Heroes`}
-                    description="Hero performance returned for the second compared player."
-                  />
-                  <HeroMatrix heroes={comparison.profileBHeroPerformance} />
-                </div>
-              ) : null}
-            </section>
-          ) : null}
-          <section className="analytics-terminal-grid analytics-terminal-grid-secondary">
-            <div className="analytics-terminal-panel analytics-data-panel ops-panel">
-              <SectionHeader
-                eyebrow="Shared hero pool"
-                title="Shared Heroes"
-                description="Hero overlap returned by the player comparison endpoint."
-              />
-              <HeroMatrix heroes={comparison.sharedHeroes} />
-            </div>
-            <div className="analytics-terminal-panel analytics-data-panel ops-panel">
-              <SectionHeader
-                eyebrow="Recent matches"
-                title="Shared Match History"
-                description="Matches where both compared players appear in normalized analytics data."
-              />
-              <MatchHistoryList emptyText="No shared matches returned." matches={comparison.recentMatches} />
-            </div>
-          </section>
-        </>
-      ) : null}
-    </section>
-  );
-}
-
 function TeamComparisonPanel({
   analytics,
   appliedFilters
-}: {
+}: Readonly<{
   analytics: OrganizerTournamentAnalyticsResponse;
   appliedFilters: AnalyticsFilters;
-}) {
+}>) {
   const [comparison, setComparison] = useState<TeamComparisonResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isComparing, setIsComparing] = useState(false);
@@ -2001,10 +1903,10 @@ function TeamComparisonPanel({
         if (!cancelled) {
           setComparison(response);
         }
-      } catch (caught) {
+      } catch (error) {
         if (!cancelled) {
           setComparison(null);
-          setError(analyticsErrorMessage(caught));
+          setError(analyticsErrorMessage(error));
         }
       } finally {
         if (!cancelled) {
@@ -2111,20 +2013,6 @@ function TeamComparisonPanel({
   );
 }
 
-function playerComparisonMetrics(player: PlayerAnalyticsMetric) {
-  return [
-    { label: "Games", value: countMetricValue(player.gamesPlayed) },
-    { label: "W-L", value: `${player.wins}-${player.losses}` },
-    { label: "Win rate", value: formatPercent(player.winRate) },
-    { label: "KDA", value: safeMetricNumber(player.kda, 2) },
-    {
-      label: "K/D/A",
-      value: `${safeMetricNumber(player.avgKills)} / ${safeMetricNumber(player.avgDeaths)} / ${safeMetricNumber(player.avgAssists)}`
-    },
-    { label: "GPM/XPM", value: `${safeMetricNumber(player.avgGpm)} / ${safeMetricNumber(player.avgXpm)}` }
-  ];
-}
-
 function teamComparisonMetrics(team: TeamAnalyticsMetric) {
   return [
     { label: "Games", value: countMetricValue(team.gamesPlayed) },
@@ -2139,36 +2027,7 @@ function teamComparisonMetrics(team: TeamAnalyticsMetric) {
   ];
 }
 
-function ComparisonCards({
-  left,
-  right
-}: {
-  left: { metrics: Array<{ label: string; value: string }>; name: string; subtitle: string };
-  right: { metrics: Array<{ label: string; value: string }>; name: string; subtitle: string };
-}) {
-  return (
-    <div className="analytics-comparison-cards">
-      {[left, right].map((side) => (
-        <article className="analytics-comparison-card" key={side.name}>
-          <div>
-            <span className="ops-label">{side.subtitle}</span>
-            <strong>{side.name}</strong>
-          </div>
-          <dl>
-            {side.metrics.map((metric) => (
-              <div key={`${side.name}-${metric.label}`}>
-                <dt>{metric.label}</dt>
-                <dd>{metric.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function RecentImportsList({ imports }: { imports: RecentImportMetric[] }) {
+function RecentImportsList({ imports }: Readonly<{ imports: RecentImportMetric[] }>) {
   if (imports.length === 0) {
     return (
       <AnalyticsEmptyBlock
@@ -2197,210 +2056,9 @@ function RecentImportsList({ imports }: { imports: RecentImportMetric[] }) {
   );
 }
 
-function MatchHistoryList({
-  emptyText,
-  matches
-}: {
-  emptyText: string;
-  matches: AnalyticsMatchHistory[];
-}) {
-  if (matches.length === 0) {
-    return <AnalyticsEmptyBlock title={emptyText} detail="Match history rows will appear after backend analytics links imported match records." />;
-  }
-
-  return (
-    <div className="analytics-real-table-wrap">
-      <table className="analytics-real-table">
-        <thead>
-          <tr>
-            <th>Dota Match ID</th>
-            <th>Tournament</th>
-            <th>Teams</th>
-            <th>Game</th>
-          </tr>
-        </thead>
-        <tbody>
-          {matches.map((match, index) => (
-            <tr key={`${match.matchId ?? "match"}-${match.matchGameId ?? index}`}>
-              <td>
-                <strong>{match.dotaMatchId ?? "No data"}</strong>
-                <span>Backend match history</span>
-              </td>
-              <td>
-                <strong>{match.tournamentName ?? "Tournament unavailable"}</strong>
-                <span>{formatAnalyticsDateTime(match.playedAt)}</span>
-              </td>
-              <td>
-                <strong>{matchTeamsLabel(match)}</strong>
-                <span>{matchWinnerLabel(match)}</span>
-              </td>
-              <td>
-                <strong>{match.matchGameId ?? "No game ID"}</strong>
-                <span>{match.matchId ?? "No match ID"}</span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function PlayerProgressTable({ progress }: { progress: PlayerProgressPoint[] }) {
-  if (progress.length === 0) {
-    return (
-      <AnalyticsEmptyBlock
-        title="No progress data yet."
-        detail="Progress rows will appear after imported matches link to your player profile."
-      />
-    );
-  }
-
-  return (
-    <div className="analytics-real-table-wrap">
-      <table className="analytics-real-table">
-        <thead>
-          <tr>
-            <th>Played</th>
-            <th>Hero</th>
-            <th>Result</th>
-            <th>KDA</th>
-            <th>Economy</th>
-            <th>Impact</th>
-          </tr>
-        </thead>
-        <tbody>
-          {progress.map((point, index) => (
-            <tr key={`${point.matchId ?? "match"}-${point.matchGameId ?? index}`}>
-              <td>
-                <strong>{formatAnalyticsDateTime(point.playedAt)}</strong>
-                <span>{point.dotaMatchId ? `Dota ${point.dotaMatchId}` : point.matchId ?? "Match ID unavailable"}</span>
-              </td>
-              <td>
-                <strong>{point.heroName ?? "Hero unavailable"}</strong>
-                <span>{point.heroId ?? "Hero ID unavailable"}</span>
-              </td>
-              <td>
-                <strong>{progressResultLabel(point)}</strong>
-                <span>{point.kills}-{point.deaths}-{point.assists}</span>
-              </td>
-              <td>{point.kda.toFixed(2)}</td>
-              <td>
-                <strong>{countMetricValue(point.goldPerMin)} / {countMetricValue(point.xpPerMin)}</strong>
-                <span>LH/DN {countMetricValue(point.lastHits)} / {countMetricValue(point.denies)}</span>
-              </td>
-              <td>
-                <strong>{countMetricValue(point.heroDamage)} hero / {countMetricValue(point.towerDamage)} tower</strong>
-                <span>Healing {countMetricValue(point.heroHealing)}</span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function PlayerHeroPerformanceTable({ heroes }: { heroes: PlayerHeroPerformance[] }) {
-  if (heroes.length === 0) {
-    return (
-      <AnalyticsEmptyBlock
-        title="No hero-specific analytics yet."
-        detail="Hero breakdown rows will appear after imported matches link heroes to your player profile."
-      />
-    );
-  }
-
-  return (
-    <div className="analytics-real-table-wrap">
-      <table className="analytics-real-table">
-        <thead>
-          <tr>
-            <th>Hero</th>
-            <th>Matches</th>
-            <th>W-L</th>
-            <th>Win Rate</th>
-            <th>Avg KDA</th>
-            <th>Economy</th>
-            <th>Impact</th>
-            <th>Recent / Best</th>
-          </tr>
-        </thead>
-        <tbody>
-          {heroes.slice(0, 12).map((hero) => (
-            <tr key={`${hero.heroId ?? hero.heroName ?? "hero"}-${hero.recentMatchId ?? "recent"}`}>
-              <td>
-                <strong>{hero.heroName ?? "Hero unavailable"}</strong>
-                <span>{hero.heroId ?? "Hero ID unavailable"}</span>
-              </td>
-              <td>{hero.matches}</td>
-              <td>{hero.wins}-{hero.losses}</td>
-              <td>{formatPercent(hero.winRate)}</td>
-              <td>
-                <strong>{safeMetricNumber(hero.avgKda, 2)}</strong>
-                <span>{safeMetricNumber(hero.avgKills)} / {safeMetricNumber(hero.avgDeaths)} / {safeMetricNumber(hero.avgAssists)}</span>
-              </td>
-              <td>
-                <strong>{safeMetricNumber(hero.avgGpm)} / {safeMetricNumber(hero.avgXpm)}</strong>
-                <span>LH/DN {safeMetricNumber(hero.avgLastHits)} / {safeMetricNumber(hero.avgDenies)}</span>
-              </td>
-              <td>
-                <strong>{Math.round(hero.avgHeroDamage).toLocaleString("en-US")} hero / {Math.round(hero.avgTowerDamage).toLocaleString("en-US")} tower</strong>
-                <span>Healing {Math.round(hero.avgHeroHealing).toLocaleString("en-US")}</span>
-              </td>
-              <td>
-                <strong>{formatAnalyticsDateTime(hero.recentPlayedAt)}</strong>
-                <span>Best KDA {safeMetricNumber(hero.bestKda, 2)} / {hero.bestDotaMatchId ?? playerHeroReferenceLabel(hero)}</span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function HeroMatrix({ heroes }: { heroes: HeroAnalyticsMetric[] }) {
-  if (heroes.length === 0) {
-    return <AnalyticsEmptyBlock title="No hero metrics available." detail="Hero performance rows will appear after imported matches include hero data." />;
-  }
-
-  return (
-    <div className="analytics-real-table-wrap">
-      <table className="analytics-real-table">
-        <thead>
-          <tr>
-            <th>Hero</th>
-            <th>Games</th>
-            <th>W-L</th>
-            <th>Win Rate</th>
-            <th>KDA</th>
-            <th>Avg Damage</th>
-          </tr>
-        </thead>
-        <tbody>
-          {heroes.slice(0, 12).map((hero) => (
-            <tr key={`${hero.heroId}-${hero.tournamentId ?? "global"}`}>
-              <td>
-                <strong>{hero.localizedName}</strong>
-                <span>{hero.tournamentName ?? "Tournament aggregate"}</span>
-              </td>
-              <td>{hero.gamesPlayed}</td>
-              <td>{hero.wins}-{hero.losses}</td>
-              <td>{formatPercent(hero.winRate)}</td>
-              <td>{hero.kda.toFixed(2)}</td>
-              <td>{Math.round(hero.avgHeroDamage).toLocaleString("en-US")}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function TeamMatrix({ teams }: { teams: TeamAnalyticsMetric[] }) {
+function TeamMatrix({ teams }: Readonly<{ teams: TeamAnalyticsMetric[] }>) {
   if (teams.length === 0) {
-    return <AnalyticsEmptyBlock title="No team metrics available." detail="Team comparison stays empty until backend analytics receives imported team match data." />;
+    return <AnalyticsEmptyBlock title="No team metrics available." detail="Team comparison stays empty until imported team match data is processed." />;
   }
 
   return (
@@ -2425,7 +2083,7 @@ function TeamMatrix({ teams }: { teams: TeamAnalyticsMetric[] }) {
   );
 }
 
-function PlayerMatrix({ players }: { players: PlayerAnalyticsMetric[] }) {
+function PlayerMatrix({ players }: Readonly<{ players: PlayerAnalyticsMetric[] }>) {
   if (players.length === 0) {
     return <AnalyticsEmptyBlock title="No player metrics available." detail="Player telemetry will populate from imported OpenDota player records." />;
   }
@@ -2449,9 +2107,9 @@ function PlayerMatrix({ players }: { players: PlayerAnalyticsMetric[] }) {
   );
 }
 
-function TournamentMatrix({ tournaments }: { tournaments: TournamentAnalyticsMetric[] }) {
+function TournamentMatrix({ tournaments }: Readonly<{ tournaments: TournamentAnalyticsMetric[] }>) {
   if (tournaments.length === 0) {
-    return <AnalyticsEmptyBlock title="No tournament metrics available." detail="Tournament aggregates require processed match analytics from the backend." />;
+    return <AnalyticsEmptyBlock title="No tournament metrics available." detail="Tournament aggregates require processed match analytics." />;
   }
 
   return (
@@ -2472,7 +2130,7 @@ function TournamentMatrix({ tournaments }: { tournaments: TournamentAnalyticsMet
             <tr key={tournament.tournamentId}>
               <td>
                 <strong>{tournament.tournamentName}</strong>
-                <span>Backend calculated</span>
+                <span>Official metric</span>
               </td>
               <td>{tournament.gamesPlayed}</td>
               <td>{secondsToDuration(tournament.avgDurationSeconds)}</td>
@@ -2494,18 +2152,3 @@ function TournamentMatrix({ tournaments }: { tournaments: TournamentAnalyticsMet
   );
 }
 
-function AnalyticsEmptyBlock({
-  detail,
-  title
-}: {
-  detail: string;
-  title: string;
-}) {
-  return (
-    <div className="analytics-empty-block">
-      <span className="ops-label">Awaiting backend data</span>
-      <strong>{title}</strong>
-      <p>{detail}</p>
-    </div>
-  );
-}

@@ -192,6 +192,21 @@ class TeamJoinRequestServiceTest {
     }
 
     @Test
+    void inactiveCaptainCannotAcceptJoinRequest() {
+        when(joinRequestRepository.findById(REQUEST_ID))
+                .thenReturn(Optional.of(joinRequest(TeamJoinRequestStatus.PENDING)));
+        when(currentUserProvider.requireProfile()).thenReturn(profile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamMemberRepository.existsActive(TEAM_ID, CAPTAIN_PROFILE_ID)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.acceptJoinRequest(REQUEST_ID))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the team captain can resolve join requests.");
+
+        verify(teamMemberRepository, never()).create(any());
+        verify(joinRequestRepository, never()).accept(any(), any());
+    }
+
+    @Test
     void acceptRejectsFullTeam() {
         when(joinRequestRepository.findById(REQUEST_ID)).thenReturn(Optional.of(joinRequest(TeamJoinRequestStatus.PENDING)));
         when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team()));

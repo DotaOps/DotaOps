@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Min;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -106,6 +107,69 @@ public class MeAnalyticsController {
             @RequestParam(defaultValue = "25") @Min(1) @Max(100) int limit
     ) {
         return ApiResponse.of(roleBasedAnalyticsService.currentPlayerHeroPerformance(filters(
+                tournamentId,
+                tournamentIdSnake,
+                teamId,
+                teamIdSnake,
+                profileId,
+                profileIdSnake,
+                heroId,
+                heroIdSnake,
+                from,
+                to,
+                limit)));
+    }
+
+    @GetMapping("/analytics/heroes/{heroId}/mastery")
+    ApiResponse<HeroMasteryResponse> currentPlayerHeroMastery(
+            @PathVariable UUID heroId,
+            @RequestParam(required = false) UUID tournamentId,
+            @RequestParam(name = "tournament_id", required = false) UUID tournamentIdSnake,
+            @RequestParam(required = false) UUID teamId,
+            @RequestParam(name = "team_id", required = false) UUID teamIdSnake,
+            @RequestParam(required = false) UUID profileId,
+            @RequestParam(name = "profile_id", required = false) UUID profileIdSnake,
+            @RequestParam(required = false) UUID heroIdQuery,
+            @RequestParam(name = "hero_id", required = false) UUID heroIdSnake,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime to,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit
+    ) {
+        return ApiResponse.of(roleBasedAnalyticsService.currentPlayerHeroMastery(
+                heroId,
+                filters(
+                        tournamentId,
+                        tournamentIdSnake,
+                        teamId,
+                        teamIdSnake,
+                        profileId,
+                        profileIdSnake,
+                        heroIdQuery,
+                        heroIdSnake,
+                        from,
+                        to,
+                        limit)));
+    }
+
+    @GetMapping("/analytics/insights")
+    ApiResponse<List<PlayerInsightResponse>> currentPlayerInsights(
+            @RequestParam(required = false) UUID tournamentId,
+            @RequestParam(name = "tournament_id", required = false) UUID tournamentIdSnake,
+            @RequestParam(required = false) UUID teamId,
+            @RequestParam(name = "team_id", required = false) UUID teamIdSnake,
+            @RequestParam(required = false) UUID profileId,
+            @RequestParam(name = "profile_id", required = false) UUID profileIdSnake,
+            @RequestParam(required = false) UUID heroId,
+            @RequestParam(name = "hero_id", required = false) UUID heroIdSnake,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime to,
+            @RequestParam(defaultValue = "25") @Min(1) @Max(100) int limit
+    ) {
+        return ApiResponse.of(roleBasedAnalyticsService.currentPlayerInsights(filters(
                 tournamentId,
                 tournamentIdSnake,
                 teamId,

@@ -11,13 +11,23 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.security.access.AccessDeniedException;
 
 import si.um.feri.dotaops.backend.analytics.domain.AnalyticsFilters;
+import si.um.feri.dotaops.backend.analytics.domain.ContextWeightClassification;
+import si.um.feri.dotaops.backend.analytics.domain.ContextWeightReason;
+import si.um.feri.dotaops.backend.analytics.domain.HeroMasteryMetrics;
 import si.um.feri.dotaops.backend.analytics.repository.RoleBasedAnalyticsRepository;
 import si.um.feri.dotaops.backend.analytics.web.AnalyticsMatchHistoryResponse;
+import si.um.feri.dotaops.backend.analytics.web.HeroMasteryComparisonDirection;
+import si.um.feri.dotaops.backend.analytics.web.HeroMasteryNoteCategory;
+import si.um.feri.dotaops.backend.analytics.web.HeroMasteryVerdict;
+import si.um.feri.dotaops.backend.analytics.web.PlayerComparisonMetricResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerHeroPerformanceResponse;
+import si.um.feri.dotaops.backend.analytics.web.PlayerInsightCategory;
+import si.um.feri.dotaops.backend.analytics.web.PlayerInsightResponse;
 import si.um.feri.dotaops.backend.analytics.web.PlayerProgressPointResponse;
 import si.um.feri.dotaops.backend.auth.domain.AuthenticatedActor;
 import si.um.feri.dotaops.backend.auth.domain.ProfileRole;
 import si.um.feri.dotaops.backend.auth.service.CurrentUserProvider;
+import si.um.feri.dotaops.backend.common.error.BadRequestException;
 import si.um.feri.dotaops.backend.team.domain.Team;
 import si.um.feri.dotaops.backend.team.repository.TeamMemberRepository;
 import si.um.feri.dotaops.backend.team.repository.TeamRepository;
@@ -52,13 +62,15 @@ class RoleBasedAnalyticsServiceTest {
     private final TeamMemberRepository teamMemberRepository = mock(TeamMemberRepository.class);
     private final TournamentRepository tournamentRepository = mock(TournamentRepository.class);
     private final CurrentUserProvider currentUserProvider = mock(CurrentUserProvider.class);
+    private final AnalyticsContextWeightingService contextWeightingService = new AnalyticsContextWeightingService();
     private final RoleBasedAnalyticsService service = new RoleBasedAnalyticsService(
             analyticsQueryService,
             roleBasedAnalyticsRepository,
             teamRepository,
             teamMemberRepository,
             tournamentRepository,
-            currentUserProvider);
+            currentUserProvider,
+            contextWeightingService);
 
     @Test
     void playerAnalyticsAreScopedToCurrentProfileAndHaveStableEmptyHistory() {
@@ -179,6 +191,13 @@ class RoleBasedAnalyticsServiceTest {
             assertThat(point.lastHits()).isEqualTo(320);
             assertThat(point.denies()).isEqualTo(12);
             assertThat(point.won()).isTrue();
+            assertThat(point.netWorth()).isEqualTo(21000);
+            assertThat(point.level()).isEqualTo(22);
+            assertThat(point.durationSeconds()).isEqualTo(2400);
+            assertThat(point.teamSide()).isEqualTo("RADIANT");
+            assertThat(point.radiantScore()).isEqualTo(38);
+            assertThat(point.direScore()).isEqualTo(24);
+            assertThat(point.winnerSide()).isEqualTo("RADIANT");
         });
     }
 
@@ -283,6 +302,393 @@ class RoleBasedAnalyticsServiceTest {
                 10)))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessage("Players can only view their own private analytics.");
+    }
+
+    @Test
+    void currentPlayerHeroMasteryReturnsStrongVerdictWithBaselineComparisonAndRawMetrics() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerHeroMasteryMetrics(eq(PROFILE_ID), eq(HERO_ID), any(), eq(false)))
+                .thenReturn(Optional.of(heroMasteryMetrics(
+                        5,
+                        4,
+                        1,
+                        "80.00",
+                        "8.00",
+                        "2.00",
+                        "650.00",
+                        "720.00",
+                        "300.00",
+                        "14.00",
+                        "22000.00",
+                        "26000.00",
+                        "5200.00",
+                        "200.00",
+                        "23.00")));
+        when(analyticsQueryService.playerComparisonHeadlineMetrics(eq(PROFILE_ID), any(), eq(false)))
+                .thenReturn(Optional.of(overallBaseline()));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(5), "8.00", 2, 650, 720),
+                        progressPoint(NOW.minusDays(4), "8.00", 2, 660, 730),
+                        progressPoint(NOW.minusDays(3), "8.00", 2, 640, 710),
+                        progressPoint(NOW.minusDays(2), "8.00", 2, 650, 720),
+                        progressPoint(NOW.minusDays(1), "8.00", 2, 650, 720)));
+
+        var response = service.currentPlayerHeroMastery(HERO_ID, new AnalyticsFilters(
+                TOURNAMENT_ID,
+                TEAM_ID,
+                PROFILE_ID,
+                null,
+                10));
+
+        ArgumentCaptor<AnalyticsFilters> masteryFilters = ArgumentCaptor.forClass(AnalyticsFilters.class);
+        verify(analyticsQueryService).playerHeroMasteryMetrics(eq(PROFILE_ID), eq(HERO_ID), masteryFilters.capture(), eq(false));
+        assertThat(masteryFilters.getValue().heroId()).isEqualTo(HERO_ID);
+        assertThat(masteryFilters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(response.masteryVerdict()).isEqualTo(HeroMasteryVerdict.STRONG);
+        assertThat(response.games()).isEqualTo(5);
+        assertThat(response.winRate()).isEqualByComparingTo("80.00");
+        assertThat(response.avgDeaths()).isEqualByComparingTo("2.00");
+        assertThat(response.avgNetWorth()).isEqualByComparingTo("22000.00");
+        assertThat(response.avgLevel()).isEqualByComparingTo("23.00");
+        assertThat(response.comparisonToPlayerOverallBaseline())
+                .anySatisfy(comparison -> {
+                    assertThat(comparison.metric()).isEqualTo("winRate");
+                    assertThat(comparison.direction()).isEqualTo(HeroMasteryComparisonDirection.BETTER);
+                    assertThat(comparison.heroValue()).isEqualByComparingTo("80.00");
+                    assertThat(comparison.overallValue()).isEqualByComparingTo("55.00");
+                });
+        assertThat(response.contextSummary().normalGameCount()).isEqualTo(5);
+        assertThat(response.recentMatches()).hasSize(5);
+    }
+
+    @Test
+    void currentPlayerHeroMasteryReturnsInsufficientDataWhenHeroSampleIsTooSmall() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerHeroMasteryMetrics(eq(PROFILE_ID), eq(HERO_ID), any(), eq(false)))
+                .thenReturn(Optional.of(heroMasteryMetrics(
+                        2,
+                        1,
+                        1,
+                        "50.00",
+                        "3.00",
+                        "4.00",
+                        "520.00",
+                        "580.00",
+                        "210.00",
+                        "8.00",
+                        "18000.00",
+                        "18000.00",
+                        "2200.00",
+                        "0.00",
+                        "18.00")));
+        when(analyticsQueryService.playerComparisonHeadlineMetrics(eq(PROFILE_ID), any(), eq(false)))
+                .thenReturn(Optional.of(overallBaseline()));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(), eq(false)))
+                .thenReturn(List.of(progressPoint(NOW.minusDays(2), "3.00", 4, 520, 580)));
+
+        var response = service.currentPlayerHeroMastery(HERO_ID, new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        assertThat(response.masteryVerdict()).isEqualTo(HeroMasteryVerdict.INSUFFICIENT_DATA);
+        assertThat(response.deterministicNotes())
+                .anySatisfy(note -> {
+                    assertThat(note.category()).isEqualTo(HeroMasteryNoteCategory.SAMPLE_SIZE);
+                    assertThat(note.message()).contains("Not enough matches");
+                });
+    }
+
+    @Test
+    void currentPlayerHeroMasteryReturnsNeedsWorkWhenMultipleImportantMetricsTrailBaseline() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerHeroMasteryMetrics(eq(PROFILE_ID), eq(HERO_ID), any(), eq(false)))
+                .thenReturn(Optional.of(heroMasteryMetrics(
+                        5,
+                        1,
+                        4,
+                        "20.00",
+                        "1.40",
+                        "8.00",
+                        "410.00",
+                        "450.00",
+                        "140.00",
+                        "3.00",
+                        "9800.00",
+                        "9000.00",
+                        "300.00",
+                        "0.00",
+                        "12.00")));
+        when(analyticsQueryService.playerComparisonHeadlineMetrics(eq(PROFILE_ID), any(), eq(false)))
+                .thenReturn(Optional.of(overallBaseline()));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(5), "1.40", 8, 410, 450),
+                        progressPoint(NOW.minusDays(4), "1.40", 8, 410, 450),
+                        progressPoint(NOW.minusDays(3), "1.40", 8, 410, 450),
+                        progressPoint(NOW.minusDays(2), "1.40", 8, 410, 450),
+                        progressPoint(NOW.minusDays(1), "1.40", 8, 410, 450)));
+
+        var response = service.currentPlayerHeroMastery(HERO_ID, new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        assertThat(response.masteryVerdict()).isEqualTo(HeroMasteryVerdict.NEEDS_WORK);
+        assertThat(response.comparisonToPlayerOverallBaseline())
+                .anySatisfy(comparison -> {
+                    assertThat(comparison.metric()).isEqualTo("deaths");
+                    assertThat(comparison.direction()).isEqualTo(HeroMasteryComparisonDirection.WORSE);
+                });
+        assertThat(response.deterministicNotes())
+                .anySatisfy(note -> {
+                    assertThat(note.category()).isEqualTo(HeroMasteryNoteCategory.SURVIVABILITY);
+                    assertThat(note.message()).contains("die more often");
+                });
+    }
+
+    @Test
+    void currentPlayerHeroMasteryContextSummaryDetectsRoughAndStompGamesWithoutChangingRawMetrics() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerHeroMasteryMetrics(eq(PROFILE_ID), eq(HERO_ID), any(), eq(false)))
+                .thenReturn(Optional.of(heroMasteryMetrics(
+                        3,
+                        1,
+                        2,
+                        "33.33",
+                        "2.00",
+                        "12.00",
+                        "300.00",
+                        "330.00",
+                        "120.00",
+                        "2.00",
+                        "7200.00",
+                        "4500.00",
+                        "100.00",
+                        "0.00",
+                        "10.00")));
+        when(analyticsQueryService.playerComparisonHeadlineMetrics(eq(PROFILE_ID), any(), eq(false)))
+                .thenReturn(Optional.of(overallBaseline()));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(3), "3.00", 4, 520, 580),
+                        progressPoint(NOW.minusDays(2), "1.20", 8, 420, 450),
+                        progressPoint(
+                                NOW.minusDays(1),
+                                "0.40",
+                                2,
+                                16,
+                                2,
+                                220,
+                                280,
+                                3000,
+                                0,
+                                0,
+                                false)));
+
+        var response = service.currentPlayerHeroMastery(HERO_ID, new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        assertThat(response.avgDeaths()).isEqualByComparingTo("12.00");
+        assertThat(response.avgHeroDamage()).isEqualByComparingTo("4500.00");
+        assertThat(response.contextSummary().roughGameCount()).isGreaterThanOrEqualTo(1);
+        assertThat(response.contextSummary().stompLossCount()).isOne();
+        assertThat(response.contextSummary().averageContextWeight()).isLessThan(BigDecimal.ONE);
+        assertThat(response.recentMatches())
+                .anySatisfy(match -> {
+                    assertThat(match.contextClassification()).isEqualTo(ContextWeightClassification.STOMP_LOSS);
+                    assertThat(match.contextReasons()).contains(ContextWeightReason.STOMP_LOSS_CONTEXT);
+                    assertThat(match.deaths()).isEqualTo(16);
+                });
+        assertThat(response.deterministicNotes())
+                .anySatisfy(note -> assertThat(note.category()).isEqualTo(HeroMasteryNoteCategory.CONTEXT));
+    }
+
+    @Test
+    void currentPlayerHeroMasteryReturnsStableEmptyStateWhenPlayerHasNoAnalyticsData() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerHeroMasteryMetrics(eq(PROFILE_ID), eq(HERO_ID), any(), eq(false)))
+                .thenReturn(Optional.empty());
+        when(analyticsQueryService.playerComparisonHeadlineMetrics(eq(PROFILE_ID), any(), eq(false)))
+                .thenReturn(Optional.empty());
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(), eq(false))).thenReturn(List.of());
+
+        var response = service.currentPlayerHeroMastery(HERO_ID, new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        assertThat(response.profileId()).isEqualTo(PROFILE_ID);
+        assertThat(response.heroId()).isEqualTo(HERO_ID);
+        assertThat(response.games()).isZero();
+        assertThat(response.masteryVerdict()).isEqualTo(HeroMasteryVerdict.INSUFFICIENT_DATA);
+        assertThat(response.recentMatches()).isEmpty();
+        assertThat(response.comparisonToPlayerOverallBaseline()).isEmpty();
+        assertThat(response.contextSummary().averageContextWeight()).isEqualByComparingTo("1.00");
+    }
+
+    @Test
+    void currentPlayerHeroMasteryReturnsInsufficientDataWhenHeroHasNoMatchesButOverallBaselineExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerHeroMasteryMetrics(eq(PROFILE_ID), eq(HERO_ID), any(), eq(false)))
+                .thenReturn(Optional.empty());
+        when(analyticsQueryService.playerComparisonHeadlineMetrics(eq(PROFILE_ID), any(), eq(false)))
+                .thenReturn(Optional.of(overallBaseline()));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(), eq(false))).thenReturn(List.of());
+
+        var response = service.currentPlayerHeroMastery(HERO_ID, new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        assertThat(response.games()).isZero();
+        assertThat(response.masteryVerdict()).isEqualTo(HeroMasteryVerdict.INSUFFICIENT_DATA);
+        assertThat(response.deterministicNotes())
+                .anySatisfy(note -> assertThat(note.category()).isEqualTo(HeroMasteryNoteCategory.SAMPLE_SIZE));
+    }
+
+    @Test
+    void currentPlayerHeroMasteryRejectsMismatchedHeroQueryFilter() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+
+        assertThatThrownBy(() -> service.currentPlayerHeroMastery(
+                HERO_ID,
+                new AnalyticsFilters(null, null, PROFILE_ID, HERO_TWO_ID, 10)))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Hero filter does not match the route hero.");
+    }
+
+    @Test
+    void currentPlayerInsightsReturnPositiveKdaTrendWhenRecentMatchesImprove() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(6), "2.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(5), "2.20", 3, 520, 580),
+                        progressPoint(NOW.minusDays(4), "2.10", 3, 520, 580),
+                        progressPoint(NOW.minusDays(3), "4.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(2), "4.20", 3, 520, 580),
+                        progressPoint(NOW.minusDays(1), "4.10", 3, 520, 580)));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of());
+
+        var response = service.currentPlayerInsights(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        ArgumentCaptor<AnalyticsFilters> filters = ArgumentCaptor.forClass(AnalyticsFilters.class);
+        verify(analyticsQueryService).playerProgress(eq(PROFILE_ID), filters.capture(), eq(false));
+        assertThat(filters.getValue().profileId()).isEqualTo(PROFILE_ID);
+        assertThat(filters.getValue().limit()).isEqualTo(10);
+        PlayerInsightResponse insight = response.stream()
+                .filter(item -> item.metricName().equals("KDA"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(insight.category()).isEqualTo(PlayerInsightCategory.POSITIVE);
+        assertThat(insight.title()).isEqualTo("KDA trend is improving");
+        assertThat(insight.currentValue()).isEqualByComparingTo("4.10");
+        assertThat(insight.comparisonValue()).isEqualByComparingTo("2.10");
+        assertThat(insight.sampleSize()).isEqualTo(6);
+        assertThat(insight.evidence()).contains("3 recent matches");
+    }
+
+    @Test
+    void currentPlayerInsightsReturnContextWeightInsightForRoughGames() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(6), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(5), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(4), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(3), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(2), "3.00", 3, 520, 580),
+                        progressPoint(
+                                NOW.minusDays(1),
+                                "0.40",
+                                2,
+                                16,
+                                2,
+                                220,
+                                280,
+                                3000,
+                                0,
+                                0,
+                                false)));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of());
+
+        var response = service.currentPlayerInsights(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        PlayerInsightResponse insight = response.stream()
+                .filter(item -> item.metricName().equals("contextWeight"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(insight.category()).isEqualTo(PlayerInsightCategory.INFO);
+        assertThat(insight.currentValue()).isEqualByComparingTo("0.35");
+        assertThat(insight.comparisonValue()).isEqualByComparingTo("1.00");
+        assertThat(insight.contextWeight()).isNotNull();
+        assertThat(insight.contextWeight().classification()).isEqualTo(ContextWeightClassification.STOMP_LOSS);
+        assertThat(insight.contextWeight().reasons())
+                .contains(ContextWeightReason.HIGH_DEATHS, ContextWeightReason.LOW_KDA);
+        assertThat(insight.description()).contains("Raw match values stay unchanged");
+    }
+
+    @Test
+    void currentPlayerInsightsReturnWarningWhenDeathsAreHighOnHero() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(6), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(5), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(4), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(3), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(2), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(1), "3.00", 3, 520, 580)));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(heroPerformance(HERO_ID, "Anti-Mage", 3, "50.00", "5.00", "3.00")));
+
+        var response = service.currentPlayerInsights(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        PlayerInsightResponse insight = response.stream()
+                .filter(item -> item.metricName().equals("avgDeaths"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(insight.category()).isEqualTo(PlayerInsightCategory.WARNING);
+        assertThat(insight.title()).isEqualTo("Deaths are high on Anti-Mage");
+        assertThat(insight.currentValue()).isEqualByComparingTo("5.00");
+        assertThat(insight.comparisonValue()).isEqualByComparingTo("3.00");
+        assertThat(insight.sampleSize()).isEqualTo(3);
+        assertThat(insight.description()).contains("Anti-Mage");
+    }
+
+    @Test
+    void currentPlayerInsightsReturnEmptyListWhenDataIsTooSparse() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(2), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(1), "3.20", 3, 520, 580)));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(heroPerformance(HERO_ID, "Anti-Mage", 2, "100.00", "6.00", "7.00")));
+
+        var response = service.currentPlayerInsights(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        verify(analyticsQueryService).playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false));
+        verify(analyticsQueryService).playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false));
+        assertThat(response).isEmpty();
+    }
+
+    @Test
+    void currentPlayerInsightsReturnHeroSpecificInsightWhenMinimumSampleExists() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(ProfileRole.PLAYER));
+        when(analyticsQueryService.playerProgress(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(
+                        progressPoint(NOW.minusDays(6), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(5), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(4), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(3), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(2), "3.00", 3, 520, 580),
+                        progressPoint(NOW.minusDays(1), "3.00", 3, 520, 580)));
+        when(analyticsQueryService.playerHeroPerformance(eq(PROFILE_ID), any(AnalyticsFilters.class), eq(false)))
+                .thenReturn(List.of(heroPerformance(HERO_ID, "Anti-Mage", 3, "60.00", "3.00", "5.00")));
+
+        var response = service.currentPlayerInsights(new AnalyticsFilters(null, null, PROFILE_ID, null, 10));
+
+        PlayerInsightResponse insight = response.stream()
+                .filter(item -> item.metricName().equals("avgKda"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(insight.category()).isEqualTo(PlayerInsightCategory.POSITIVE);
+        assertThat(insight.title()).isEqualTo("You perform better with Anti-Mage");
+        assertThat(insight.currentValue()).isEqualByComparingTo("5.00");
+        assertThat(insight.comparisonValue()).isEqualByComparingTo("3.00");
+        assertThat(insight.sampleSize()).isEqualTo(3);
     }
 
     @Test
@@ -441,7 +847,154 @@ class RoleBasedAnalyticsServiceTest {
                 0,
                 320,
                 12,
-                true);
+                true,
+                21000,
+                22,
+                2400,
+                "RADIANT",
+                38,
+                24,
+                "RADIANT");
+    }
+
+    private HeroMasteryMetrics heroMasteryMetrics(
+            int games,
+            int wins,
+            int losses,
+            String winRate,
+            String kda,
+            String avgDeaths,
+            String avgGoldPerMin,
+            String avgXpPerMin,
+            String avgLastHits,
+            String avgDenies,
+            String avgNetWorth,
+            String avgHeroDamage,
+            String avgTowerDamage,
+            String avgHeroHealing,
+            String avgLevel
+    ) {
+        return new HeroMasteryMetrics(
+                PROFILE_ID,
+                HERO_ID,
+                "Anti-Mage",
+                games,
+                wins,
+                losses,
+                new BigDecimal(winRate),
+                new BigDecimal("8.00"),
+                new BigDecimal(avgDeaths),
+                new BigDecimal("10.00"),
+                new BigDecimal(kda),
+                new BigDecimal(avgGoldPerMin),
+                new BigDecimal(avgXpPerMin),
+                new BigDecimal(avgLastHits),
+                new BigDecimal(avgDenies),
+                new BigDecimal(avgNetWorth),
+                new BigDecimal(avgHeroDamage),
+                new BigDecimal(avgTowerDamage),
+                new BigDecimal(avgHeroHealing),
+                new BigDecimal(avgLevel));
+    }
+
+    private PlayerComparisonMetricResponse overallBaseline() {
+        return new PlayerComparisonMetricResponse(
+                PROFILE_ID,
+                "Carry Player",
+                10,
+                6,
+                4,
+                new BigDecimal("55.00"),
+                new BigDecimal("4.00"),
+                new BigDecimal("6.00"),
+                new BigDecimal("4.00"),
+                new BigDecimal("10.00"),
+                new BigDecimal("560.00"),
+                new BigDecimal("620.00"),
+                new BigDecimal("230.00"),
+                new BigDecimal("8.00"),
+                new BigDecimal("17500.00"),
+                new BigDecimal("18000.00"),
+                new BigDecimal("1800.00"),
+                new BigDecimal("100.00"));
+    }
+
+    private PlayerProgressPointResponse progressPoint(
+            OffsetDateTime playedAt,
+            String kda,
+            int deaths,
+            Integer goldPerMin,
+            Integer xpPerMin
+    ) {
+        return new PlayerProgressPointResponse(
+                playedAt,
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                HERO_ID,
+                1,
+                "Anti-Mage",
+                8,
+                deaths,
+                10,
+                new BigDecimal(kda),
+                goldPerMin,
+                xpPerMin,
+                18000,
+                2200,
+                0,
+                210,
+                8,
+                true,
+                18000,
+                18,
+                2400,
+                "RADIANT",
+                38,
+                24,
+                "RADIANT");
+    }
+
+    private PlayerProgressPointResponse progressPoint(
+            OffsetDateTime playedAt,
+            String kda,
+            int kills,
+            int deaths,
+            int assists,
+            Integer goldPerMin,
+            Integer xpPerMin,
+            Integer heroDamage,
+            Integer towerDamage,
+            Integer heroHealing,
+            Boolean won
+    ) {
+        return new PlayerProgressPointResponse(
+                playedAt,
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                HERO_ID,
+                1,
+                "Anti-Mage",
+                kills,
+                deaths,
+                assists,
+                new BigDecimal(kda),
+                goldPerMin,
+                xpPerMin,
+                heroDamage,
+                towerDamage,
+                heroHealing,
+                210,
+                8,
+                won,
+                Boolean.FALSE.equals(won) ? 5200 : 18000,
+                Boolean.FALSE.equals(won) ? 10 : 18,
+                1900,
+                "RADIANT",
+                Boolean.FALSE.equals(won) ? 8 : 38,
+                Boolean.FALSE.equals(won) ? 42 : 24,
+                Boolean.FALSE.equals(won) ? "DIRE" : "RADIANT");
     }
 
     private PlayerHeroPerformanceResponse heroPerformance() {
@@ -504,6 +1057,44 @@ class RoleBasedAnalyticsServiceTest {
                 "7894561230",
                 PLAYED_AT,
                 new BigDecimal("12.00"));
+    }
+
+    private PlayerHeroPerformanceResponse heroPerformance(
+            UUID heroId,
+            String heroName,
+            int matches,
+            String winRate,
+            String avgDeaths,
+            String avgKda
+    ) {
+        return new PlayerHeroPerformanceResponse(
+                heroId,
+                1,
+                heroName,
+                matches,
+                Math.max(matches - 1, 0),
+                matches > 0 ? 1 : 0,
+                new BigDecimal(winRate),
+                new BigDecimal("7.00"),
+                new BigDecimal(avgDeaths),
+                new BigDecimal("9.00"),
+                new BigDecimal(avgKda),
+                new BigDecimal("520.00"),
+                new BigDecimal("580.00"),
+                new BigDecimal("18000.00"),
+                new BigDecimal("2200.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("210.00"),
+                new BigDecimal("8.00"),
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                PLAYED_AT,
+                MATCH_ID,
+                MATCH_GAME_ID,
+                "7894561230",
+                PLAYED_AT,
+                new BigDecimal(avgKda));
     }
 
     private Team team() {

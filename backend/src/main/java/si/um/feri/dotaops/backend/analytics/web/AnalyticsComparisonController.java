@@ -6,6 +6,7 @@ import java.util.UUID;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
@@ -87,7 +88,46 @@ public class AnalyticsComparisonController {
                         limit)));
     }
 
+    @GetMapping("/players/candidates")
+    ApiResponse<PlayerComparisonLookupResponse> playerComparisonCandidates(
+            @RequestParam(required = false) @Size(max = 80) String query,
+            @RequestParam(name = "q", required = false) @Size(max = 80) String q,
+            @RequestParam(name = "search", required = false) @Size(max = 80) String search,
+            @RequestParam(required = false) UUID tournamentId,
+            @RequestParam(name = "tournament_id", required = false) UUID tournamentIdSnake,
+            @RequestParam(required = false) UUID teamId,
+            @RequestParam(name = "team_id", required = false) UUID teamIdSnake,
+            @RequestParam(required = false) UUID heroId,
+            @RequestParam(name = "hero_id", required = false) UUID heroIdSnake,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            OffsetDateTime to,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(20) int limit
+    ) {
+        return ApiResponse.of(analyticsComparisonService.playerComparisonCandidates(
+                firstNonBlank(query, q, search),
+                new AnalyticsFilters(
+                        firstNonNull(tournamentId, tournamentIdSnake),
+                        firstNonNull(teamId, teamIdSnake),
+                        null,
+                        firstNonNull(heroId, heroIdSnake),
+                        from,
+                        to,
+                        limit)));
+    }
+
     private UUID firstNonNull(UUID primary, UUID secondary) {
         return primary == null ? secondary : primary;
+    }
+
+    private String firstNonBlank(String primary, String secondary, String tertiary) {
+        if (primary != null && !primary.isBlank()) {
+            return primary;
+        }
+        if (secondary != null && !secondary.isBlank()) {
+            return secondary;
+        }
+        return tertiary;
     }
 }

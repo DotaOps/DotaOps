@@ -27,7 +27,7 @@ function finalStatusForRole(role: ProfileRole | null) {
     return "Tournament workspace online";
   }
 
-  if (role === "player" || role === "captain") {
+  if (role === "player") {
     return "Player hub synchronized";
   }
 

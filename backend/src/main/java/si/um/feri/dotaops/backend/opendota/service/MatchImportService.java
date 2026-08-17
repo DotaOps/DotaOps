@@ -57,12 +57,25 @@ public class MatchImportService {
     }
 
     public MatchImportResponse importMatch(CreateMatchImportRequest request, String clientIp) {
+        AuthenticatedActor actor = requireAdmin();
+        return importMatch(request, clientIp, actor);
+    }
+
+    public MatchImportResponse retryImport(UUID importId, String clientIp) {
+        AuthenticatedActor actor = requireAdmin();
+        MatchImport matchImport = matchImportRepository.findById(importId)
+                .orElseThrow(() -> new ResourceNotFoundException("Match import", "id", importId));
+
+        return importMatch(new CreateMatchImportRequest(matchImport.dotaMatchId()), clientIp, actor);
+    }
+
+    private MatchImportResponse importMatch(
+            CreateMatchImportRequest request,
+            String clientIp,
+            AuthenticatedActor actor
+    ) {
         String dotaMatchId = normalizeDotaMatchId(request.dotaMatchId());
         long parsedMatchId = parseDotaMatchId(dotaMatchId);
-        AuthenticatedActor actor = currentUserProvider.requireActor();
-        if (!actor.isOrganizer()) {
-            throw new AccessDeniedException("Only organizers or admins can import matches.");
-        }
         UUID requestedBy = actor.requireProfileId();
 
         Optional<MatchImport> existing = matchImportRepository.findByDotaMatchId(dotaMatchId);
@@ -94,13 +107,6 @@ public class MatchImportService {
         }
 
         return responseFrom(fetchAndStoreMatch(startedImport.id(), parsedMatchId));
-    }
-
-    public MatchImportResponse retryImport(UUID importId, String clientIp) {
-        MatchImport matchImport = matchImportRepository.findById(importId)
-                .orElseThrow(() -> new ResourceNotFoundException("Match import", "id", importId));
-
-        return importMatch(new CreateMatchImportRequest(matchImport.dotaMatchId()), clientIp);
     }
 
     @Transactional(readOnly = true)
@@ -184,6 +190,16 @@ public class MatchImportService {
                 .stream()
                 .map(MatchImportEventResponse::from)
                 .toList();
+    }
+
+    private AuthenticatedActor requireAdmin() {
+        AuthenticatedActor actor = currentUserProvider.requireActor();
+        if (!actor.isAdmin()) {
+            throw new AccessDeniedException("Only admins can import matches.");
+        }
+
+        actor.requireProfileId();
+        return actor;
     }
 
     private String normalizeDotaMatchId(String value) {

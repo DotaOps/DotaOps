@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 
@@ -36,6 +37,7 @@ import si.um.feri.dotaops.backend.tournament.repository.TournamentRepository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -68,6 +70,12 @@ class TournamentRegistrationServiceTest {
             currentUserProvider,
             databaseActorContext,
             notificationOutboxService);
+
+    @BeforeEach
+    void setUpActiveCaptainMembership() {
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team(CAPTAIN_PROFILE_ID)));
+        when(teamMemberRepository.existsActive(TEAM_ID, CAPTAIN_PROFILE_ID)).thenReturn(true);
+    }
 
     @Test
     void captainCanRegisterTeamAndRosterSnapshotUsesTournamentTeamSize() {
@@ -106,6 +114,22 @@ class TournamentRegistrationServiceTest {
                 null)))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessage("Only the team captain can register this team for a tournament.");
+    }
+
+    @Test
+    void inactiveCaptainCannotRegisterTeam() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(tournamentRepository.findById(TOURNAMENT_ID)).thenReturn(Optional.of(openTournament()));
+        when(teamMemberRepository.existsActive(TEAM_ID, CAPTAIN_PROFILE_ID)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.registerTeam(TOURNAMENT_ID, new CreateTournamentRegistrationRequest(
+                TEAM_ID,
+                null,
+                null)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the team captain can register this team for a tournament.");
+
+        verify(registrationRepository, never()).create(any(CreateTournamentRegistrationCommand.class), anyInt());
     }
 
     @Test
@@ -331,6 +355,21 @@ class TournamentRegistrationServiceTest {
     }
 
     @Test
+    void playerWithTournamentCapabilityCannotChangeRegistrationStatus() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(OTHER_PROFILE_ID, ProfileRole.PLAYER));
+        when(tournamentRepository.findById(TOURNAMENT_ID)).thenReturn(Optional.of(openTournament()));
+        when(registrationRepository.findByIdAndTournamentId(REGISTRATION_ID, TOURNAMENT_ID))
+                .thenReturn(Optional.of(registration(TournamentRegistrationStatus.PENDING)));
+        when(tournamentRepository.canManage(TOURNAMENT_ID, OTHER_PROFILE_ID, false)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.rejectRegistration(TOURNAMENT_ID, REGISTRATION_ID))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the tournament owner, tournament organizers, or admins can manage registrations.");
+
+        verify(registrationRepository, never()).updateStatus(any(), any(), any(), any(), any());
+    }
+
+    @Test
     void approveRejectsWhenTournamentIsAlreadyFull() {
         mockOrganizerReview(TournamentRegistrationStatus.PENDING);
         when(registrationRepository.countApprovedRegistrations(TOURNAMENT_ID, REGISTRATION_ID)).thenReturn(8L);
@@ -362,6 +401,25 @@ class TournamentRegistrationServiceTest {
 
         assertThat(response.status()).isEqualTo("approved");
         verify(databaseActorContext).apply(actor);
+    }
+
+    @Test
+    void formerRegistrationCaptainCannotCheckInAfterCaptainTransfer() {
+        when(currentUserProvider.requireActor()).thenReturn(actor(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(tournamentRepository.findById(TOURNAMENT_ID)).thenReturn(Optional.of(tournament(
+                TournamentStatus.PUBLISHED,
+                settings(true),
+                NOW.minusHours(1),
+                NOW.plusHours(1))));
+        when(registrationRepository.findByIdAndTournamentId(REGISTRATION_ID, TOURNAMENT_ID))
+                .thenReturn(Optional.of(registration(TournamentRegistrationStatus.APPROVED)));
+        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team(OTHER_PROFILE_ID)));
+
+        assertThatThrownBy(() -> service.checkInRegistration(TOURNAMENT_ID, REGISTRATION_ID))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the current active team captain or tournament organizer can check in this team.");
+
+        verify(registrationRepository, never()).checkIn(REGISTRATION_ID, TOURNAMENT_ID);
     }
 
     @Test

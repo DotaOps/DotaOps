@@ -18,6 +18,17 @@ as $$
   )::uuid
 $$;
 
+create temporary table demo_auth_accounts (
+  email text primary key
+) on commit drop;
+
+insert into demo_auth_accounts (email)
+values ('demo.organizer@dotaops.local');
+
+insert into demo_auth_accounts (email)
+select 'demo.player' || player_number || '@dotaops.local'
+from generate_series(1, 30) as demo_players(player_number);
+
 delete from public.tournaments
 where id in (
   pg_temp.demo_uuid('tournament:demo-cup'),
@@ -37,6 +48,11 @@ where id in (
 delete from public.profile_external_accounts
 where provider = 'email'::public.dotaops_external_account_provider
   and provider_account_id like 'demo.%@dotaops.local';
+
+delete from public.profiles p
+using auth.users u, demo_auth_accounts a
+where p.auth_user_id = u.id
+  and lower(u.email) = a.email;
 
 delete from public.profiles
 where id in (
@@ -73,6 +89,15 @@ where id in (
   pg_temp.demo_uuid('profile:player-29'),
   pg_temp.demo_uuid('profile:player-30')
 );
+
+delete from auth.identities i
+using auth.users u, demo_auth_accounts a
+where i.user_id = u.id
+  and lower(u.email) = a.email;
+
+delete from auth.users u
+using demo_auth_accounts a
+where lower(u.email) = a.email;
 
 select private.refresh_dotaops_analytics();
 

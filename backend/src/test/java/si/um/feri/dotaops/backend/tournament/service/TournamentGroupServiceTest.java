@@ -83,7 +83,7 @@ class TournamentGroupServiceTest {
     void nonOrganizerCannotCreateGroup() {
         when(currentUserProvider.requireActor()).thenReturn(actor(PLAYER_PROFILE_ID, ProfileRole.PLAYER));
         when(tournamentRepository.findById(TOURNAMENT_ID)).thenReturn(Optional.of(tournament()));
-        when(tournamentRepository.canManage(TOURNAMENT_ID, PLAYER_PROFILE_ID, false)).thenReturn(false);
+        when(tournamentRepository.canManage(TOURNAMENT_ID, PLAYER_PROFILE_ID, false)).thenReturn(true);
 
         assertThatThrownBy(() -> service.createGroup(
                 TOURNAMENT_ID,
@@ -185,7 +185,7 @@ class TournamentGroupServiceTest {
     void nonOrganizerCannotListPrivateTournamentStandings() {
         when(currentUserProvider.requireActor()).thenReturn(actor(PLAYER_PROFILE_ID, ProfileRole.PLAYER));
         when(tournamentRepository.findById(TOURNAMENT_ID)).thenReturn(Optional.of(tournament()));
-        when(tournamentRepository.canManage(TOURNAMENT_ID, PLAYER_PROFILE_ID, false)).thenReturn(false);
+        when(tournamentRepository.canManage(TOURNAMENT_ID, PLAYER_PROFILE_ID, false)).thenReturn(true);
 
         assertThatThrownBy(() -> service.listOrganizerStandings(TOURNAMENT_ID))
                 .isInstanceOf(AccessDeniedException.class)

@@ -1076,7 +1076,7 @@ function TournamentForm({
         <div>
           <p className="ops-label">{mode === "create" ? "Systems Deployment" : "Tournament Configuration"}</p>
           <h1>{mode === "create" ? "New Tournament Initialization" : selectedTournament?.title}</h1>
-          <p>Configure only backend-supported tournament fields. Unsupported branding, region, and visibility flags are intentionally not sent.</p>
+          <p>Configure the tournament fields available in the current organizer workflow. Advanced branding, region, and visibility options are planned for later.</p>
         </div>
         {selectedTournament ? <StatusBadge status={selectedTournament.status} /> : null}
       </div>
@@ -1426,7 +1426,7 @@ function TournamentDetail({
                 <div className="org-tournament-panel-title">
                   <h2>Registration Commands</h2>
                 </div>
-                <p className="org-tournament-muted">Export, close registration, and bulk action endpoints are not available yet.</p>
+                <p className="org-tournament-muted">Export, close registration, and bulk actions are not available yet.</p>
                 <div className="org-tournament-side-actions">
                   <button className="org-tournament-secondary" disabled={isMutating} onClick={onRefresh} type="button">
                     Refresh Registrations
@@ -1483,7 +1483,7 @@ function staffRowsForTournament(
     role: "Owner",
     scope: "Tournament-wide",
     status: "Active",
-    subtitle: tournament.organizerProfileId ? "Primary organizer profile" : "Backend owner fallback"
+    subtitle: tournament.organizerProfileId ? "Primary organizer profile" : "Organizer owner"
   });
 
   if (
@@ -1523,7 +1523,7 @@ function StaffOfficialsPanel({
   const summary = [
     { label: "Operators", tone: "red", value: staffRows.length },
     { label: "Organizer Controls", tone: "cyan", value: organizers },
-    { label: "Backend Staff API", tone: "gold", value: 0 },
+    { label: "Planned Staff Tools", tone: "gold", value: 0 },
     { label: "Locked Actions", tone: "muted", value: 5 }
   ];
 
@@ -1541,7 +1541,7 @@ function StaffOfficialsPanel({
         </div>
         <span className="ops-badge">
           <ShieldAlert size={14} />
-          API pending
+          Coming soon
         </span>
       </div>
 
@@ -1640,7 +1640,7 @@ function StaffOfficialsPanel({
 
       <PanelWarning
         title="Organizer/admin controlled"
-        detail="Dedicated staff management is not part of the current role model. Organizer/admin handles these operations, and disabled controls need backend staff endpoints before they can be enabled."
+        detail="Dedicated staff management is not part of the current role model. Organizer/admin handles these operations, and disabled controls will stay locked until staff tools are available."
       />
     </section>
   );
@@ -1665,12 +1665,12 @@ interface PermissionRow {
 }
 
 const permissionRows: PermissionRow[] = [
-  { action: "Schedule match", backendRequired: "unavailable", currentSupport: "allowed", note: "Organizer endpoint exists.", organizer: "allowed" },
-  { action: "Start match", backendRequired: "unavailable", currentSupport: "allowed", note: "Organizer endpoint exists.", organizer: "allowed" },
-  { action: "Enter result", backendRequired: "unavailable", currentSupport: "allowed", note: "Organizer result endpoint exists.", organizer: "allowed" },
+  { action: "Schedule match", backendRequired: "unavailable", currentSupport: "allowed", note: "Available in Organizer.", organizer: "allowed" },
+  { action: "Start match", backendRequired: "unavailable", currentSupport: "allowed", note: "Available in Organizer.", organizer: "allowed" },
+  { action: "Enter result", backendRequired: "unavailable", currentSupport: "allowed", note: "Result entry is available in Organizer.", organizer: "allowed" },
   { action: "Confirm result", backendRequired: "backend", currentSupport: "backend", note: "Approval workflow is not active.", organizer: "backend" },
-  { action: "Finish match", backendRequired: "unavailable", currentSupport: "allowed", note: "Organizer endpoint exists.", organizer: "allowed" },
-  { action: "Cancel match", backendRequired: "unavailable", currentSupport: "allowed", note: "Organizer endpoint exists.", organizer: "allowed" },
+  { action: "Finish match", backendRequired: "unavailable", currentSupport: "allowed", note: "Available in Organizer.", organizer: "allowed" },
+  { action: "Cancel match", backendRequired: "unavailable", currentSupport: "allowed", note: "Available in Organizer.", organizer: "allowed" },
   { action: "Handle dispute", backendRequired: "backend", currentSupport: "unavailable", note: "Dispute process is outside current scope.", organizer: "unavailable" },
   { action: "Import match data", backendRequired: "unavailable", currentSupport: "allowed", note: "Organizer import flow exists where enabled.", organizer: "allowed" }
 ];
@@ -1751,7 +1751,7 @@ function MatchOperationsControlPanel({
                   <th>Process</th>
                   <th>Organizer/Admin</th>
                   <th>Current Support</th>
-                  <th>Backend Required</th>
+                  <th>Availability</th>
                   <th>Notes</th>
                 </tr>
               </thead>
@@ -1779,8 +1779,8 @@ function MatchOperationsControlPanel({
               <p>Referee, analyst, and score reporter account flows are not part of the current project scope.</p>
             </article>
             <article>
-              <strong>Backend-gated controls</strong>
-              <p>Unsupported operations stay locked until organizer-focused backend endpoints exist.</p>
+              <strong>Organizer controls only</strong>
+              <p>Unsupported operations stay locked until they are available in the organizer workflow.</p>
             </article>
           </div>
         </div>
@@ -1812,7 +1812,7 @@ function MatchOperationsControlPanel({
           </button>
 
           <PanelWarning
-            title="Backend status"
+            title="Workspace status"
             detail="Dedicated official assignment is not part of the current role model. Organizer/admin remains responsible for match operations."
           />
         </aside>
@@ -1824,7 +1824,7 @@ function MatchOperationsControlPanel({
 function PermissionStateBadge({ state }: { state: PermissionState }) {
   const labels: Record<PermissionState, string> = {
     allowed: "Organizer controlled",
-    backend: "Backend required",
+    backend: "Not available yet",
     restricted: "Planned limit",
     unavailable: "Not active"
   };
@@ -1927,7 +1927,7 @@ function ValidationPanel({ errors }: { errors: ApiFieldError[] }) {
     <section className="org-tournament-validation ops-panel">
       <AlertTriangle size={18} />
       <div>
-        <h2>Backend validation failed</h2>
+        <h2>Validation failed</h2>
         <ul>
           {errors.map((error, index) => (
             <li key={`${error.field ?? "general"}-${index}`}>

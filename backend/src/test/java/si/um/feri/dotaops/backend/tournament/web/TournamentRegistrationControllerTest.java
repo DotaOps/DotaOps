@@ -123,6 +123,8 @@ class TournamentRegistrationControllerTest {
 
     @Test
     void organizerApproveRouteDelegatesToService() throws Exception {
+        when(authenticatedProfileRepository.findByAuthUserId(AUTH_USER_ID))
+                .thenReturn(Optional.of(authenticatedProfile(ProfileRole.ORGANIZER)));
         when(registrationService.approveRegistration(
                 eq(TOURNAMENT_ID),
                 eq(REGISTRATION_ID),
@@ -147,11 +149,15 @@ class TournamentRegistrationControllerTest {
     }
 
     private static AuthenticatedProfile authenticatedProfile() {
+        return authenticatedProfile(ProfileRole.PLAYER);
+    }
+
+    private static AuthenticatedProfile authenticatedProfile(ProfileRole role) {
         return new AuthenticatedProfile(
                 PROFILE_ID,
                 AUTH_USER_ID,
-                "Captain",
-                ProfileRole.PLAYER);
+                role == ProfileRole.ORGANIZER ? "Organizer" : "Captain",
+                role);
     }
 
     private static TournamentRegistrationResponse response(String status) {

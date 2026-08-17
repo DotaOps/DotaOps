@@ -273,7 +273,6 @@ public class ProfileService {
 
     private Profile createDefaultProfile(SupabasePrincipal principal) {
         UUID authUserId = principal.authUserId();
-        ProfileRole role = resolveMetadataRole(desiredRoleFromClaims(principal));
         String nickname = availableDefaultNickname(principal.email(), authUserId);
 
         try {
@@ -284,7 +283,7 @@ public class ProfileService {
                     null,
                     null,
                     null,
-                    role));
+                    ProfileRole.PLAYER));
         } catch (DataIntegrityViolationException exception) {
             throw profileConstraintException(exception);
         }
@@ -346,58 +345,12 @@ public class ProfileService {
         };
     }
 
-    private ProfileRole resolveMetadataRole(String value) {
-        if (value == null || value.isBlank()) {
-            return ProfileRole.PLAYER;
-        }
-
-        String normalized = value.trim()
-                .toLowerCase(Locale.ROOT)
-                .replace('-', '_');
-
-        return "organizer".equals(normalized) ? ProfileRole.ORGANIZER : ProfileRole.PLAYER;
-    }
-
     private ProfileRole organizerCapabilityRole(ProfileRole existingRole, ProfileRole requestedRole) {
         if (existingRole == ProfileRole.ORGANIZER || requestedRole == ProfileRole.ORGANIZER) {
             return ProfileRole.ORGANIZER;
         }
 
         return requestedRole;
-    }
-
-    private String desiredRoleFromClaims(SupabasePrincipal principal) {
-        if (principal.token() == null || principal.token().claims() == null) {
-            return null;
-        }
-
-        Object appMetadata = principal.token().claims().get("app_metadata");
-        if (appMetadata instanceof java.util.Map<?, ?> metadata) {
-            Object desiredRole = metadata.get("desired_role");
-            if (desiredRole instanceof String desiredRoleValue) {
-                return desiredRoleValue;
-            }
-
-            Object accountType = metadata.get("account_type");
-            if (accountType instanceof String accountTypeValue) {
-                return accountTypeValue;
-            }
-        }
-
-        Object userMetadata = principal.token().claims().get("user_metadata");
-        if (userMetadata instanceof java.util.Map<?, ?> metadata) {
-            Object desiredRole = metadata.get("desired_role");
-            if (desiredRole instanceof String desiredRoleValue) {
-                return desiredRoleValue;
-            }
-
-            Object accountType = metadata.get("account_type");
-            if (accountType instanceof String accountTypeValue) {
-                return accountTypeValue;
-            }
-        }
-
-        return null;
     }
 
     private String availableDefaultNickname(String email, UUID authUserId) {

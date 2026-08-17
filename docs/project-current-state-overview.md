@@ -537,7 +537,40 @@ Najpomembnejsi regresijski testi za prihodnje spremembe:
 
 ### Frontend testi
 
-Frontend nima `npm test` skripte in avtomatiziranih frontend test datotek ni najdenih. CI izvaja lint, typecheck in build. E2E suite ni najden.
+Frontend nima `npm test` skripte. CI izvaja lint, typecheck in build. Za FE-14 je dodan minimalen Cypress E2E smoke suite, ki avtomatsko preveri, da se kljucni frontend tokovi nalozijo in da osnovna zascita route-ov deluje.
+
+#### FE-14 E2E smoke testiranje
+
+Uporabljeno orodje je Cypress. Namen suite-a je avtomatsko preverjanje kljucnih frontend tokov brez destruktivnih akcij, kot so delete, disband ali cancel real data.
+
+Zagon:
+
+```powershell
+cd frontend
+npm run e2e
+```
+
+Pogoji za zagon:
+
+- aplikacija mora teci na `http://localhost:3000`;
+- demo seed podatki morajo biti nalozeni.
+
+Aktivni smoke testi:
+
+| Spec | Namen |
+| --- | --- |
+| `public.cy.ts` | Homepage, public tournaments, login, register in izbira registracijske role. |
+| `protected-routes.cy.ts` | Zascita `/dashboard`, `/ekipe` in `/analitika` za neprijavljene uporabnike. |
+| `auth-smoke.cy.ts` | Demo player login ter dashboard, My Team in analytics smoke check. |
+| `organizer-smoke.cy.ts` | Demo organizer login ter dashboard, organizer workspace in analytics smoke check. |
+
+Zadnji zabelezeni zagon:
+
+- 4 spec files passed;
+- 6 tests passed;
+- 0 failed.
+
+Screenshot terminala z uspesnim Cypress zagonom naj se shrani v `docs/reports/evidence/`, na primer kot `docs/reports/evidence/fe-14-cypress-smoke-success.png`.
 
 ### Izvedeni ukazi
 

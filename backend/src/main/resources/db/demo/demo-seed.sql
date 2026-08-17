@@ -45,38 +45,38 @@ insert into demo_profile_seed (
   dota_account_id
 )
 values
-  ('admin', 'demo_admin', 'Demo Admin', 'admin', 'demo.admin@dotaops.local', null, null, null, 'SI', null),
-  ('organizer', 'demo_organizer', 'Demo Organizer', 'organizer', 'demo.organizer@dotaops.local', null, null, null, 'SI', null),
-  ('player-01', 'demo_player_01', 'Aegis Ace', 'player', 'demo.player1@dotaops.local', 'radiant-wolves', 1, 'carry', 'SI', 900000001),
-  ('player-02', 'demo_player_02', 'Mid Signal', 'player', 'demo.player2@dotaops.local', 'radiant-wolves', 2, 'mid', 'SI', 900000002),
-  ('player-03', 'demo_player_03', 'Offlane Pulse', 'player', 'demo.player3@dotaops.local', 'radiant-wolves', 3, 'offlane', 'SI', 900000003),
-  ('player-04', 'demo_player_04', 'Ward Runner', 'player', 'demo.player4@dotaops.local', 'radiant-wolves', 4, 'support', 'SI', 900000004),
-  ('player-05', 'demo_player_05', 'Smoke Caller', 'player', 'demo.player5@dotaops.local', 'radiant-wolves', 5, 'support', 'SI', 900000005),
-  ('player-06', 'demo_player_06', 'Dire Edge', 'player', 'demo.player6@dotaops.local', 'dire-ravens', 1, 'carry', 'HR', 900000006),
-  ('player-07', 'demo_player_07', 'Risky Mid', 'player', 'demo.player7@dotaops.local', 'dire-ravens', 2, 'mid', 'HR', 900000007),
-  ('player-08', 'demo_player_08', 'Lane Anchor', 'player', 'demo.player8@dotaops.local', 'dire-ravens', 3, 'offlane', 'HR', 900000008),
-  ('player-09', 'demo_player_09', 'Rune Scout', 'player', 'demo.player9@dotaops.local', 'dire-ravens', 4, 'roamer', 'HR', 900000009),
-  ('player-10', 'demo_player_10', 'Crow Support', 'player', 'demo.player10@dotaops.local', 'dire-ravens', 5, 'support', 'HR', 900000010),
-  ('player-11', 'demo_player_11', 'Titan Carry', 'player', 'demo.player11@dotaops.local', 'ancient-titans', 1, 'carry', 'AT', 900000011),
-  ('player-12', 'demo_player_12', 'Titan Mid', 'player', 'demo.player12@dotaops.local', 'ancient-titans', 2, 'mid', 'AT', 900000012),
-  ('player-13', 'demo_player_13', 'Titan Wall', 'player', 'demo.player13@dotaops.local', 'ancient-titans', 3, 'offlane', 'AT', 900000013),
-  ('player-14', 'demo_player_14', 'Titan Roam', 'player', 'demo.player14@dotaops.local', 'ancient-titans', 4, 'roamer', 'AT', 900000014),
-  ('player-15', 'demo_player_15', 'Titan Ward', 'player', 'demo.player15@dotaops.local', 'ancient-titans', 5, 'support', 'AT', 900000015),
-  ('player-16', 'demo_player_16', 'Roshan Core', 'player', 'demo.player16@dotaops.local', 'roshan-hunters', 1, 'carry', 'DE', 900000016),
-  ('player-17', 'demo_player_17', 'Pit Mid', 'player', 'demo.player17@dotaops.local', 'roshan-hunters', 2, 'mid', 'DE', 900000017),
-  ('player-18', 'demo_player_18', 'Shard Offlane', 'player', 'demo.player18@dotaops.local', 'roshan-hunters', 3, 'offlane', 'DE', 900000018),
-  ('player-19', 'demo_player_19', 'Aegis Support', 'player', 'demo.player19@dotaops.local', 'roshan-hunters', 4, 'support', 'DE', 900000019),
-  ('player-20', 'demo_player_20', 'Cheese Guard', 'player', 'demo.player20@dotaops.local', 'roshan-hunters', 5, 'support', 'DE', 900000020),
-  ('player-21', 'demo_player_21', 'Mage Carry', 'player', 'demo.player21@dotaops.local', 'midlane-mages', 1, 'carry', 'IT', 900000021),
-  ('player-22', 'demo_player_22', 'Arcane Mid', 'player', 'demo.player22@dotaops.local', 'midlane-mages', 2, 'mid', 'IT', 900000022),
-  ('player-23', 'demo_player_23', 'Glyph Offlane', 'player', 'demo.player23@dotaops.local', 'midlane-mages', 3, 'offlane', 'IT', 900000023),
-  ('player-24', 'demo_player_24', 'Mana Scout', 'player', 'demo.player24@dotaops.local', 'midlane-mages', 4, 'roamer', 'IT', 900000024),
-  ('player-25', 'demo_player_25', 'Scroll Support', 'player', 'demo.player25@dotaops.local', 'midlane-mages', 5, 'support', 'IT', 900000025),
-  ('player-26', 'demo_player_26', 'Rune Carry', 'player', 'demo.player26@dotaops.local', 'rune-raiders', 1, 'carry', 'HU', 900000026),
-  ('player-27', 'demo_player_27', 'Water Rune', 'player', 'demo.player27@dotaops.local', 'rune-raiders', 2, 'mid', 'HU', 900000027),
-  ('player-28', 'demo_player_28', 'Power Rune', 'player', 'demo.player28@dotaops.local', 'rune-raiders', 3, 'offlane', 'HU', 900000028),
-  ('player-29', 'demo_player_29', 'Bounty Scout', 'player', 'demo.player29@dotaops.local', 'rune-raiders', 4, 'roamer', 'HU', 900000029),
-  ('player-30', 'demo_player_30', 'Lotus Support', 'player', 'demo.player30@dotaops.local', 'rune-raiders', 5, 'support', 'HU', 900000030);
+  ('admin', 'nika_ops', 'Nika Horvat', 'admin', 'demo.admin@dotaops.local', null, null, null, 'SI', null),
+  ('organizer', 'matej_novak', 'Matej Novak', 'organizer', 'demo.organizer@dotaops.local', null, null, null, 'SI', null),
+  ('player-01', 'luka_aegis', 'Luka Kranjc', 'player', 'demo.player1@dotaops.local', 'radiant-wolves', 1, 'carry', 'SI', 900000001),
+  ('player-02', 'tina_mid', 'Tina Zupan', 'player', 'demo.player2@dotaops.local', 'radiant-wolves', 2, 'mid', 'SI', 900000002),
+  ('player-03', 'marko_anchor', 'Marko Kos', 'player', 'demo.player3@dotaops.local', 'radiant-wolves', 3, 'offlane', 'SI', 900000003),
+  ('player-04', 'sara_ward', 'Sara Vidmar', 'player', 'demo.player4@dotaops.local', 'radiant-wolves', 4, 'support', 'SI', 900000004),
+  ('player-05', 'nejc_smoke', 'Nejc Kolar', 'player', 'demo.player5@dotaops.local', 'radiant-wolves', 5, 'support', 'SI', 900000005),
+  ('player-06', 'ivan_edge', 'Ivan Petrovic', 'player', 'demo.player6@dotaops.local', 'dire-ravens', 1, 'carry', 'HR', 900000006),
+  ('player-07', 'mia_risk', 'Mia Horvat', 'player', 'demo.player7@dotaops.local', 'dire-ravens', 2, 'mid', 'HR', 900000007),
+  ('player-08', 'dario_lane', 'Dario Vukovic', 'player', 'demo.player8@dotaops.local', 'dire-ravens', 3, 'offlane', 'HR', 900000008),
+  ('player-09', 'lara_rune', 'Lara Kovac', 'player', 'demo.player9@dotaops.local', 'dire-ravens', 4, 'roamer', 'HR', 900000009),
+  ('player-10', 'petra_crow', 'Petra Maric', 'player', 'demo.player10@dotaops.local', 'dire-ravens', 5, 'support', 'HR', 900000010),
+  ('player-11', 'felix_titan', 'Felix Berger', 'player', 'demo.player11@dotaops.local', 'ancient-titans', 1, 'carry', 'AT', 900000011),
+  ('player-12', 'anna_tempo', 'Anna Gruber', 'player', 'demo.player12@dotaops.local', 'ancient-titans', 2, 'mid', 'AT', 900000012),
+  ('player-13', 'leo_wall', 'Leon Weiss', 'player', 'demo.player13@dotaops.local', 'ancient-titans', 3, 'offlane', 'AT', 900000013),
+  ('player-14', 'nora_roam', 'Nora Huber', 'player', 'demo.player14@dotaops.local', 'ancient-titans', 4, 'roamer', 'AT', 900000014),
+  ('player-15', 'max_ward', 'Max Steiner', 'player', 'demo.player15@dotaops.local', 'ancient-titans', 5, 'support', 'AT', 900000015),
+  ('player-16', 'jonas_core', 'Jonas Keller', 'player', 'demo.player16@dotaops.local', 'roshan-hunters', 1, 'carry', 'DE', 900000016),
+  ('player-17', 'emil_pit', 'Emil Schneider', 'player', 'demo.player17@dotaops.local', 'roshan-hunters', 2, 'mid', 'DE', 900000017),
+  ('player-18', 'klara_shard', 'Klara Fischer', 'player', 'demo.player18@dotaops.local', 'roshan-hunters', 3, 'offlane', 'DE', 900000018),
+  ('player-19', 'paul_aegis', 'Paul Wagner', 'player', 'demo.player19@dotaops.local', 'roshan-hunters', 4, 'support', 'DE', 900000019),
+  ('player-20', 'lena_guard', 'Lena Hoffmann', 'player', 'demo.player20@dotaops.local', 'roshan-hunters', 5, 'support', 'DE', 900000020),
+  ('player-21', 'marco_mage', 'Marco Rossi', 'player', 'demo.player21@dotaops.local', 'midlane-mages', 1, 'carry', 'IT', 900000021),
+  ('player-22', 'giulia_arcane', 'Giulia Bianchi', 'player', 'demo.player22@dotaops.local', 'midlane-mages', 2, 'mid', 'IT', 900000022),
+  ('player-23', 'andrea_glyph', 'Andrea Romano', 'player', 'demo.player23@dotaops.local', 'midlane-mages', 3, 'offlane', 'IT', 900000023),
+  ('player-24', 'sofia_scout', 'Sofia Conti', 'player', 'demo.player24@dotaops.local', 'midlane-mages', 4, 'roamer', 'IT', 900000024),
+  ('player-25', 'luca_scroll', 'Luca Ferri', 'player', 'demo.player25@dotaops.local', 'midlane-mages', 5, 'support', 'IT', 900000025),
+  ('player-26', 'balazs_rune', 'Balazs Nagy', 'player', 'demo.player26@dotaops.local', 'rune-raiders', 1, 'carry', 'HU', 900000026),
+  ('player-27', 'eszter_water', 'Eszter Kovacs', 'player', 'demo.player27@dotaops.local', 'rune-raiders', 2, 'mid', 'HU', 900000027),
+  ('player-28', 'mate_power', 'Mate Toth', 'player', 'demo.player28@dotaops.local', 'rune-raiders', 3, 'offlane', 'HU', 900000028),
+  ('player-29', 'reka_bounty', 'Reka Szabo', 'player', 'demo.player29@dotaops.local', 'rune-raiders', 4, 'roamer', 'HU', 900000029),
+  ('player-30', 'dora_lotus', 'Dora Varga', 'player', 'demo.player30@dotaops.local', 'rune-raiders', 5, 'support', 'HU', 900000030);
 
 insert into public.profiles (
   id,
@@ -94,8 +94,8 @@ select
   nickname,
   display_name,
   role::public.dotaops_user_role,
-  'https://example.invalid/dotaops/demo/avatars/' || profile_key || '.png',
-  'Synthetic DotaOps demo profile for local/dev/demo environments.',
+  'https://api.dicebear.com/9.x/initials/svg?seed=' || replace(display_name, ' ', '%20'),
+  'Synthetic DotaOps player profile for local, development, and demo environments.',
   country_code
 from demo_profile_seed
 on conflict (id) do update
@@ -135,6 +135,135 @@ set profile_id = excluded.profile_id,
     metadata = excluded.metadata,
     updated_at = now();
 
+-- Supabase Auth demo login accounts for local/dev/demo only.
+-- Shared demo password: DotaOpsDemo123!
+create temporary table demo_auth_seed on commit drop as
+select
+  s.profile_key,
+  s.nickname,
+  s.display_name,
+  s.role,
+  s.email,
+  pg_temp.demo_uuid('profile:' || s.profile_key) as profile_id,
+  coalesce(
+    (
+      select u.id
+      from auth.users u
+      where lower(u.email) = lower(s.email)
+      order by u.created_at nulls last, u.id
+      limit 1
+    ),
+    pg_temp.demo_uuid('auth-user:' || s.profile_key)
+  ) as auth_user_id
+from demo_profile_seed s
+where s.role in ('organizer', 'player');
+
+insert into auth.users (
+  instance_id,
+  id,
+  aud,
+  role,
+  email,
+  encrypted_password,
+  email_confirmed_at,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  created_at,
+  updated_at
+)
+select
+  '00000000-0000-0000-0000-000000000000'::uuid,
+  auth_user_id,
+  'authenticated',
+  'authenticated',
+  email,
+  crypt('DotaOpsDemo123!', gen_salt('bf')),
+  timestamptz '2026-05-01 00:00:00+00',
+  '',
+  '',
+  '',
+  '',
+  jsonb_build_object(
+    'provider', 'email',
+    'providers', jsonb_build_array('email'),
+    'demo_seed', true
+  ),
+  jsonb_build_object(
+    'demo', true,
+    'nickname', nickname,
+    'display_name', display_name,
+    'account_type', role
+  ),
+  timestamptz '2026-05-01 00:00:00+00',
+  now()
+from demo_auth_seed
+on conflict (id) do update
+set aud = excluded.aud,
+    role = excluded.role,
+    email = excluded.email,
+    encrypted_password = excluded.encrypted_password,
+    email_confirmed_at = excluded.email_confirmed_at,
+    confirmation_token = excluded.confirmation_token,
+    recovery_token = excluded.recovery_token,
+    email_change_token_new = excluded.email_change_token_new,
+    email_change = excluded.email_change,
+    raw_app_meta_data = excluded.raw_app_meta_data,
+    raw_user_meta_data = excluded.raw_user_meta_data,
+    updated_at = now();
+
+insert into auth.identities (
+  id,
+  user_id,
+  provider_id,
+  identity_data,
+  provider,
+  last_sign_in_at,
+  created_at,
+  updated_at
+)
+select
+  pg_temp.demo_uuid('identity:' || profile_key),
+  auth_user_id,
+  auth_user_id::text,
+  jsonb_build_object(
+    'sub', auth_user_id::text,
+    'email', email,
+    'email_verified', true,
+    'phone_verified', false
+  ),
+  'email',
+  null,
+  timestamptz '2026-05-01 00:00:00+00',
+  now()
+from demo_auth_seed
+on conflict (provider_id, provider) do update
+set user_id = excluded.user_id,
+    identity_data = excluded.identity_data,
+    last_sign_in_at = excluded.last_sign_in_at,
+    updated_at = now();
+
+delete from public.profiles p
+using demo_auth_seed s
+where p.auth_user_id = s.auth_user_id
+  and p.id <> s.profile_id
+  and (
+    p.nickname = s.nickname
+    or p.nickname like s.nickname || '\_%' escape '\'
+    or lower(p.nickname) = lower(split_part(s.email, '@', 1))
+    or lower(p.nickname) like lower(split_part(s.email, '@', 1)) || '\_%' escape '\'
+  );
+
+update public.profiles p
+set auth_user_id = s.auth_user_id,
+    updated_at = now()
+from demo_auth_seed s
+where p.id = s.profile_id
+  and p.auth_user_id is distinct from s.auth_user_id;
+
 select set_config('request.dotaops.profile_id', pg_temp.demo_uuid('profile:organizer')::text, true);
 
 create temporary table demo_team_seed (
@@ -161,12 +290,12 @@ insert into demo_team_seed (
   registration_message
 )
 values
-  ('radiant-wolves', 'Radiant Wolves', 'RW', 'radiant-wolves', 'player-01', 'EU Central', 1, 'approved', 'Ready for a full best-of-three demo flow.'),
-  ('dire-ravens', 'Dire Ravens', 'DR', 'dire-ravens', 'player-06', 'Adriatic', 4, 'approved', 'Roster locked and available for analytics comparison.'),
-  ('ancient-titans', 'Ancient Titans', 'AT', 'ancient-titans', 'player-11', 'Alps', 2, 'approved', 'Experienced demo lineup with strong teamfight metrics.'),
-  ('roshan-hunters', 'Roshan Hunters', 'RH', 'roshan-hunters', 'player-16', 'DACH', 3, 'approved', 'Objective-focused roster for public bracket examples.'),
-  ('midlane-mages', 'Midlane Mages', 'MM', 'midlane-mages', 'player-21', 'Italy', null, 'pending', 'Pending demo registration for organizer review.'),
-  ('rune-raiders', 'Rune Raiders', 'RR', 'rune-raiders', 'player-26', 'Pannonia', null, 'rejected', 'Rejected demo registration for review state coverage.');
+  ('radiant-wolves', 'Ljubljana Wardens', 'LJU', 'ljubljana-wardens', 'player-01', 'Slovenia', 1, 'approved', 'Roster confirmed; all five players checked in for group-stage play.'),
+  ('dire-ravens', 'Adriatic Ravens', 'ADR', 'adriatic-ravens', 'player-06', 'Adriatic', 4, 'approved', 'Captain submitted availability and confirmed the playoff schedule.'),
+  ('ancient-titans', 'Alpine Aegis', 'ALP', 'alpine-aegis', 'player-11', 'Alps', 2, 'approved', 'Experienced roster with complete profile and match-history coverage.'),
+  ('roshan-hunters', 'Roshan Hunters Club', 'RHC', 'roshan-hunters-club', 'player-16', 'DACH', 3, 'approved', 'Objective-focused roster seeded for standings, bracket, and analytics flows.'),
+  ('midlane-mages', 'Rome Midlane', 'ROM', 'rome-midlane', 'player-21', 'Italy', null, 'pending', 'Awaiting organizer review after a late roster confirmation.'),
+  ('rune-raiders', 'Danube Raiders', 'DNB', 'danube-raiders', 'player-26', 'Pannonia', null, 'rejected', 'Rejected because the roster missed the published check-in deadline.');
 
 insert into public.teams (
   id,
@@ -188,9 +317,9 @@ select
   slug,
   pg_temp.demo_uuid('profile:' || captain_key),
   region,
-  'https://example.invalid/dotaops/demo/team-assets/' || slug || '-logo.png',
-  'https://example.invalid/dotaops/demo/team-assets/' || slug || '-banner.png',
-  'Synthetic demo team seeded for DotaOps public, team and analytics flows.',
+  'https://api.dicebear.com/9.x/initials/svg?seed=' || replace(name, ' ', '%20'),
+  'https://api.dicebear.com/9.x/shapes/svg?seed=' || replace(name, ' ', '%20'),
+  'Synthetic regional Dota 2 roster seeded for public, team, bracket, and analytics flows.',
   null,
   null
 from demo_team_seed
@@ -425,8 +554,8 @@ insert into demo_tournament_seed (
 values
   (
     'demo-cup',
-    'dotaops-demo-cup',
-    'DotaOps Demo Cup',
+    'ljubljana-summer-circuit-2026',
+    'Ljubljana Summer Circuit 2026',
     'live',
     'groups_playoff',
     timestamptz '2026-06-01 12:00:00+00',
@@ -436,15 +565,15 @@ values
     timestamptz '2026-05-26 10:00:00+00',
     true,
     8,
-    'End-to-end DotaOps demo tournament with registrations, groups, bracket, match games and analytics.',
-    'Synthetic demo rules. No real players or real tournament results are represented.',
-    'Demo Aegis + bragging rights',
+    'Regional Dota 2 weekend circuit with registration review, group play, playoff bracket, imported games and analytics.',
+    'Best-of-three group stage and semifinals. Grand final is best-of-five. Synthetic data only.',
+    '2500 EUR community prize pool',
     '{"teamSize":5,"minTeams":4,"maxTeams":8,"bestOf":3,"format":"groups_playoff","allowSubstitutes":true,"checkInEnabled":true}'::jsonb
   ),
   (
     'open-qualifier',
-    'dotaops-demo-open-qualifier',
-    'DotaOps Demo Open Qualifier',
+    'adriatic-open-qualifier-2026',
+    'Adriatic Open Qualifier 2026',
     'registration',
     'single_elimination',
     timestamptz '2026-06-15 14:00:00+00',
@@ -454,9 +583,9 @@ values
     timestamptz '2026-06-03 09:00:00+00',
     true,
     8,
-    'Registration-open demo tournament for organizer workflow and public catalogue states.',
-    'Synthetic qualifier rules for demo only.',
-    'Demo qualifier slot',
+    'Registration-open qualifier for teams across Slovenia, Croatia, Italy, Austria, Germany and Hungary.',
+    'Single-elimination qualifier with roster checks before the first round. Synthetic data only.',
+    'Top seed into Ljubljana Summer Circuit',
     '{"teamSize":5,"minTeams":2,"maxTeams":8,"bestOf":3,"format":"single_elimination","allowSubstitutes":true,"checkInEnabled":false}'::jsonb
   );
 
@@ -600,7 +729,7 @@ select
   pg_temp.demo_uuid('team:rune-raiders'),
   pg_temp.demo_uuid('profile:player-26'),
   'pending'::public.dotaops_registration_status,
-  'Pending qualifier entry for demo organizer dashboard counts.',
+  'Pending qualifier entry awaiting organizer review.',
   'rune.raiders@dotaops.local',
   jsonb_build_object('demo', true, 'source', 'BE/DB-27')
 on conflict (tournament_id, team_id) do update
@@ -684,12 +813,13 @@ values
   (
     pg_temp.demo_uuid('group:demo-cup:a'),
     pg_temp.demo_uuid('tournament:demo-cup'),
-    'Demo Group A',
+    'Group A',
     1,
     '{"demo":true}'::jsonb
   )
-on conflict (tournament_id, name) do update
+on conflict (id) do update
 set sort_order = excluded.sort_order,
+    name = excluded.name,
     settings = excluded.settings,
     updated_at = now();
 
@@ -799,7 +929,7 @@ select
   score_b,
   case when winner_team_key is null then null else pg_temp.demo_uuid('team:' || winner_team_key) end,
   jsonb_build_object('demo', true),
-  'Synthetic demo match seeded by BE/DB-27.'
+  'Synthetic match seeded for the realistic DotaOps mock dataset.'
 from demo_match_seed
 on conflict (id) do update
 set group_id = excluded.group_id,
@@ -1053,7 +1183,7 @@ select
   pg_temp.demo_uuid('match-import-event:' || game_key || ':ready'),
   pg_temp.demo_uuid('match-import:' || game_key),
   'ready'::public.dotaops_import_status,
-  'Demo match import normalized successfully.',
+  'Match import normalized successfully for the mock dataset.',
   jsonb_build_object('demo', true, 'dotaMatchId', dota_match_id),
   pg_temp.demo_uuid('profile:organizer'),
   started_at + interval '5 minutes'
@@ -1245,7 +1375,7 @@ values
     pg_temp.demo_uuid('team-join-request:midlane-mages:radiant-wolves'),
     pg_temp.demo_uuid('team:midlane-mages'),
     pg_temp.demo_uuid('profile:player-05'),
-    'Demo pending join request for captain workflow coverage.',
+    'I can cover hard support this weekend and have updated my availability.',
     'pending'::public.dotaops_team_join_request_status,
     null,
     null

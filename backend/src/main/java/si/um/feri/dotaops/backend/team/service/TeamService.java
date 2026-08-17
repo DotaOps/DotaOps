@@ -226,7 +226,9 @@ public class TeamService {
 
     private boolean canUpdate(AuthenticatedProfile profile, Team team) {
         return profile.role() == ProfileRole.ADMIN
-                || profile.profileId().equals(team.captainProfileId());
+                || (profile.role() == ProfileRole.PLAYER
+                && profile.profileId().equals(team.captainProfileId())
+                && teamMemberRepository.existsActive(team.id(), profile.profileId()));
     }
 
     private TeamResponse toDetailResponse(Team team) {

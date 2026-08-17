@@ -18,6 +18,7 @@ class AnalyticsRepositoryTest {
     private static final UUID TEAM_ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
     private static final UUID OTHER_TEAM_ID = UUID.fromString("55555555-5555-4555-8555-555555555555");
     private static final UUID PROFILE_ID = UUID.fromString("33333333-3333-4333-8333-333333333333");
+    private static final UUID OTHER_PROFILE_ID = UUID.fromString("66666666-6666-4666-8666-666666666666");
     private static final UUID HERO_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
     private static final OffsetDateTime FROM = OffsetDateTime.parse("2026-05-01T00:00:00Z");
     private static final OffsetDateTime TO = OffsetDateTime.parse("2026-06-01T00:00:00Z");
@@ -199,6 +200,78 @@ class AnalyticsRepositoryTest {
         assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true", "raw_response", "normalized_payload", "raw_player");
         assertThat(jdbcTemplate.parameters)
                 .containsExactly(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO, 25);
+    }
+
+    @Test
+    void protectedPlayerHeroMasteryMetricsUseExtendedNormalizedColumnsAndBoundFilters() {
+        repository.findPlayerHeroMasteryMetrics(
+                PROFILE_ID,
+                HERO_ID,
+                new AnalyticsFilters(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO, 25),
+                false);
+
+        assertThat(jdbcTemplate.sql).contains("where true");
+        assertThat(jdbcTemplate.sql).contains("mp.profile_id = ?");
+        assertThat(jdbcTemplate.sql).contains("mp.hero_id = ?");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.net_worth), 2) as avg_net_worth");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.level), 2) as avg_level");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.tower_damage), 2) as avg_tower_damage");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.hero_healing), 2) as avg_hero_healing");
+        assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true", "raw_response", "normalized_payload", "raw_player");
+        assertThat(jdbcTemplate.parameters)
+                .containsExactly(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO);
+    }
+
+    @Test
+    void protectedPlayerComparisonHeadlineMetricsUseExtendedNormalizedColumnsAndBoundFilters() {
+        repository.findPlayerComparisonHeadlineMetrics(
+                PROFILE_ID,
+                new AnalyticsFilters(TOURNAMENT_ID, TEAM_ID, OTHER_PROFILE_ID, HERO_ID, FROM, TO, 25),
+                false);
+
+        assertThat(jdbcTemplate.sql).contains("where true");
+        assertThat(jdbcTemplate.sql).contains("mp.profile_id = ?");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.last_hits), 2) as avg_last_hits");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.denies), 2) as avg_denies");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.net_worth), 2) as avg_net_worth");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.tower_damage), 2) as avg_tower_damage");
+        assertThat(jdbcTemplate.sql).contains("round(avg(mp.hero_healing), 2) as avg_hero_healing");
+        assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true", "raw_response", "normalized_payload", "raw_player");
+        assertThat(jdbcTemplate.parameters)
+                .containsExactly(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO);
+    }
+
+    @Test
+    void protectedPlayerComparisonMatchesReturnPerPlayerOpenDotaFieldsAndBoundFilters() {
+        repository.findPlayerComparisonMatches(
+                PROFILE_ID,
+                OTHER_PROFILE_ID,
+                new AnalyticsFilters(TOURNAMENT_ID, TEAM_ID, PROFILE_ID, HERO_ID, FROM, TO, 25),
+                false);
+
+        assertThat(jdbcTemplate.sql).contains("where true");
+        assertThat(jdbcTemplate.sql).contains("mp.profile_id in (?, ?)");
+        assertThat(jdbcTemplate.sql).contains("a.profile_id = ?");
+        assertThat(jdbcTemplate.sql).contains("b.profile_id = ?");
+        assertThat(jdbcTemplate.sql).contains("a.hero_damage as a_hero_damage");
+        assertThat(jdbcTemplate.sql).contains("b.tower_damage as b_tower_damage");
+        assertThat(jdbcTemplate.sql).contains("a.net_worth as a_net_worth");
+        assertThat(jdbcTemplate.sql).contains("b.hero_healing as b_hero_healing");
+        assertThat(jdbcTemplate.sql).contains("winner_side");
+        assertThat(jdbcTemplate.sql).contains("team_side");
+        assertThat(jdbcTemplate.sql).doesNotContain("t.is_public = true", "raw_response", "normalized_payload", "raw_player");
+        assertThat(jdbcTemplate.parameters)
+                .containsExactly(
+                        PROFILE_ID,
+                        OTHER_PROFILE_ID,
+                        TOURNAMENT_ID,
+                        TEAM_ID,
+                        HERO_ID,
+                        FROM,
+                        TO,
+                        PROFILE_ID,
+                        OTHER_PROFILE_ID,
+                        25);
     }
 
     private void assertLiveNormalizedAnalyticsQuery() {

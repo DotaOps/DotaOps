@@ -9,6 +9,9 @@ param(
     [switch] $ResetFirst,
 
     [Parameter(Mandatory = $false)]
+    [switch] $CleanGeneratedTestData,
+
+    [Parameter(Mandatory = $false)]
     [switch] $SkipVerify,
 
     [Parameter(Mandatory = $false)]
@@ -45,13 +48,20 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $demoDir = Join-Path $repoRoot "backend/src/main/resources/db/demo"
 $seedSql = Join-Path $demoDir "demo-seed.sql"
 $resetSql = Join-Path $demoDir "reset-demo-seed.sql"
+$resetGeneratedSql = Join-Path $demoDir "reset-generated-test-data.sql"
 $verifySql = Join-Path $demoDir "verify-demo-seed.sql"
 
 if (-not (Test-Path -LiteralPath $seedSql)) {
     throw "Demo seed SQL not found: $seedSql"
 }
 
-if ($ResetFirst) {
+if ($CleanGeneratedTestData) {
+    if (-not (Test-Path -LiteralPath $resetGeneratedSql)) {
+        throw "Generated test data reset SQL not found: $resetGeneratedSql"
+    }
+
+    & $psql.Source $DatabaseUrl -v ON_ERROR_STOP=1 -f $resetGeneratedSql
+} elseif ($ResetFirst) {
     if (-not (Test-Path -LiteralPath $resetSql)) {
         throw "Demo reset SQL not found: $resetSql"
     }

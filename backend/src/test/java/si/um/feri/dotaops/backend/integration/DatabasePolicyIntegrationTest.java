@@ -1,5 +1,6 @@
 package si.um.feri.dotaops.backend.integration;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -53,15 +54,18 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    void serviceRoleProfileHelperAllowsOrganizerButNotGlobalCaptainFromMetadata() {
+    void serviceRoleProfileHelperIgnoresMetadataRolesDuringAutoProvisioning() {
         UUID organizerAuthUserId = UUID.randomUUID();
         UUID captainAuthUserId = UUID.randomUUID();
+        UUID adminAuthUserId = UUID.randomUUID();
         seedAuthUser(organizerAuthUserId);
         seedAuthUser(captainAuthUserId);
+        seedAuthUser(adminAuthUserId);
 
-        jdbcTemplate.update("delete from public.profiles where auth_user_id in (?, ?)",
+        jdbcTemplate.update("delete from public.profiles where auth_user_id in (?, ?, ?)",
                 organizerAuthUserId,
-                captainAuthUserId);
+                captainAuthUserId,
+                adminAuthUserId);
 
         asServiceRole(() -> {
             jdbcTemplate.queryForObject(
@@ -90,6 +94,19 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
                     captainAuthUserId,
                     "captain@example.test",
                     "{\"desired_role\":\"captain\",\"nickname\":\"metadata_captain\"}");
+            jdbcTemplate.queryForObject(
+                    """
+                    select private.ensure_profile_for_auth_user(
+                      ?,
+                      ?,
+                      '{}'::jsonb,
+                      ?::jsonb
+                    )
+                    """,
+                    UUID.class,
+                    adminAuthUserId,
+                    "admin@example.test",
+                    "{\"desired_role\":\"admin\",\"nickname\":\"metadata_admin\"}");
 
             return null;
         });
@@ -100,9 +117,13 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
         Map<String, Object> captainProfile = jdbcTemplate.queryForMap(
                 "select role::text as role from public.profiles where auth_user_id = ?",
                 captainAuthUserId);
+        Map<String, Object> adminProfile = jdbcTemplate.queryForMap(
+                "select role::text as role from public.profiles where auth_user_id = ?",
+                adminAuthUserId);
 
-        assertThat(organizerProfile.get("role")).isEqualTo("organizer");
+        assertThat(organizerProfile.get("role")).isEqualTo("player");
         assertThat(captainProfile.get("role")).isEqualTo("player");
+        assertThat(adminProfile.get("role")).isEqualTo("player");
     }
 
     @Test
@@ -156,6 +177,83 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
     }
 
     @Test
+    void browserRolesHaveNoDirectBusinessDmlPrivileges() {
+        List<String> unexpectedPrivileges = jdbcTemplate.queryForList(
+                """
+                with browser_roles(role_name) as (
+                  values ('anon'), ('authenticated')
+                ),
+                business_tables(table_name) as (
+                  values
+                    ('profiles'),
+                    ('profile_external_accounts'),
+                    ('teams'),
+                    ('team_members'),
+                    ('team_invitations'),
+                    ('team_join_requests'),
+                    ('team_manual_players'),
+                    ('tournaments'),
+                    ('tournament_registrations'),
+                    ('tournament_registration_members'),
+                    ('tournament_staff'),
+                    ('tournament_groups'),
+                    ('tournament_group_teams'),
+                    ('matches'),
+                    ('match_slots'),
+                    ('match_games'),
+                    ('match_players'),
+                    ('match_imports'),
+                    ('match_import_events'),
+                    ('match_advancement_audit_logs'),
+                    ('heroes'),
+                    ('notification_outbox'),
+                    ('audit_log')
+                ),
+                dml_privileges(privilege_name) as (
+                  values ('INSERT'), ('UPDATE'), ('DELETE')
+                )
+                select concat(role_name, ':', table_name, ':', privilege_name)
+                from browser_roles
+                cross join business_tables
+                cross join dml_privileges
+                where has_table_privilege(
+                        role_name,
+                        format('public.%I', table_name),
+                        privilege_name
+                      )
+                   or case
+                        when privilege_name in ('INSERT', 'UPDATE') then
+                          has_any_column_privilege(
+                            role_name,
+                            format('public.%I', table_name),
+                            privilege_name
+                          )
+                        else false
+                      end
+                order by role_name, table_name, privilege_name
+                """,
+                String.class);
+
+        assertThat(unexpectedPrivileges)
+                .as("anon/authenticated must not have effective business INSERT, UPDATE or DELETE privileges")
+                .isEmpty();
+    }
+
+    @Test
+    void authenticatedClientCannotUpdateOwnProfileDirectly() {
+        UUID authUserId = UUID.randomUUID();
+        UUID profileId = upsertProfile(authUserId, "player");
+
+        assertThatThrownBy(() -> asAuthenticated(authUserId, () -> {
+            jdbcTemplate.update(
+                    "update public.profiles set display_name = ? where id = ?",
+                    "Direct client update",
+                    profileId);
+            return null;
+        })).isInstanceOf(DataAccessException.class);
+    }
+
+    @Test
     void onlyAdminCanReadAuditLogThroughAuthenticatedRole() {
         UUID playerAuthUserId = UUID.randomUUID();
         UUID adminAuthUserId = UUID.randomUUID();
@@ -195,6 +293,10 @@ class DatabasePolicyIntegrationTest extends PostgresIntegrationTestSupport {
         UUID captainProfileId = upsertProfile(captainAuthUserId, "player");
         UUID otherProfileId = upsertProfile(otherAuthUserId, "player");
         UUID teamId = insertTeam(captainProfileId);
+        jdbcTemplate.update(
+                "insert into public.team_members (team_id, profile_id) values (?, ?)",
+                teamId,
+                captainProfileId);
 
         Boolean ownAvatar = asAuthenticated(captainAuthUserId, () -> jdbcTemplate.queryForObject(
                 "select private.storage_profile_avatar_owner(?)",

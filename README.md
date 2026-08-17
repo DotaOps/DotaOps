@@ -2,6 +2,107 @@
 
 DotaOps je aplikacija za organizacijo Dota 2 turnirjev, prijavo ekip, vodenje tekem in kasnejso analitiko podatkov iz OpenDota. Projekt je razdeljen na Next.js frontend, Spring Boot backend in Supabase Postgres bazo.
 
+## Quick Start
+
+Najhitrejsi lokalni zagon celotnega okolja:
+
+```powershell
+cd C:\DotaOpsProjekt\DotaOps
+docker compose up --build
+```
+
+Privzeti naslovi:
+
+- Frontend: `http://localhost:3000`
+- Backend API: `http://localhost:8080/api`
+- Backend health: `http://localhost:8080/api/health`
+
+Za ustavitev okolja:
+
+```powershell
+docker compose down
+```
+
+## Docker Zagon
+
+Docker zagon uporablja root `.env` za backend in skupne nastavitve. Pred prvim zagonom pripravite `.env` po navodilih v poglavju Environment Datoteke.
+
+```powershell
+docker compose down
+docker compose up --build
+```
+
+Ce zelite zagnati containerje v ozadju:
+
+```powershell
+docker compose up -d --build
+```
+
+## Lokalni Frontend/Backend Zagon
+
+Backend:
+
+```powershell
+cd C:\DotaOpsProjekt\DotaOps\backend
+.\mvnw.cmd spring-boot:run
+```
+
+Frontend:
+
+```powershell
+cd C:\DotaOpsProjekt\DotaOps\frontend
+npm install
+npm run dev
+```
+
+## Demo Logini
+
+Ce je demo seed nalozen, lahko za lokalno preverjanje uporabite:
+
+- Organizer: `demo.organizer@dotaops.local`
+- Playerji: `demo.player1@dotaops.local` do `demo.player30@dotaops.local`
+- Geslo: `DotaOpsDemo123!`
+
+Podrobnosti o demo seedu so v `docs/backend-demo-seed.md`.
+
+## API Dokumentacija
+
+Krovni seznam API dokumentacije je v `docs/api/README.md`.
+
+Canonical model vlog, privacy pravil in trust boundaryja je v [`docs/security-and-role-model.md`](docs/security-and-role-model.md).
+
+Canonical DotaOps 1.0 release baseline, branch strategy in deployment traceability pravila so v [`docs/release-baseline.md`](docs/release-baseline.md).
+
+Canonical analytics source, linkage, scope, lifecycle in data-quality pogodba je v [`docs/analytics-source-and-scope.md`](docs/analytics-source-and-scope.md).
+
+## E2E Smoke Testi
+
+Frontend ima minimalne Cypress smoke teste za public strani, protected route gate in demo player/organizer prijavo.
+Pred zagonom mora aplikacija teci na `http://localhost:3000`; za auth smoke teste mora biti nalozen demo seed.
+
+```powershell
+cd C:\DotaOpsProjekt\DotaOps\frontend
+npm run e2e
+```
+
+Demo prijavne podatke lahko preglasite z okolijskimi spremenljivkami:
+
+```powershell
+cd C:\DotaOpsProjekt\DotaOps\frontend
+$env:CYPRESS_DEMO_PLAYER_EMAIL="demo.player1@dotaops.local"
+$env:CYPRESS_DEMO_ORGANIZER_EMAIL="demo.organizer@dotaops.local"
+$env:CYPRESS_DEMO_PASSWORD="DotaOpsDemo123!"
+npm run e2e
+```
+
+Ce spremenljivke niso nastavljene, Cypress uporabi lokalne demo-seed vrednosti iz `frontend/cypress.config.ts`. Te fallback vrednosti so namenjene samo lokalnemu demo okolju.
+
+Za interaktivni Cypress runner:
+
+```powershell
+npm run e2e:open
+```
+
 ## Tehnologije
 
 - Frontend: Next.js 16 App Router, React 19, TypeScript
@@ -82,7 +183,7 @@ V `frontend/.env.local` nastavi:
 
 ```properties
 NEXT_PUBLIC_API_URL=http://localhost:8080/api
-NEXT_PUBLIC_SUPABASE_URL=https://hjszjebirxhdtrbhefbv.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=https://<projectRef>.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
 ```
 
@@ -96,7 +197,7 @@ Za backend uporabljamo Supabase Session Pooler, ker deluje prek IPv4:
 host: aws-0-eu-west-1.pooler.supabase.com
 port: 5432
 database: postgres
-user: postgres.hjszjebirxhdtrbhefbv
+user: postgres.<projectRef>
 ```
 
 JDBC oblika za Spring Boot:
@@ -106,6 +207,8 @@ SUPABASE_DB_URL=jdbc:postgresql://aws-0-eu-west-1.pooler.supabase.com:5432/postg
 ```
 
 Ne uporabljaj direct cloud connection stringa `db.<projectRef>.supabase.co`, razen ce je okolje namenoma na IPv6 ali ima Supabase IPv4 add-on.
+
+Za varno lokalno diagnostiko remote Supabase okolja glej `docs/local-supabase-development.md`.
 
 ## OpenDota Konfiguracija
 
@@ -334,7 +437,7 @@ http://localhost:3000
 
 Production deployment (hosted): https://dotaops-frontend.vercel.app/
 
-Ce backend ni zagnan ali API se nima podatkov, frontend uporablja fallback/mock podatke iz `frontend/src/lib/mock-data.ts`.
+Produkcijski uporabniski tokovi uporabljajo realne backend API-je. Legacy mock podatki v frontendu so namenjeni samo razvojnim/demo pomocnim komponentam in se ne smejo prikazovati kot realni podatki.
 
 ## Preverjanje Projekta
 

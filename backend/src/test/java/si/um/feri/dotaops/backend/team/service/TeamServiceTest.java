@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.mock.web.MockMultipartFile;
@@ -54,6 +55,11 @@ class TeamServiceTest {
             teamManualPlayerRepository,
             imageStorageService,
             currentUserProvider);
+
+    @BeforeEach
+    void setUpActiveCaptainMembership() {
+        when(teamMemberRepository.existsActive(TEAM_ID, CAPTAIN_PROFILE_ID)).thenReturn(true);
+    }
 
     @Test
     void createTeamSetsAuthenticatedUserAsCaptainAndGeneratesSlug() {
@@ -180,6 +186,26 @@ class TeamServiceTest {
         assertThat(captor.getValue().name()).isEqualTo("Ancient Core");
         assertThat(captor.getValue().slugPresent()).isTrue();
         assertThat(captor.getValue().slug()).isEqualTo("ancient-core");
+    }
+
+    @Test
+    void inactiveCaptainCannotUpdateOwnTeam() {
+        when(currentUserProvider.requireProfile()).thenReturn(profile(CAPTAIN_PROFILE_ID, ProfileRole.PLAYER));
+        when(teamRepository.findById(TEAM_ID))
+                .thenReturn(Optional.of(team("Ancient Stack", "ancient-stack", CAPTAIN_PROFILE_ID)));
+        when(teamMemberRepository.existsActive(TEAM_ID, CAPTAIN_PROFILE_ID)).thenReturn(false);
+
+        assertThatThrownBy(() -> teamService.updateTeam(TEAM_ID, new UpdateTeamRequest(
+                "Ancient Core",
+                null,
+                null,
+                null,
+                null,
+                null)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Only the team captain or an admin can update this team.");
+
+        verify(teamRepository, never()).update(eq(TEAM_ID), any());
     }
 
     @Test
