@@ -1,5 +1,7 @@
 # Backend Analytics API
 
+> Ta dokument je inventar trenutne backend implementacije in DTO-jev, ne normativni semantic source of truth. Canonical analytics source, scope, lifecycle in data-quality pogodba je v [analytics-source-and-scope.md](analytics-source-and-scope.md); ob konfliktu velja canonical pogodba.
+
 Ta dokument opisuje backend pogodbo za FE-15 analytics. Vsi endpointi vracajo samo
 realne podatke iz baze. Ce podatkov ni, backend vrne `null`, `0` ali prazne sezname.
 

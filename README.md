@@ -73,6 +73,8 @@ Canonical model vlog, privacy pravil in trust boundaryja je v [`docs/security-an
 
 Canonical DotaOps 1.0 release baseline, branch strategy in deployment traceability pravila so v [`docs/release-baseline.md`](docs/release-baseline.md).
 
+Canonical analytics source, linkage, scope, lifecycle in data-quality pogodba je v [`docs/analytics-source-and-scope.md`](docs/analytics-source-and-scope.md).
+
 ## E2E Smoke Testi
 
 Frontend ima minimalne Cypress smoke teste za public strani, protected route gate in demo player/organizer prijavo.
